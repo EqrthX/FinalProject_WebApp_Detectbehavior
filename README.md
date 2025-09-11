@@ -1,4 +1,4 @@
-# Python Streamlit + FastAPI ตรวจจับพฤติกรรมในห้องเรียน
+# Python Streamlit + FastAPI + Yolov8m ตรวจจับพฤติกรรมในห้องเรียน
 
 ## Frontend Streamlit
 - ใช้สำหรับแสดง UI ต่างๆ เช่นกราฟ sidebar navbar 

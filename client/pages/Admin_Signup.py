@@ -52,7 +52,7 @@ def signup():
         fullname = name + " " + surname
         
         if submited:
-            if not username and not password and not passwordCon and not name and not surname:
+            if not username or not password or not passwordCon or not name or not surname:
                 st.error("กรุณากรอกข้อมูลให้ครบถ้วน")
             elif len(password_validation(password, passwordCon)) > 0:
                 error = password_validation(password, passwordCon)
@@ -66,7 +66,7 @@ def signup():
                         "userRole": selectRole
                     })
                     if res.status_code == 200:
-                        st.session_state.signup_success = True
+                        st.success("สมัครสมาชิกเสร็จสิ้น")
                         st.session_state.reset = True 
                         st.rerun()
                     else:
@@ -74,8 +74,5 @@ def signup():
                 except Exception as e:
                     st.error(f"เกิดข้อผิดพลาด: {e}")
                     
-    if st.session_state.signup_success:
-        st.success("สมัครสมาชิกเสร็จสิ้น")
-        st.session_state.signup_success = False
-        st.switch_page("Login.py")
+
         

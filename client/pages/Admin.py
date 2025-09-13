@@ -4,12 +4,23 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from numpy.random import default_rng as rng
+from streamlit_cookies_manager import EncryptedCookieManager
+import requests
+import os
 
+api_key = os.getenv("API_URL")
+
+cookies = EncryptedCookieManager(prefix="myapp", password="secret_Key")
+if not cookies.ready():
+    st.stop()
+    
 st.set_page_config(
     page_title="Admin DashBoard",
     page_icon="📊",
     layout="wide"
 )
+
+token = cookies.get("token")
 
 st.markdown("""
             
@@ -34,8 +45,22 @@ st.markdown("""
             
             """, unsafe_allow_html=True)
 
-if st.session_state.get("authenLogin", False):
+if token :
+    try:
+        headers = {"Authorization": f"Bearer {cookies.get("token")}"}
+        res = requests.get(f"{api_key}/users/me", headers=headers)
 
+        if res.status_code == 200:
+            user_info = res.json()
+            print(user_info)
+            st.session_state.authenLogin = True
+            st.session_state.role = user_info["role"]
+            st.session_state.fullname = user_info["fullname"]
+        else:
+            st.session_state.authenLogin = False
+    except Exception:
+        st.session_state.authenLogin = False
+        
     with st.sidebar:
         st.markdown(f"### Admin {st.session_state.fullname}")
         menu_options = ["ภาพรวม", "อาจารย์", "ตารางสอน", "ลงทะเบียน"]
@@ -43,7 +68,11 @@ if st.session_state.get("authenLogin", False):
         
         st.markdown("----------------")
         if st.button("Logout", type="secondary"):
-            st.warning("ออกจากระบบ")
+            cookies["token"] = ""
+            cookies["role"] = ""
+            cookies["fullname"] = ""
+            cookies.save()
+            st.switch_page("App.py")
     
     if selected_menu == "ภาพรวม":
         st.markdown("""

@@ -1,9 +1,10 @@
 from fastapi import APIRouter, HTTPException, Depends, status
-from datetime import date
+from datetime import date, timedelta
 from utils.validatorPassword import hash_password, verify_password
 from schemas import UserSignup, UserLogin
 from db import get_connection
-
+from streamlit_cookies_manager import EncryptedCookieManager
+from utils.auth import create_access_token, get_current_user
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 @router.post("/login")
@@ -19,8 +20,21 @@ async def login(user_data: UserLogin):
             if not verify_password(user_data.password, user["password"]):
                 raise HTTPException(status_code=404, detail="รหัสผ่านไม่ถูกต้อง")
             
+            token_expires = timedelta(minutes=240)
+            access_token = create_access_token(
+                data={
+                    "sub": user["username"],
+                    "fullname": user["fullname"],
+                    "role": user["userRole"],
+                    "userCode": user["userCode"],
+                },
+                expires_delta=token_expires
+            )
+            
             return {
-                "userCode": user["userCode"],
+                "access_token": access_token,
+                "token_type": "bearer",
+                "username": user["username"],
                 "fullname": user["fullname"],
                 "userRole": user["userRole"]
             }
@@ -56,3 +70,12 @@ async def signup(user_data: UserSignup):
             }
     finally:
         conn.close()
+        
+@router.get("/me")
+async def read_users_me(current_user: dict = Depends(get_current_user)):
+    return {
+        "username": current_user["username"],
+        "fullname": current_user["fullname"],
+        "role": current_user["role"],
+        "userCode": current_user["userCode"]
+    }

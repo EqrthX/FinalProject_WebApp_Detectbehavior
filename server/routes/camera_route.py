@@ -3,6 +3,7 @@ from ultralytics import YOLO
 import cv2
 import threading
 import time
+import asyncio
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
@@ -11,6 +12,7 @@ model = YOLO("yolov8n.pt")
 cap = None
 is_carema_running = False
 camera_thread = None
+arrConf = {}
 
 def camera_loop():
     
@@ -32,6 +34,7 @@ def camera_loop():
         now = time.time()
         
         if now - last_check_time >= 1:
+            
             seconds+=1
             last_check_time = now
             
@@ -57,14 +60,18 @@ def camera_loop():
 
 def calculate5Min(seconds = 0, conf = 0.0, label = ""):
     
-    arrConf = []
+    global arrConf
+    
+    result = 0.0
     print(f"seconds {seconds}, conf {conf}")
     
     if seconds % 60 == 0:
-        print(f"result conf {conf / seconds}")
-        arrConf.append(conf / seconds)
-    
-    
+        minute = seconds // 60
+        result = conf / seconds
+        arrConf[minute] = result
+        print(f"Minute {minute}: {result}")
+
+        
 @camera_router.get("/open-camera")
 async def camera_open():
     
@@ -73,7 +80,7 @@ async def camera_open():
         return {"message": "Camera already running"}
 
     is_carema_running = True
-    camera_thread = threading.Thread(target=camera_loop)
+    camera_thread = threading.Thread(target=camera_loop, daemon=True)
     camera_thread.start()
     return {"message": "Camera running"}
 
@@ -84,5 +91,5 @@ async def camera_close():
         return {"message": "Camera is not running"}
     
     is_carema_running = False
-    time.sleep(0.1)
+    await asyncio.sleep(1)
     return {"message": "Camera stopped"}

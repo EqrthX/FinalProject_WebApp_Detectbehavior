@@ -13,10 +13,11 @@ cap = None
 is_carema_running = False
 camera_thread = None
 arrConf = {}
+label = ""
 
 def camera_loop():
     
-    global cap, is_carema_running
+    global cap, is_carema_running, label
     cap = cv2.VideoCapture(0)
     seconds = 0
     sumConf = 0
@@ -63,15 +64,14 @@ def calculate5Min(seconds = 0, conf = 0.0, label = ""):
     global arrConf
     
     result = 0.0
-    print(f"seconds {seconds}, conf {conf}")
+    print(f"seconds {seconds}, conf {conf}, label {label}")
     
-    if seconds % 60 == 0:
+    if seconds % 300 == 0:
         minute = seconds // 60
         result = conf / seconds
         arrConf[minute] = result
         print(f"Minute {minute}: {result}")
 
-        
 @camera_router.get("/open-camera")
 async def camera_open():
     

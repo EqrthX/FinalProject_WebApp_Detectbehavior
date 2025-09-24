@@ -3,10 +3,93 @@ from ultralytics import YOLO
 import cv2
 import threading
 import time
-import datetime
-import base64
+import asyncio
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 model = YOLO("yolov8n.pt")
 
+cap = None
+is_carema_running = False
+camera_thread = None
+arrConf = {}
+label = ""
+
+def camera_loop():
+    
+    global cap, is_carema_running, label
+    cap = cv2.VideoCapture(0)
+    seconds = 0
+    sumConf = 0
+    last_check_time = time.time()
+
+    while is_carema_running and cap.isOpened():
+        success, frame = cap.read()
+        
+        if not success:
+            continue
+        
+        results = model.predict(source=frame, conf=0.2, device="cpu", verbose=False)
+        anootated_frame = results[0].plot()
+            
+        now = time.time()
+        
+        if now - last_check_time >= 1:
+            
+            seconds+=1
+            last_check_time = now
+            
+            for box in results[0].boxes:
+                
+                cls = int(box.cls)
+                conf = box.conf.item()
+                label = model.names[cls]
+                conf = round(conf, 2)
+                
+                if conf > 0.75:
+                    sumConf += conf
+                        
+            calculate5Min(seconds, sumConf, label)
+            
+        cv2.imshow("YOLO Webcam", anootated_frame)
+        cv2.waitKey(1)
+
+                
+    if cap:
+        cap.release()
+    cv2.destroyAllWindows()
+
+def calculate5Min(seconds = 0, conf = 0.0, label = ""):
+    
+    global arrConf
+    
+    result = 0.0
+    print(f"seconds {seconds}, conf {conf}, label {label}")
+    
+    if seconds % 300 == 0:
+        minute = seconds // 60
+        result = conf / seconds
+        arrConf[minute] = result
+        print(f"Minute {minute}: {result}")
+
+@camera_router.get("/open-camera")
+async def camera_open():
+    
+    global is_carema_running, camera_thread
+    if is_carema_running:
+        return {"message": "Camera already running"}
+
+    is_carema_running = True
+    camera_thread = threading.Thread(target=camera_loop, daemon=True)
+    camera_thread.start()
+    return {"message": "Camera running"}
+
+@camera_router.get("/close-camera")
+async def camera_close():
+    global is_carema_running
+    if not is_carema_running:
+        return {"message": "Camera is not running"}
+    
+    is_carema_running = False
+    await asyncio.sleep(1)
+    return {"message": "Camera stopped"}

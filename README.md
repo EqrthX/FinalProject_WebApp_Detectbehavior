@@ -1,6 +1,6 @@
-# Python Streamlit + FastAPI + Yolov8m ตรวจจับพฤติกรรมในห้องเรียน
+# Python React + FastAPI + Yolov8m ตรวจจับพฤติกรรมในห้องเรียน
 
-## Frontend Streamlit
+## Frontend React
 - ใช้สำหรับแสดง UI ต่างๆ เช่นกราฟ sidebar navbar 
 - มีการ active กับ user ได้
 - มีการเรียกใช้ API ต่างๆ

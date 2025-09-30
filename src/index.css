@@ -1,0 +1,18 @@
+/* ถ้าอยากใช้ @import ให้วางบรรทัดนี้ไว้บนสุด */
+@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+/* ตัวอย่างตั้งค่า global เล็กน้อย */
+:root {
+  --main-bg: #f8fafc;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+/* ตั้ง font family เป็น Kanit (ถ้าตั้งไว้ใน tailwind.config ให้ใช้ class font-sans) */
+body {
+  font-family: 'Kanit', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}

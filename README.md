@@ -4,6 +4,7 @@
 - ใช้สำหรับแสดง UI ต่างๆ เช่นกราฟ sidebar navbar 
 - มีการ active กับ user ได้
 - มีการเรียกใช้ API ต่างๆ
+- ใช้ charts ทำกราฟ
 ---
 ## Backend FastAPI
 - ออกแบบ API 

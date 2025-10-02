@@ -83,7 +83,7 @@ def camera_loop():
                 seconds = 0
                 classAttection = empty_classAttection()
 
-                if len(history_1hr) >= 60:
+                if len(history_1min) >= 60:
                     print("History 1 hr.")
             
         cv2.imshow("Detection Webcam", anootated_frame)

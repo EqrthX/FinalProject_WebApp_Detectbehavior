@@ -25,7 +25,6 @@ def add_minute_record(avg_min):
         history_1hr.append(record_hr)
         history_1min.clear()  # reset
 
-
 # --- ทดลอง ---
 for _ in range(24):  # สมมติรัน 2 ชั่วโมง (24 * 5 นาที)
     avg_min = round(random.uniform(0, 100), 2)

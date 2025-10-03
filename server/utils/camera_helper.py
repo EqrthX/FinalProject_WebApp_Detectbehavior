@@ -1,6 +1,7 @@
 from datetime import datetime
 import os
 import cv2
+import json
 
 def empty_classAttection ():
     return {
@@ -40,3 +41,25 @@ def save_snapshot(frame, filename, folder):
     else:
         print(f"❌ Failed to save image: {save_path}")
         return None
+
+def save_file_log(history_5min = [], history_1hr = []):
+
+    if history_1hr:
+        file_log = f"log_1hr_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"  # กันชื่อไฟล์ซ้ำ
+        with open(file_log, 'a', encoding='utf-8') as file:
+            for his_1h in history_1hr:
+                file.write("--- Mean 1 hour ---\n")
+                file.write(json.dumps(his_1h) + "\n")
+
+        print("บันทึก Log 1 ชั่วโมง เรียบร้อย", file_log)
+    
+    if history_5min:
+        file_log = f"log_1min_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"  # กันชื่อไฟล์ซ้ำ
+        with open(file_log, 'a', encoding='utf-8') as file:
+            for his_5m in history_5min:
+                file.write("--- Mean 5 minute ---\n")
+                file.write(json.dumps(his_5m) + "\n")
+
+        print("บันทึก Log 5 นาที เรียบร้อย", file_log)
+
+    

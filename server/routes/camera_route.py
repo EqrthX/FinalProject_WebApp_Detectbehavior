@@ -6,7 +6,7 @@ import time
 import asyncio
 import os
 from datetime import datetime
-from utils.camera_helper import average_dict_attendence, generate_image_filename, save_snapshot, empty_classAttection
+from utils.camera_helper import average_dict_attendence, generate_image_filename, save_snapshot, empty_classAttection, save_file_log
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
@@ -18,7 +18,7 @@ cap = None
 is_carema_running = False
 camera_thread = None
 seconds = 0
-history_1min = []
+history_5min = []
 history_1hr = []
 
 # สร้างโฟเดอร์สำหรับเก็บภาพที่แคปทุกๆ นาทีที่กำหนดไว้
@@ -64,7 +64,7 @@ def camera_loop():
 
             print(f"second {seconds}")
 
-            if seconds == 60:
+            if seconds == 300:
                 avg_min = average_dict_attendence(classAttection, seconds)
                 
                 image_filename = generate_image_filename()
@@ -76,15 +76,17 @@ def camera_loop():
                     "average": avg_min
                 },
 
-                history_1min.append(record_min)
-                print(f"📊 History: {history_1hr}, Path: {save_path}")
+                history_5min.append(record_min)
+                print(f"📊 History: {history_5min}, Path: {save_path}")
                 
                 # ⭐ RESET สำคัญมาก!
                 seconds = 0
                 classAttection = empty_classAttection()
+                save_file_log(history_5min)
 
-                if len(history_1min) >= 60:
+                if len(history_5min) >= 12:
                     print("History 1 hr.")
+                    save_file_log(history_1hr)
             
         cv2.imshow("Detection Webcam", anootated_frame)
         cv2.waitKey(1)

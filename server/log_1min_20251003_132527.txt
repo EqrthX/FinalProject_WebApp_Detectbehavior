@@ -1,0 +1,4 @@
+--- Mean 1 minute ---
+[{"time": "2025-10-03 13:19:56", "interval_minutes": 5, "average": {"High_Attention": {"Focused": 0.15609999999999993}, "Low_Attention": {"Drinking": 0.0037333333333333337, "Eating": 0.32070000000000004, "Lookaways": 0.09806666666666666, "Sleeping": 0.0, "UsingPhone": 0.010100000000000001}}}]
+--- Mean 1 minute ---
+[{"time": "2025-10-03 13:25:27", "interval_minutes": 5, "average": {"High_Attention": {"Focused": 0.08773333333333332}, "Low_Attention": {"Drinking": 0.0037666666666666664, "Eating": 0.4938333333333329, "Lookaways": 0.17886666666666665, "Sleeping": 0.0, "UsingPhone": 0.0033}}}]

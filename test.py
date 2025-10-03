@@ -4,7 +4,7 @@ import json
 
 history_1min = []
 history_1hr = []
-file_log = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"  # กันชื่อไฟล์ซ้ำ
+file_log = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"  # กันชื่อไฟล์ซ้ำ
 
 def add_minute_record(avg_min):
     record_min = {
@@ -26,18 +26,31 @@ def add_minute_record(avg_min):
         history_1min.clear()  # reset
 
 # --- ทดลอง ---
-for _ in range(24):  # สมมติรัน 2 ชั่วโมง (24 * 5 นาที)
-    avg_min = round(random.uniform(0, 100), 2)
-    add_minute_record(avg_min)
+# for _ in range(24):  # สมมติรัน 2 ชั่วโมง (24 * 5 นาที)
+#     avg_min = round(random.uniform(0, 100), 2)
+#     add_minute_record(avg_min)
 
-# เขียน log
-with open(file_log, 'a', encoding="utf-8") as file:
-    file.write("---- 5min ----\n")
-    for rec in history_1min:
-        file.write(json.dumps(rec) + "\n")
+# # เขียน log
+# with open(file_log, "w", encoding="utf-8") as f:
+#     json.dump({
+#         "5min": history_1min,
+#         "1hr": history_1hr
+#     }, f, ensure_ascii=False, indent=2)
 
-    file.write("---- 1hr ----\n")
-    for rec in history_1hr:
-        file.write(json.dumps(rec) + "\n")
+# print("บันทึกเป็น JSON:", file_log)
 
-print("บันทึก log เรียบร้อย:", file_log)
+# print("บันทึก log เรียบร้อย:", file_log)
+
+data = []
+with open("log_1min_20251003_144257.json", 'r', encoding='utf-8') as f:
+    data = json.load(f)
+
+for block in data:
+    result={}
+    for key in block.keys():
+        result[key] = {}
+    
+    for value in block.items():
+        print(value)
+
+    

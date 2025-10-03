@@ -6,7 +6,7 @@ import time
 import asyncio
 import os
 from datetime import datetime
-from utils.camera_helper import average_dict_attendence, generate_image_filename, save_snapshot, empty_classAttection, save_file_log
+from utils.camera_helper import average_dict_attendence, generate_image_filename, save_snapshot, empty_classAttection, save_file_log, average_dict_hourly
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
@@ -86,7 +86,15 @@ def camera_loop():
 
                 if len(history_5min) >= 12:
                     print("History 1 hr.")
+                    avg_hr = average_dict_hourly(history_5min)
+                    record_1hr = {
+                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "interval_minute": 60,
+                        "average": avg_hr
+                    }
+                    history_1hr.append(record_1hr)
                     save_file_log(history_1hr)
+
             
         cv2.imshow("Detection Webcam", anootated_frame)
         cv2.waitKey(1)

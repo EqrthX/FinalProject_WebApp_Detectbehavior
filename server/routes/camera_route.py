@@ -4,26 +4,37 @@ import cv2
 import threading
 import time
 import asyncio
+import os
+from datetime import datetime
+from utils.camera_helper import average_dict_attendence, generate_image_filename, save_snapshot, empty_classAttection
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
-model = YOLO("yolov8n.pt")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "..", "..", "runs", "detect", "train", "weights", "best.pt")
+model = YOLO(MODEL_PATH)
 
 cap = None
 is_carema_running = False
 camera_thread = None
-arrConf = {}
-label = ""
+seconds = 0
+history_1min = []
+history_1hr = []
+
+# สร้างโฟเดอร์สำหรับเก็บภาพที่แคปทุกๆ นาทีที่กำหนดไว้
+output_folder = "captured_images"
+
+# สร้าง dict เก็บค่า conf เข้าตาม High Low
+classAttection = empty_classAttection()
 
 def camera_loop():
     
-    global cap, is_carema_running, label
+    global cap, is_carema_running, seconds, classAttection
     cap = cv2.VideoCapture(0)
-    seconds = 0
-    sumConf = 0
     last_check_time = time.time()
 
     while is_carema_running and cap.isOpened():
+
         success, frame = cap.read()
         
         if not success:
@@ -39,39 +50,49 @@ def camera_loop():
             seconds+=1
             last_check_time = now
             
-            for box in results[0].boxes:
+            for box in results[0].boxes: # pyright: ignore[reportOptionalIterable]
                 
                 cls = int(box.cls)
                 conf = box.conf.item()
                 label = model.names[cls]
                 conf = round(conf, 2)
                 
-                if conf > 0.75:
-                    sumConf += conf
-                        
-            calculate5Min(seconds, sumConf, label)
-            
-        cv2.imshow("YOLO Webcam", anootated_frame)
-        cv2.waitKey(1)
+                if label in classAttection["High_Attention"]:
+                    classAttection["High_Attention"][label] += conf
+                elif label in classAttection["Low_Attention"]:
+                    classAttection["Low_Attention"][label] += conf
 
+            print(f"second {seconds}")
+
+            if seconds == 60:
+                avg_min = average_dict_attendence(classAttection, seconds)
+                
+                image_filename = generate_image_filename()
+                save_path = save_snapshot(anootated_frame, image_filename, output_folder)
+                
+                record_min = {
+                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "interval_minutes": 5,
+                    "average": avg_min
+                },
+
+                history_1min.append(record_min)
+                print(f"📊 History: {history_1hr}, Path: {save_path}")
+                
+                # ⭐ RESET สำคัญมาก!
+                seconds = 0
+                classAttection = empty_classAttection()
+
+                if len(history_1min) >= 60:
+                    print("History 1 hr.")
+            
+        cv2.imshow("Detection Webcam", anootated_frame)
+        cv2.waitKey(1)
                 
     if cap:
         cap.release()
     cv2.destroyAllWindows()
-
-def calculate5Min(seconds = 0, conf = 0.0, label = ""):
     
-    global arrConf
-    
-    result = 0.0
-    print(f"seconds {seconds}, conf {conf}, label {label}")
-    
-    if seconds % 300 == 0:
-        minute = seconds // 60
-        result = conf / seconds
-        arrConf[minute] = result
-        print(f"Minute {minute}: {result}")
-
 @camera_router.get("/open-camera")
 async def camera_open():
     

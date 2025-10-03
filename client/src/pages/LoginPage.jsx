@@ -3,6 +3,7 @@ import BG from "../assets/backgroud.png";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "../util/axios.js";
 import toast from "react-hot-toast";
+import HomePage from "./user/HomePage.jsx";
 
 const LoginPage = () => {
   const [values, setValues] = useState({
@@ -111,14 +112,16 @@ const LoginPage = () => {
               {errorMessage}
             </p>
           )}
-
+          
+          <Link to = '/user/Homepage'>
           <button
             type="submit"
             disabled={isLoading}
-            className="bg-blue-700 text-white py-3 rounded-md font-semibold hover:bg-blue-800 transition-colors"
+            className="bg-blue-700 text-white w-full py-3 rounded-md font-semibold hover:bg-blue-800 transition-colors"
           >
             {isLoading ? "กำลังเข้าสู่ระบบ..." : "ยืนยัน"}
           </button>
+          </Link>
         </form>
       </div>
     </div>

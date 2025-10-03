@@ -1,0 +1,38 @@
+[
+  [
+    {
+      "time": "2025-10-03 16:23:55",
+      "interval_minutes": 5,
+      "average": {
+        "High_Attention": {
+          "Focused": 0.11986666666666669
+        },
+        "Low_Attention": {
+          "Drinking": 0.04586666666666666,
+          "Eating": 0.15140000000000003,
+          "Lookaways": 0.059733333333333326,
+          "Sleeping": 0.046766666666666686,
+          "UsingPhone": 0.22440000000000013
+        }
+      }
+    }
+  ],
+  [
+    {
+      "time": "2025-10-03 16:29:23",
+      "interval_minutes": 5,
+      "average": {
+        "High_Attention": {
+          "Focused": 0.0038666666666666663
+        },
+        "Low_Attention": {
+          "Drinking": 0.019633333333333336,
+          "Eating": 0.19803333333333326,
+          "Lookaways": 0.005933333333333333,
+          "Sleeping": 0.018700000000000005,
+          "UsingPhone": 0.48716666666666697
+        }
+      }
+    }
+  ]
+]

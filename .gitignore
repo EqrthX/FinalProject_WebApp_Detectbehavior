@@ -1,0 +1,21 @@
+# Ignore virtual environment
+venv/
+
+# Ignore .env files (เช่น ใช้เก็บข้อมูล sensitive)
+.env
+
+# Ignore VSCode settings
+.vscode/
+
+# Ignore Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore logs
+*.log
+
+# Ignore system files (macOS, Windows)
+.DS_Store
+Thumbs.db
+

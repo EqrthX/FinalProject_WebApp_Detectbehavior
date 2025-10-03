@@ -1,0 +1,211 @@
+[
+    {
+        "time": "2025-10-03 13:44:08",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.02076666666666667
+            },
+            "Low_Attention": {
+                "Drinking": 0.012133333333333335,
+                "Eating": 0.41356666666666647,
+                "Lookaways": 0.29483333333333356,
+                "Sleeping": 0.0013333333333333335,
+                "UsingPhone": 0.0497
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 13:49:38",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.10166666666666668
+            },
+            "Low_Attention": {
+                "Drinking": 0.010100000000000001,
+                "Eating": 0.11606666666666669,
+                "Lookaways": 0.35240000000000005,
+                "Sleeping": 0.0,
+                "UsingPhone": 0.1383
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 13:55:02",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.07390000000000001
+            },
+            "Low_Attention": {
+                "Drinking": 0.0303,
+                "Eating": 0.16,
+                "Lookaways": 0.33196666666666674,
+                "Sleeping": 0.0,
+                "UsingPhone": 0.147
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 14:00:30",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.03656666666666667
+            },
+            "Low_Attention": {
+                "Drinking": 0.09079999999999999,
+                "Eating": 0.13110000000000002,
+                "Lookaways": 0.467266666666667,
+                "Sleeping": 0.0,
+                "UsingPhone": 0.06793333333333335
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 14:05:51",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.07266666666666664
+            },
+            "Low_Attention": {
+                "Drinking": 0.042333333333333334,
+                "Eating": 0.15229999999999994,
+                "Lookaways": 0.20046666666666668,
+                "Sleeping": 0.0028,
+                "UsingPhone": 0.2666666666666666
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 14:11:02",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.11379999999999998
+            },
+            "Low_Attention": {
+                "Drinking": 0.0083,
+                "Eating": 0.02126666666666667,
+                "Lookaways": 0.3474666666666667,
+                "Sleeping": 0.015233333333333335,
+                "UsingPhone": 0.1848666666666668
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 14:16:15",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.0582
+            },
+            "Low_Attention": {
+                "Drinking": 0.054166666666666655,
+                "Eating": 0.15796666666666664,
+                "Lookaways": 0.37966666666666676,
+                "Sleeping": 0.0167,
+                "UsingPhone": 0.14146666666666668
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 14:16:15",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.0582
+            },
+            "Low_Attention": {
+                "Drinking": 0.054166666666666655,
+                "Eating": 0.15796666666666664,
+                "Lookaways": 0.37966666666666676,
+                "Sleeping": 0.0167,
+                "UsingPhone": 0.14146666666666668
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 14:21:27",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.07233333333333335
+            },
+            "Low_Attention": {
+                "Drinking": 0.009200000000000002,
+                "Eating": 0.11316666666666665,
+                "Lookaways": 0.3003000000000005,
+                "Sleeping": 0.0011333333333333334,
+                "UsingPhone": 0.23470000000000005
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 14:26:45",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.017433333333333335
+            },
+            "Low_Attention": {
+                "Drinking": 0.039133333333333326,
+                "Eating": 0.2482333333333332,
+                "Lookaways": 0.1560333333333333,
+                "Sleeping": 0.0,
+                "UsingPhone": 0.24646666666666667
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 14:31:57",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.018766666666666668
+            },
+            "Low_Attention": {
+                "Drinking": 0.056133333333333334,
+                "Eating": 0.3172666666666668,
+                "Lookaways": 0.21070000000000003,
+                "Sleeping": 0.0,
+                "UsingPhone": 0.14453333333333335
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 14:37:28",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.02583333333333333
+            },
+            "Low_Attention": {
+                "Drinking": 0.010366666666666668,
+                "Eating": 0.3356333333333334,
+                "Lookaways": 0.27009999999999995,
+                "Sleeping": 0.0,
+                "UsingPhone": 0.09653333333333332
+            }
+        }
+    },
+    {
+        "time": "2025-10-03 14:42:57",
+        "interval_minutes": 5,
+        "average": {
+            "High_Attention": {
+                "Focused": 0.0229
+            },
+            "Low_Attention": {
+                "Drinking": 0.015933333333333334,
+                "Eating": 0.24683333333333332,
+                "Lookaways": 0.31959999999999994,
+                "Sleeping": 0.0,
+                "UsingPhone": 0.04703333333333334
+            }
+        }
+    }
+]
+

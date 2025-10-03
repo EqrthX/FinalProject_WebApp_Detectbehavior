@@ -1,10 +1,10 @@
-import React, { useState } from 'react'
-import Navbar from './complement/Navbar'
+import React from 'react'
+import Navbar from '../../components/Navbar'
 import BookMark from "../../assets/BookMark.png";
 
 
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import Classroom from './complement/Classroom';
+import Classroom from '../../components/Classroom';
 
 const HomePage = () => {
 

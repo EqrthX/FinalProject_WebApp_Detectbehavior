@@ -1,6 +1,6 @@
 import React from 'react'
-import Navbar from './complement/Navbar'
-import Classroom from './complement/Classroom'
+import Navbar from '../../components/Navbar'
+import Classroom from '../../components/Classroom'
 
 const TeachingSchedule = () => {
     return (

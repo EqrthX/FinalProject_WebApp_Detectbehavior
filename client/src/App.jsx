@@ -3,7 +3,6 @@ import "./index.css";
 import LoginPage from "./pages/LoginPage.jsx";
 import HomePage from "./pages/user/HomePage.jsx";
 import TeachingSchedule from "./pages/user/TeachingSchedule.jsx";
-import { CameraPage } from "./pages/SchedulePage.jsx";
 
 function App() {
   return (
@@ -12,7 +11,6 @@ function App() {
         <Route path="/" element={<LoginPage />} />
         <Route path="/user/Homepage" element={<HomePage />} />
         <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
-        <Route path="/schedule" element={<CameraPage />} />
       </Routes>
     </>
   );

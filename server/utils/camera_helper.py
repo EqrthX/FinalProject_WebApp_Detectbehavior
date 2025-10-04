@@ -28,26 +28,25 @@ def average_dict_attendence(data_dict, total):
 
     return result 
 
-def average_dict_hourly(history_5min = []):
-    result = {}
-    n = len(history_5min)
+def calculate_average(history = []):
+    result_high = {}
+    result_low = {}
+    for record_list in history:
+        
+        for key, value in record_list['average']['High_Attention'].items():
+            result_high[key] = result_high.get(key, 0) + value
 
-    for group in history_5min[0]["average"].keys():
-        result[group] = {}
-        for label in history_5min[0]["average"][group].keys():
-            result[group][label] = 0.0
+        for key, value in record_list['average']['Low_Attention'].items():
+            result_low[key] = result_low.get(key, 0) + value
     
-    for record in history_5min:
-        avg_block = record["average"]
-        for group, sub in avg_block.items():
-            for label, value in sub.items():
-                result[group][label] += value
+    n = len(history)
+    for i in result_high.items():
+        result_high[i[0]] = i[1] / n
     
-    for group, sub in result.items():
-        for label in sub:
-            result[group][label] /= n
-    
-    return result
+    for i in result_low.items():
+        result_low[i[0]] = i[1] / n
+
+    return {"Hight_Attention": result_high, "Low_Attention": result_low}
 
 def generate_image_filename():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

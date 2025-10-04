@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Response
+from fastapi import APIRouter, HTTPException, Depends
 from ultralytics import YOLO
 import cv2
 import threading
@@ -6,7 +6,8 @@ import time
 import asyncio
 import os
 from datetime import datetime
-from utils.camera_helper import average_dict_attendence, generate_image_filename, save_snapshot, empty_classAttection, save_file_log, average_dict_hourly
+from utils.camera_helper import average_dict_attendence, generate_image_filename, save_snapshot, empty_classAttection, save_file_log, calculate_average
+import json
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
@@ -74,7 +75,7 @@ def camera_loop():
                     "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "interval_minutes": 5,
                     "average": avg_min
-                },
+                }
 
                 history_5min.append(record_min)
                 print(f"📊 History: {history_5min}, Path: {save_path}")
@@ -84,14 +85,18 @@ def camera_loop():
                 classAttection = empty_classAttection()
                 save_file_log(history_5min)
 
-                if len(history_5min) >= 12:
-                    print("History 1 hr.")
-                    avg_hr = average_dict_hourly(history_5min)
+                if len(history_5min) >= 12 and len(history_5min) % 12 == 0:
+
+                    start_index = len(history_5min) - 12
+                    hour_records = history_5min[start_index:]
+                    avg_hr = calculate_average(hour_records)
+
                     record_1hr = {
                         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "interval_minute": 60,
                         "average": avg_hr
                     }
+                    
                     history_1hr.append(record_1hr)
                     save_file_log(history_1hr)
 
@@ -102,25 +107,90 @@ def camera_loop():
     if cap:
         cap.release()
     cv2.destroyAllWindows()
+
+@camera_router.get("/cal")
+async def test_calculate():
+
+    history_5min = []
+    data = []
+    with open('log_5min_20251003_160754.json', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    #ตำนวน หาค่าเฉลี่ย 1 ชม
+    for i in range(36):
+        record = {
+            "time": f"2025-10-03 13:{i*5:02d}",
+            "interval_minutes": 5,
+            "average": {
+                "High_Attention": {"Focused": i*0.01},
+                "Low_Attention": {
+                    "Drinking": 0.01*i,
+                    "Eating": 0.02*i,
+                    "Lookaways": 0.03*i,
+                    "Sleeping": 0.005*i,
+                    "UsingPhone": 0.04*i
+                }
+            }
+        }
+        history_5min.append(record)
+
+    first_record = history_5min[0:12]
+    avg_first = calculate_average(first_record)
+    seconds_record = history_5min[12:24]
+    avg_seconds = calculate_average(seconds_record)
+    third_record = history_5min[24:36]
+    avg_third = calculate_average(third_record)
+    
+    print(f"first {avg_first}")
+    print(f"seconds {avg_seconds}")
+    print(f"third {avg_third}")
     
 @camera_router.get("/open-camera")
 async def camera_open():
     
     global is_carema_running, camera_thread
-    if is_carema_running:
-        return {"message": "Camera already running"}
 
-    is_carema_running = True
-    camera_thread = threading.Thread(target=camera_loop, daemon=True)
-    camera_thread.start()
-    return {"message": "Camera running"}
+    if is_carema_running:
+        return HTTPException(
+            status_code = 200,
+            detail = {"message": "Camera alrady running"}
+        )
+    
+    try:
+        is_carema_running = True
+        camera_thread = threading.Thread(target=camera_loop, daemon=True)
+        camera_thread.start()
+        return HTTPException(
+            status_code=201,
+            detail={"message": "Camera started"}
+        )
+    except Exception as e:
+        is_carema_running = False
+        return HTTPException(
+            status_code=500,
+            detail={"error": f"Open camera : {str(e)}"}
+        )
 
 @camera_router.get("/close-camera")
 async def camera_close():
+
     global is_carema_running
+
     if not is_carema_running:
-        return {"message": "Camera is not running"}
+        return HTTPException(
+            status_code=400,
+            detail={"message": "Camera is not running"}
+        )
     
-    is_carema_running = False
-    await asyncio.sleep(1)
-    return {"message": "Camera stopped"}
+    try:
+        is_carema_running = False
+        await asyncio.sleep(1)
+        return HTTPException(
+            status_code=200,
+            detail={"message": "Camera stopped"}
+        )
+    except Exception as e:
+        return HTTPException(
+            status_code=500,
+            detail={"error": f"Close camera : {str(e)}"}
+        )

@@ -80,7 +80,6 @@ def camera_loop():
                 history_5min.append(record_min)
                 print(f"📊 History: {history_5min}, Path: {save_path}")
                 
-                # ⭐ RESET สำคัญมาก!
                 seconds = 0
                 classAttection = empty_classAttection()
                 save_file_log(history_5min)
@@ -96,10 +95,9 @@ def camera_loop():
                         "interval_minute": 60,
                         "average": avg_hr
                     }
-                    
+
                     history_1hr.append(record_1hr)
                     save_file_log(history_1hr)
-
             
         cv2.imshow("Detection Webcam", anootated_frame)
         cv2.waitKey(1)
@@ -111,39 +109,19 @@ def camera_loop():
 @camera_router.get("/cal")
 async def test_calculate():
 
-    history_5min = []
     data = []
     with open('log_5min_20251003_160754.json', 'r', encoding='utf-8') as f:
         data = json.load(f)
 
     #ตำนวน หาค่าเฉลี่ย 1 ชม
-    for i in range(36):
-        record = {
-            "time": f"2025-10-03 13:{i*5:02d}",
-            "interval_minutes": 5,
-            "average": {
-                "High_Attention": {"Focused": i*0.01},
-                "Low_Attention": {
-                    "Drinking": 0.01*i,
-                    "Eating": 0.02*i,
-                    "Lookaways": 0.03*i,
-                    "Sleeping": 0.005*i,
-                    "UsingPhone": 0.04*i
-                }
-            }
-        }
-        history_5min.append(record)
-
-    first_record = history_5min[0:12]
-    avg_first = calculate_average(first_record)
-    seconds_record = history_5min[12:24]
-    avg_seconds = calculate_average(seconds_record)
-    third_record = history_5min[24:36]
-    avg_third = calculate_average(third_record)
+    result = calculate_average(data)
     
-    print(f"first {avg_first}")
-    print(f"seconds {avg_seconds}")
-    print(f"third {avg_third}")
+    with open('log_cal.json', 'a', encoding='utf-8') as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    for cat, values in result.items():
+        for k, v in values.items():
+            print(f"{k}: {v}")
+    print('Save ลงไฟล์แล้ว')
     
 @camera_router.get("/open-camera")
 async def camera_open():

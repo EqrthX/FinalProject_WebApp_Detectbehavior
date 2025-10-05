@@ -46,8 +46,11 @@ def calculate_average(history = []):
     for i in result_low.items():
         result_low[i[0]] = i[1] / n
 
-    return {"Hight_Attention": result_high, "Low_Attention": result_low}
-
+    return {
+        "High_Attention": result_high, 
+        "Low_Attention": result_low
+        }
+    
 def generate_image_filename():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"snapshot_{timestamp}.jpg"
@@ -64,7 +67,7 @@ def save_snapshot(frame, filename, folder):
 
 def save_file_log(history_5min = [], history_1hr = []):
 
-    if history_1hr:
+    if len(history_1hr) >= 1:
         file_log = f"log_1hr_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"  # กันชื่อไฟล์ซ้ำ
         with open(file_log, 'w', encoding='utf-8') as file:
             json.dump(history_1hr, file, ensure_ascii=False, indent=2)
@@ -75,5 +78,3 @@ def save_file_log(history_5min = [], history_1hr = []):
         with open(file_log, 'w', encoding='utf-8') as file:
             json.dump(history_5min, file, ensure_ascii=False, indent=2)
         print("บันทึก Log 5 นาที เรียบร้อย", file_log)
-
-    

@@ -18,8 +18,10 @@ def empty_classAttection ():
     }
 
 def average_dict_attendence(data_dict, total):
+    if total <= 0:
+        return data_dict
+    
     result = {}
-
     for group, sub in data_dict.items():
         result[group] = {}
 
@@ -28,34 +30,42 @@ def average_dict_attendence(data_dict, total):
 
     return result 
 
-def average_dict_hourly(history_5min = []):
-    result = {}
-    n = len(history_5min)
+def calculate_average(history = []):
 
-    for group in history_5min[0]["average"].keys():
-        result[group] = {}
-        for label in history_5min[0]["average"][group].keys():
-            result[group][label] = 0.0
+    if not history:
+        return {
+            "High_Attention": {},
+            "Low_Attention": {}
+        }
     
-    for record in history_5min:
-        avg_block = record["average"]
-        for group, sub in avg_block.items():
-            for label, value in sub.items():
-                result[group][label] += value
-    
-    for group, sub in result.items():
-        for label in sub:
-            result[group][label] /= n
-    
-    return result
+    result_high, result_low = {}, {}
+    for record_list in history:
+        
+        for key, value in record_list['average']['High_Attention'].items():
+            result_high[key] = result_high.get(key, 0) + value
 
+        for key, value in record_list['average']['Low_Attention'].items():
+            result_low[key] = result_low.get(key, 0) + value
+    
+    n = len(history)
+    for i in result_high.items():
+        result_high[i[0]] = i[1] / n
+    
+    for i in result_low.items():
+        result_low[i[0]] = i[1] / n
+
+    return {
+        "High_Attention": result_high, 
+        "Low_Attention": result_low
+        }
+    
 def generate_image_filename():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"snapshot_{timestamp}.jpg"
 
 def save_snapshot(frame, filename, folder):
+    os.makedirs(folder, exist_ok=True)
     save_path = os.path.join(folder, filename)
-
     if cv2.imwrite(save_path, frame):
         print(f"✅ Image saved: {save_path}")
         return save_path
@@ -65,16 +75,16 @@ def save_snapshot(frame, filename, folder):
 
 def save_file_log(history_5min = [], history_1hr = []):
 
-    if history_1hr:
-        file_log = f"log_1hr_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"  # กันชื่อไฟล์ซ้ำ
-        with open(file_log, 'w', encoding='utf-8') as file:
-            json.dump(history_1hr, file, ensure_ascii=False, indent=2)
-        print("บันทึก Log 1 ชั่วโมง เรียบร้อย", file_log)
-    
-    if history_5min:
-        file_log = f"log_5min_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"  # กันชื่อไฟล์ซ้ำ
-        with open(file_log, 'w', encoding='utf-8') as file:
-            json.dump(history_5min, file, ensure_ascii=False, indent=2)
-        print("บันทึก Log 5 นาที เรียบร้อย", file_log)
+    file_5min = "log_5min.json"
+    file_1hr = "log_1hr.json"
 
+    if history_5min:
+        with open(file_5min, 'w', encoding='utf-8') as file:
+            json.dump(history_5min, file, ensure_ascii=False, indent=2)
+            file.write(',\n')
+
+    if history_1hr:
+        with open(file_1hr, 'w', encoding='utf-8') as file:
+            json.dump(history_1hr, file, ensure_ascii=False, indent=2)
+            file.write(',\n')
     

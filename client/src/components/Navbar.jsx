@@ -6,7 +6,7 @@ const Navbar = () => {
   return (
     <nav className="relative flex items-center justify-between bg-[#F6F6F4]  px-6 py-3 h-25">
       {/* เมนูหลัก */}
-      <div className="absolute left-1/2 transform -translate-x-1/2 flex bg-white border border-[#E9E9E9] rounded-full p-3 items-center justify-center">
+      <div className="absolute left-1/2 transform -translate-x-1/2 flex bg-white border border-[#E9E9E9] rounded-full p-2.5 items-center justify-center">
 
         <NavLink to="/user/Homepage"
           className={({ isActive }) =>

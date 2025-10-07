@@ -11,7 +11,7 @@ const Classroom = () => {
     //   <div className="max-w-7xl mx-auto">
         <div className="">
           {/* ตารางเรียน */}
-          <div className="col-span-2 bg-white rounded-2xl  p-6">
+          <div className="col-span-2 bg-white rounded-2xl  p-6 ">
             <h2 className="flex items-center space-x-2 text-lg font-semibold text-black mb-4">
               <span>📅</span>
               <span>ตารางสอน</span>

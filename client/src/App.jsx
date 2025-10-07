@@ -3,6 +3,7 @@ import "./index.css";
 import LoginPage from "./pages/LoginPage.jsx";
 import HomePage from "./pages/user/HomePage.jsx";
 import TeachingSchedule from "./pages/user/TeachingSchedule.jsx";
+import AdminHomePage from "./pages/admin/AdminHomePage.jsx";
 import Record from "./pages/user/Record.jsx";
 import Summarize from "./pages/user/summarize.jsx";
 import ResultsPage from "./pages/user/ResultsPage.jsx";
@@ -21,6 +22,8 @@ function App() {
         <Route path="/user/ResultsPage" element={<ResultsPage />} />
 
 
+        <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
+        <Route path="/admin/AdminHomePage" element={<AdminHomePage />} />
       </Routes>
     </>
   );

@@ -9,8 +9,8 @@ import Classroom from '../../components/Classroom';
 const HomePage = () => {
 
   const data = [
-    { name: 'Focused', value: 870 },
-    { name: 'Inactive', value: 130 },
+    { name: 'Focused', value: 87 },
+    { name: 'Inactive', value: 13 },
 
   ];
 

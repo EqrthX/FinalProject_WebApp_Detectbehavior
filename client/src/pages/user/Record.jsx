@@ -2,19 +2,44 @@ import React, { useState, useEffect } from 'react';
 import Navbar from '../../components/Navbar';
 import MyBreadcrumb from '../../components/MyBreadcrumb';
 import { Link } from 'react-router-dom';
+import axios from "../../util/axios";
 
 const Record = () => {
     const [isRecording, setIsRecording] = useState(false);
     const [timer, setTimer] = useState(0);
     const [detections, setDetections] = useState([]);
+    const [cameras, setCameras] = useState([]);
+    const [error, setError] = useState("");
 
-    const handleStart = () => {
-        setIsRecording(true);
-        setTimer(0);
-        setDetections([]);
+    const handleStart = async () => {
+        try {
+            setIsRecording(true);
+            setTimer(0);
+            setDetections([]);
+            
+        } catch (error) {
+            console.error("ฟังก์ชั่นเริ่มต้นบันทึก error: ", error)    
+        }
     };
 
     const handleStop = () => setIsRecording(false);
+
+    useEffect(() => {
+
+        const fetchListCamera = async () => {
+            try {
+                const resListCamera = await axios.get("camera/list-camera");
+                setCameras(resListCamera.data.cameras);
+                console.log(resListCamera.data.cameras);
+
+            } catch (error) {
+                console.error(error.message)
+                setError("ไม่มีกล้อง")
+            }
+        }
+        fetchListCamera();
+
+    }, [])
 
     // จับเวลาเมื่อบันทึก ฝั่งซ้าย
     useEffect(() => {
@@ -86,9 +111,22 @@ const Record = () => {
                             </div>
                         </div>
 
-                        <div className="border-2 border-gray-300 rounded-2xl h-110 bg-black text-white text-3xl flex items-center justify-center">
-                            ใส่ API จากกล้อง
-                        </div>
+                        {cameras.length > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 lg:w-[1200px] xl:grid-cols-4 gap-4">
+                                    {cameras.map((cameraItem) => (
+                                        // เรียกใช้ CameraBox Component สำหรับกล้องแต่ละตัว
+                                        <div key={cameraItem.id} >
+                                            key
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                // ส่วนแสดงผลเมื่อไม่มีกล้อง หรือเกิดข้อผิดพลาด
+                                <div className="flex items-center justify-center h-64">
+                                    <p className="text-red-500 text-2xl text-center">{error || "ไม่มีกล้อง"}</p>
+                                </div>
+                            )
+                        }
                     </div>
 
                     {/* โชว์สถานะ ฝั่งขวา */}
@@ -128,23 +166,23 @@ const Record = () => {
                                 onClick={handleStart}
                                 disabled={isRecording}
                                 className={`w-50 py-3 rounded-lg font-semibold transition-colors ${isRecording
-                                        ? 'bg-gray-400 text-white cursor-not-allowed'
-                                        : 'bg-blue-900 text-white hover:bg-[#38A738]'
+                                    ? 'bg-gray-400 text-white cursor-not-allowed'
+                                    : 'bg-blue-900 text-white hover:bg-[#38A738]'
                                     }`}
                             >
                                 เริ่มต้นบันทึก
                             </button>
                             <Link to={"/user/summarize"} className="w-50">
-                            <button
-                                onClick={handleStop}
-                                disabled={!isRecording}
-                                className={`w-50 py-3 rounded-lg font-semibold transition-colors ${!isRecording
+                                <button
+                                    onClick={handleStop}
+                                    disabled={!isRecording}
+                                    className={`w-50 py-3 rounded-lg font-semibold transition-colors ${!isRecording
                                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                         : 'bg-[#FDEEED] text-[#74393C] hover:bg-red-600 hover:text-white'
-                                    }`}
-                            >
-                                จบการบันทึก
-                            </button>
+                                        }`}
+                                >
+                                    จบการบันทึก
+                                </button>
                             </Link>
                         </div>
                     </div>

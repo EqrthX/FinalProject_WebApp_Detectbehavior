@@ -6,7 +6,7 @@ import time
 import asyncio
 import os
 from datetime import datetime
-from utils.camera_helper import average_dict_attendence, generate_image_filename, save_snapshot, empty_classAttection, save_file_log, calculate_average
+from utils.camera_helper import empty_flat_dict_behavior, calculate_average
 import json
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
@@ -15,28 +15,28 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "..", "..", "runs", "detect", "train", "weights", "best.pt")
 model = YOLO(MODEL_PATH)
 
-cap = None
-is_carema_running = False
-camera_thread = None
-seconds = 0
-history_5min = []
-history_1hr = []
-
-# สร้างโฟเดอร์สำหรับเก็บภาพที่แคปทุกๆ นาทีที่กำหนดไว้
-output_folder = "captured_images"
+cameras = {
+    "cap": None,
+    "thread": None,
+    "running": False,
+    "seconds": 0,
+    "class_beharvior": empty_flat_dict_behavior(),
+    "history_1min": [],
+    "history_1hr": []
+}
 
 # สร้าง dict เก็บค่า conf เข้าตาม High Low
-classAttection = empty_classAttection()
+classAttection = empty_flat_dict_behavior()
 
-def camera_loop():
+def camera_loop(camera_id, sorce):
     
-    global cap, is_carema_running, seconds, classAttection
-    cap = cv2.VideoCapture(0)
+    cam_state = cameras[camera_id]
+    cam_state["cap"] = cv2.VideoCapture(sorce)
     last_check_time = time.time()
 
-    while is_carema_running and cap.isOpened():
+    while cam_state["running"] and cam_state["cap"].isOpened():
 
-        success, frame = cap.read()
+        success, frame = cam_state["cap"].read()
         
         if not success:
             continue
@@ -48,7 +48,7 @@ def camera_loop():
         
         if now - last_check_time >= 1:
             
-            seconds+=1
+            cam_state["seconds"]+=1
             last_check_time = now
             
             for box in results[0].boxes: # pyright: ignore[reportOptionalIterable]
@@ -57,53 +57,16 @@ def camera_loop():
                 conf = box.conf.item()
                 label = model.names[cls]
                 conf = round(conf, 2)
-                
-                if label in classAttection["High_Attention"]:
-                    classAttection["High_Attention"][label] += conf
-                elif label in classAttection["Low_Attention"]:
-                    classAttection["Low_Attention"][label] += conf
 
-            print(f"second {seconds}")
 
-            if seconds == 300:
-                avg_min = average_dict_attendence(classAttection, seconds)
-                
-                image_filename = generate_image_filename()
-                save_path = save_snapshot(anootated_frame, image_filename, output_folder)
-                
-                record_min = {
-                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "interval_minutes": 5,
-                    "average": avg_min
-                }
+            print(f"second {cam_state["seconds"]}")
 
-                history_5min.append(record_min)
-                print(f"📊 History: {history_5min}, Path: {save_path}")
-                
-                seconds = 0
-                classAttection = empty_classAttection()
-                save_file_log(history_5min)
-
-                if len(history_5min) >= 12 and len(history_5min) % 12 == 0:
-
-                    start_index = len(history_5min) - 12
-                    hour_records = history_5min[start_index:]
-                    avg_hr = calculate_average(hour_records)
-
-                    record_1hr = {
-                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "interval_minute": 60,
-                        "average": avg_hr
-                    }
-
-                    history_1hr.append(record_1hr)
-                    save_file_log(history_1hr)
             
         cv2.imshow("Detection Webcam", anootated_frame)
         cv2.waitKey(1)
                 
-    if cap:
-        cap.release()
+    if cam_state["cap"]:
+        cam_state["cap"].release()
     cv2.destroyAllWindows()
 
 @camera_router.get("/cal")
@@ -123,52 +86,77 @@ async def test_calculate():
             print(f"{k}: {v}")
     print('Save ลงไฟล์แล้ว')
     
-@camera_router.get("/open-camera")
-async def camera_open():
+@camera_router.get("/open-camera/{camera_id}")
+async def camera_open(camera_id: str):
     
-    global is_carema_running, camera_thread
-
-    if is_carema_running:
-        return HTTPException(
-            status_code = 200,
+    if camera_id in cameras and cameras[camera_id]["running"]:
+        raise HTTPException(
+            status_code = 400,
             detail = {"message": "Camera alrady running"}
         )
     
     try:
-        is_carema_running = True
-        camera_thread = threading.Thread(target=camera_loop, daemon=True)
+        
+        source = int(camera_id) if camera_id.isdigit() else camera_id
+        cameras[camera_id] = {
+            "cap": None,
+            "thread": None,
+            "running": True,
+            "seconds": 0,
+            "class_beharvior": empty_flat_dict_behavior(),
+            "history_5min": [],
+            "history_1hr": []
+        }
+
+        camera_thread = threading.Thread(target=camera_loop, args=(camera_id, source)  ,daemon=True)
+        cameras[camera_id]['thread'] = camera_thread
         camera_thread.start()
         return HTTPException(
             status_code=201,
-            detail={"message": "Camera started"}
+            detail={"message": f"Camera {camera_id} started"}
         )
     except Exception as e:
-        is_carema_running = False
+        cameras[camera_id]["running"] = False
         return HTTPException(
             status_code=500,
             detail={"error": f"Open camera : {str(e)}"}
         )
 
-@camera_router.get("/close-camera")
-async def camera_close():
+@camera_router.get("/close-camera/{camera_id}")
+async def camera_close(camera_id: str):
 
-    global is_carema_running
-
-    if not is_carema_running:
-        return HTTPException(
-            status_code=400,
-            detail={"message": "Camera is not running"}
+    if camera_id not in cameras[camera_id]:
+        raise HTTPException(
+            status_code=404,
+            detail={"message": "Camera not found"}
         )
     
     try:
-        is_carema_running = False
+        cameras[camera_id]["running"] = False
         await asyncio.sleep(1)
         return HTTPException(
             status_code=200,
-            detail={"message": "Camera stopped"}
+            detail={"message": f"Camera {camera_id} stopped"}
         )
     except Exception as e:
         return HTTPException(
             status_code=500,
             detail={"error": f"Close camera : {str(e)}"}
         )
+    
+@camera_router.get("/list-camera")
+async def check_list_camera():
+    cameras = []
+
+    for i in range(10):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            cameras.append({
+                "id": i,
+                "name": f"Camera {f'กล้องตัวที่ {i+1}'}"
+                })
+            cap.release()
+        else:
+            break
+    
+    return {"cameras": cameras}

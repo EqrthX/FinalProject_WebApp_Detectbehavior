@@ -3,32 +3,15 @@ import os
 import cv2
 import json
 
-def empty_classAttection ():
+def empty_flat_dict_behavior ():
     return {
-        "High_Attention" : {
-            "Focused": 0.0
-        },
-        "Low_Attention" : {
+            "Focused": 0.0,
             "Drinking": 0.0,
             "Eating": 0.0,
             "Lookaways": 0.0,
             "Sleeping": 0.0,
             "UsingPhone": 0.0,
-        }
     }
-
-def average_dict_attendence(data_dict, total):
-    if total <= 0:
-        return data_dict
-    
-    result = {}
-    for group, sub in data_dict.items():
-        result[group] = {}
-
-        for label, conf in sub.items():
-            result[group][label] = conf / total
-
-    return result 
 
 def calculate_average(history = []):
 
@@ -59,19 +42,6 @@ def calculate_average(history = []):
         "Low_Attention": result_low
         }
     
-def generate_image_filename():
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"snapshot_{timestamp}.jpg"
-
-def save_snapshot(frame, filename, folder):
-    os.makedirs(folder, exist_ok=True)
-    save_path = os.path.join(folder, filename)
-    if cv2.imwrite(save_path, frame):
-        print(f"✅ Image saved: {save_path}")
-        return save_path
-    else:
-        print(f"❌ Failed to save image: {save_path}")
-        return None
 
 def save_file_log(history_5min = [], history_1hr = []):
 

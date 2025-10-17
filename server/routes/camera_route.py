@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from ultralytics import YOLO
 import cv2
 import threading
@@ -125,7 +125,7 @@ async def camera_open(camera_id: str):
 @camera_router.get("/close-camera/{camera_id}")
 async def camera_close(camera_id: str):
 
-    if camera_id not in cameras[camera_id]:
+    if camera_id not in cameras:
         raise HTTPException(
             status_code=404,
             detail={"message": "Camera not found"}
@@ -134,10 +134,7 @@ async def camera_close(camera_id: str):
     try:
         cameras[camera_id]["running"] = False
         await asyncio.sleep(1)
-        return HTTPException(
-            status_code=200,
-            detail={"message": f"Camera {camera_id} stopped"}
-        )
+        return {"message" : f"Close camera : {camera_id}"}
     except Exception as e:
         return HTTPException(
             status_code=500,
@@ -147,16 +144,22 @@ async def camera_close(camera_id: str):
 @camera_router.get("/list-camera")
 async def check_list_camera():
     cameras = []
+    i = 0
+    not_fount_count = 0
 
-    for i in range(10):
+    while True:
         cap = cv2.VideoCapture(i)
         if cap.isOpened():
             cameras.append({
                 "id": i,
                 "name": f"Camera {f'กล้องตัวที่ {i+1}'}"
                 })
-            cap.release()
+            not_fount_count = 0
         else:
-            break
+            not_fount_count += 1
+            if not_fount_count >= 2:
+                break
+        cap.release()
+        i += 1
     
     return {"cameras": cameras}

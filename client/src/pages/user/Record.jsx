@@ -3,22 +3,24 @@ import Navbar from '../../components/Navbar';
 import MyBreadcrumb from '../../components/MyBreadcrumb';
 import { Link } from 'react-router-dom';
 import axios from "../../util/axios";
-
+import toast from 'react-hot-toast'
 const Record = () => {
+
     const [isRecording, setIsRecording] = useState(false);
     const [timer, setTimer] = useState(0);
     const [detections, setDetections] = useState([]);
     const [cameras, setCameras] = useState([]);
     const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
 
     const handleStart = async () => {
         try {
             setIsRecording(true);
             setTimer(0);
             setDetections([]);
-            
+
         } catch (error) {
-            console.error("ฟังก์ชั่นเริ่มต้นบันทึก error: ", error)    
+            console.error("ฟังก์ชั่นเริ่มต้นบันทึก error: ", error)
         }
     };
 
@@ -29,7 +31,7 @@ const Record = () => {
         const fetchListCamera = async () => {
             try {
                 const resListCamera = await axios.get("camera/list-camera");
-                setCameras(resListCamera.data.cameras);
+                setCameras(resListCamera.data.cameras || []);
                 console.log(resListCamera.data.cameras);
 
             } catch (error) {
@@ -64,6 +66,33 @@ const Record = () => {
         ).padStart(2, '0')}`;
     };
 
+    const handleOpenCamera = async (id) => {
+        try {
+            setLoading(true);
+            const res = await axios.get(`camera/open-camera/${id}`);
+            console.log(res.data);
+            toast.success(`เปิดกล้อง ${id} แล้ว!`);
+        } catch (error) {
+            console.error(error);
+            toast.error("เปิดกล้องไม่สำเร็จ");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    const handleCloseCamera = async (id) => {
+        try {
+            setLoading(true);
+            const res = await axios.get(`camera/close-camera/${id}`);
+            console.log(res.data);
+            toast.success(`ปิดกล้อง ${id} แล้ว!`);
+        } catch (err) {
+            console.error(err);
+            toast.error("ปิดกล้องไม่สำเร็จ");
+        } finally {
+            setLoading(false);
+        }
+    };
     // // จำลองการตรวจจับทุก ๆ 10 วินาทีขณะบันทึก
     // useEffect(() => {
     //     if (isRecording && timer > 0 && timer % 10 === 0) {
@@ -112,21 +141,61 @@ const Record = () => {
                         </div>
 
                         {cameras.length > 0 ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 lg:w-[1200px] xl:grid-cols-4 gap-4">
-                                    {cameras.map((cameraItem) => (
-                                        // เรียกใช้ CameraBox Component สำหรับกล้องแต่ละตัว
-                                        <div key={cameraItem.id} >
-                                            key
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {cameras.map((cam) => (
+                                    <div
+                                        key={cam.id}
+                                        className="border rounded-xl p-4 shadow-md bg-white flex flex-col"
+                                    >
+                                        <h3 className="font-semibold text-lg mb-3">{cam.name}</h3>
+
+                                        {/* ปุ่มควบคุม */}
+                                        <div className="flex gap-3 mb-4">
+                                            <button
+                                                onClick={() => handleOpenCamera(cam.id)}
+                                                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                                                disabled={loading}
+                                            >
+                                                เปิดกล้อง
+                                            </button>
+                                            <button
+                                                onClick={() => handleCloseCamera(cam.id)}
+                                                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition disabled:opacity-50"
+                                                disabled={loading}
+                                            >
+                                                ปิดกล้อง
+                                            </button>
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                // ส่วนแสดงผลเมื่อไม่มีกล้อง หรือเกิดข้อผิดพลาด
-                                <div className="flex items-center justify-center h-64">
-                                    <p className="text-red-500 text-2xl text-center">{error || "ไม่มีกล้อง"}</p>
-                                </div>
-                            )
-                        }
+
+                                        {/* ส่วนแสดงภาพ */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+                                            <div className="flex flex-col items-center">
+                                                <h4 className="font-medium mb-2 text-center">🎥 กล้องจริง</h4>
+                                                <video
+                                                    id={`video-${cam.id}`}
+                                                    autoPlay
+                                                    playsInline
+                                                    muted
+                                                    className="rounded-2xl border w-full aspect-video object-cover bg-black"
+                                                />
+                                            </div>
+                                            <div className="flex flex-col items-center">
+                                                <h4 className="font-medium mb-2 text-center">🧠 กล้องตรวจจับ (YOLO)</h4>
+                                                <canvas
+                                                    id={`canvas-${cam.id}`}
+                                                    className="rounded-2xl border w-full aspect-video object-cover bg-black"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-gray-500 text-center text-lg">
+                                ไม่มีกล้องที่เชื่อมต่อ
+                            </p>
+                        )}
+
                     </div>
 
                     {/* โชว์สถานะ ฝั่งขวา */}

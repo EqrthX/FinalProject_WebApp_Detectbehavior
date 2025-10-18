@@ -12,6 +12,7 @@ const Record = () => {
     const [cameras, setCameras] = useState([]);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const [activeCamera, setActiveCamera] = useState(null);
 
     const handleStart = async () => {
         try {
@@ -68,9 +69,8 @@ const Record = () => {
 
     const handleOpenCamera = async (id) => {
         try {
-            setLoading(true);
+            setActiveCamera(id)
             const res = await axios.get(`camera/open-camera/${id}`);
-            console.log(res.data);
             toast.success(`เปิดกล้อง ${id} แล้ว!`);
         } catch (error) {
             console.error(error);
@@ -82,9 +82,8 @@ const Record = () => {
 
     const handleCloseCamera = async (id) => {
         try {
-            setLoading(true);
+            setActiveCamera(null)
             const res = await axios.get(`camera/close-camera/${id}`);
-            console.log(res.data);
             toast.success(`ปิดกล้อง ${id} แล้ว!`);
         } catch (err) {
             console.error(err);
@@ -93,6 +92,21 @@ const Record = () => {
             setLoading(false);
         }
     };
+
+    const handleStartDetect = async (id) => {
+        try {
+            setActiveCamera(id)
+            const res = await axios.get(`camera/start-detect/${id}`);
+            console.log(res.data);
+            toast.success(`กำลังสตีมกล้องที่ ${id} แล้ว!`);
+        } catch (error) {
+            console.error(error);
+            toast.error("ไม่สามารถสตีมกล้องได้");
+        } finally {
+            setLoading(false);
+        }
+    }
+    
     // // จำลองการตรวจจับทุก ๆ 10 วินาทีขณะบันทึก
     // useEffect(() => {
     //     if (isRecording && timer > 0 && timer % 10 === 0) {
@@ -141,16 +155,37 @@ const Record = () => {
                         </div>
 
                         {cameras.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                                 {cameras.map((cam) => (
                                     <div
                                         key={cam.id}
-                                        className="border rounded-xl p-4 shadow-md bg-white flex flex-col"
+                                        className="border rounded-2xl p-6 shadow-lg bg-white flex flex-col justify-between w-[540px]"
                                     >
-                                        <h3 className="font-semibold text-lg mb-3">{cam.name}</h3>
+                                        <h3 className="font-semibold text-lg mb-4 text-center">{cam.name}</h3>
+
+                                        {/* ส่วนแสดงภาพ */}
+                                        <div className="flex justify-center">
+                                            <div className="flex flex-col items-center">
+                                                <div style={{ textAlign: "center" }}>
+                                                    {activeCamera === cam.id ? (
+                                                        <img
+                                                            src={`http://localhost:8000/api/camera/video/${cam.id}`}
+                                                            alt="camera stream"
+                                                            className='w-full h-[240px] flex'
+                                                        />
+                                                    ) : (
+
+                                                        <p className="text-black text-xl font-medium opacity-80">
+                                                            ยังไม่เปิดกล้อง
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
 
                                         {/* ปุ่มควบคุม */}
-                                        <div className="flex gap-3 mb-4">
+                                        <div className="flex justify-center gap-4 mt-6">
+
                                             <button
                                                 onClick={() => handleOpenCamera(cam.id)}
                                                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
@@ -165,27 +200,7 @@ const Record = () => {
                                             >
                                                 ปิดกล้อง
                                             </button>
-                                        </div>
 
-                                        {/* ส่วนแสดงภาพ */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
-                                            <div className="flex flex-col items-center">
-                                                <h4 className="font-medium mb-2 text-center">🎥 กล้องจริง</h4>
-                                                <video
-                                                    id={`video-${cam.id}`}
-                                                    autoPlay
-                                                    playsInline
-                                                    muted
-                                                    className="rounded-2xl border w-full aspect-video object-cover bg-black"
-                                                />
-                                            </div>
-                                            <div className="flex flex-col items-center">
-                                                <h4 className="font-medium mb-2 text-center">🧠 กล้องตรวจจับ (YOLO)</h4>
-                                                <canvas
-                                                    id={`canvas-${cam.id}`}
-                                                    className="rounded-2xl border w-full aspect-video object-cover bg-black"
-                                                />
-                                            </div>
                                         </div>
                                     </div>
                                 ))}
@@ -232,7 +247,7 @@ const Record = () => {
                         {/* ปุ่ม */}
                         <div className="flex justify-center gap-4 pt-4">
                             <button
-                                onClick={handleStart}
+                                onClick={() => handleStartDetect(activeCamera)}
                                 disabled={isRecording}
                                 className={`w-50 py-3 rounded-lg font-semibold transition-colors ${isRecording
                                     ? 'bg-gray-400 text-white cursor-not-allowed'

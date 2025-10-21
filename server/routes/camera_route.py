@@ -18,30 +18,23 @@ model = YOLO(MODEL_PATH)
 # เก็บกล้องที่เปิดอยู่ทั้งหมด
 cameras = {}
 available_cameras = []
+last_scan_time = 0
 
 # ✅ ฟังก์ชันสแกนกล้องในเครื่อง
-def scan_cameras():
-    found = []
-    for i in range(5):  # ตรวจสอบกล้อง 0-4
-        try:
-            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)  # ✅ ใช้ CAP_DSHOW แทน DSHOW
-            if cap is not None and cap.isOpened():
-                found.append({"id": i, "name": f"Camera กล้องตัวที่ {i+1}"})
-                print(f"✅ พบกล้องที่ index {i}")
-                cap.release()
-            else:
-                print(f"❌ ไม่พบกล้องที่ index {i}")
-                if cap is not None:
-                    cap.release()
-        except Exception as e:
-            print(f"⚠️ Error ตรวจสอบกล้อง {i}: {e}")
-            # ป้องกันการ crash จาก release บน handle ว่าง
-            try:
-                if cap is not None:
-                    cap.release()
-            except:
-                pass
+async def async_scan_cameras():
     global available_cameras
+    found = []
+    print("🔍 Start scanning cameras...")
+    for i in range(10):
+        await asyncio.sleep(0)  # ให้ event loop ได้ switch
+        cap = cv2.VideoCapture(i, cv2.CAP_MSMF)
+        if cap.isOpened():
+            print(f"✅ Camera {i} found")
+            found.append({"id": i, "name": f"Camera กล้องตัวที่ {i+1}"})
+            cap.release()
+        else:
+            print(f"❌ Camera {i} not found")
+            cap.release()
     available_cameras = found
     print(f"📷 กล้องทั้งหมดที่ตรวจพบ: {len(found)} ตัว")
 
@@ -50,7 +43,7 @@ def scan_cameras():
 # ✅ ฟังก์ชันเปิดกล้องเดี่ยว (ใช้ภายใน)
 def open_camera_instance(camera_id: str):
     source = int(camera_id)
-    cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
+    cap = cv2.VideoCapture(source, cv2.CAP_MSMF)
     if not cap.isOpened():
         raise HTTPException(status_code=500, detail=f"Cannot open camera {camera_id}")
 
@@ -150,7 +143,8 @@ def camera_loop(camera_id: str):
 @camera_router.get("/open-all")
 async def open_all_cameras():
     if not available_cameras:
-        scan_cameras()
+        asyncio.create_task(async_scan_cameras())
+        return {"status": "scanning"}
     for cam in available_cameras:
         camera_id = str(cam["id"])
         if camera_id not in cameras:
@@ -217,8 +211,11 @@ async def close_all_cameras():
 # ✅ แสดงรายการกล้อง
 @camera_router.get("/list-camera")
 async def check_list_camera():
-    if not available_cameras:
-        threading.Thread(target=scan_cameras, daemon=True).start()
+    global available_cameras, last_scan_time
+    now = time.time()
+    if not available_cameras or (now - last_scan_time > 10):
+        last_scan_time = now
+        asyncio.create_task(async_scan_cameras())
         return {"status": "scanning", "cameras": []}
     return {"status": "done", "cameras": available_cameras}
 
@@ -234,7 +231,7 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
     if cam_state and cam_state.get("cap"):
         cap = cam_state["cap"]
     else:
-        cap = cv2.VideoCapture(int(camera_id), cv2.CAP_DSHOW)
+        cap = cv2.VideoCapture(int(camera_id), cv2.CAP_MSMF)
         if not cap.isOpened():
             await websocket.send_text("error: cannot open camera")
             await websocket.close()
@@ -259,19 +256,3 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
     finally:
         print(f"🧹 WS stream for camera {camera_id} ended")
         await websocket.close()
-
-
-# ✅ ปิดทั้งหมดเมื่อ shutdown server
-@camera_router.on_event("shutdown")
-async def shutdown_event():
-    print("🛑 Shutting down... closing all cameras")
-    for cam_id, cam_state in list(cameras.items()):
-        try:
-            cam_state["running"] = False
-            cap = cam_state.get("cap")
-            if cap and cap.isOpened():
-                cap.release()
-        except Exception as e:
-            print(f"Error closing {cam_id}: {e}")
-    cameras.clear()
-    print("✅ All cameras released")

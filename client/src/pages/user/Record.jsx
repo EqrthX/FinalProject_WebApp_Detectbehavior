@@ -64,20 +64,18 @@ const Record = () => {
         const initCameras = async () => {
             try {
                 const res = await axios.get("camera/list-camera");
-                console.log(res.data);
                 const list = res.data.cameras || [];
                 setCameras(list);
 
                 if (list.length === 0) {
-                    toast.error("ไม่พบกล้องในระบบ");
+                    toast.loading("กำลังสแกนกล้อง...");
+                    setTimeout(initCameras, 3000); // เรียกใหม่อีกครั้งหลัง 3 วิ
                     return;
                 }
 
-                // ✅ เปิดกล้องทั้งหมดครั้งเดียว
-                const ck = await axios.get("camera/open-all");
+                const ck = await axios.get("camera/open-all", { timeout: 60000 });
                 toast.success(`เปิดกล้องทั้งหมด (${list.length}) แล้ว!`);
 
-                // ✅ เชื่อม WebSocket แต่ละตัว
                 list.forEach((cam) => connectWebSocket(cam.id));
             } catch (err) {
                 console.error(err);
@@ -86,13 +84,8 @@ const Record = () => {
         };
 
         initCameras();
-
-        // cleanup ปิด WS และกล้องทั้งหมดเมื่อออกจากหน้า
-        return () => {
-            Object.values(wsRefs.current).forEach((ws) => ws.close());
-            axios.get("camera/close-all").catch(() => { });
-        };
     }, []);
+
 
 
     // ---------- ปุ่มควบคุม ----------

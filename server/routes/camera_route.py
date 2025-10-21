@@ -1,14 +1,12 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse
 from ultralytics import YOLO
 import cv2
 import threading
 import time
-import asyncio
 import os
 from datetime import datetime
 from utils.camera_helper import empty_flat_dict_behavior, calculate_average
-import json
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 

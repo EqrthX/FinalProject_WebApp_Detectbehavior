@@ -24,7 +24,6 @@ def reset_count():
         "UsingPhone": 0,
     }
 
-
 def calculate_average(dict_count: dict, dict_sum: dict):
     result = {}
 

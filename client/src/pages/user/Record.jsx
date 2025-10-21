@@ -2,19 +2,47 @@ import React, { useState, useEffect } from 'react';
 import Navbar from '../../components/Navbar';
 import MyBreadcrumb from '../../components/MyBreadcrumb';
 import { Link } from 'react-router-dom';
-
+import axios from "../../util/axios";
+import toast from 'react-hot-toast'
 const Record = () => {
+
     const [isRecording, setIsRecording] = useState(false);
     const [timer, setTimer] = useState(0);
     const [detections, setDetections] = useState([]);
+    const [cameras, setCameras] = useState([]);
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [activeCamera, setActiveCamera] = useState(null);
 
-    const handleStart = () => {
-        setIsRecording(true);
-        setTimer(0);
-        setDetections([]);
+    const handleStart = async () => {
+        try {
+            setIsRecording(true);
+            setTimer(0);
+            setDetections([]);
+
+        } catch (error) {
+            console.error("ฟังก์ชั่นเริ่มต้นบันทึก error: ", error)
+        }
     };
 
     const handleStop = () => setIsRecording(false);
+
+    useEffect(() => {
+
+        const fetchListCamera = async () => {
+            try {
+                const resListCamera = await axios.get("camera/list-camera");
+                setCameras(resListCamera.data.cameras || []);
+                console.log(resListCamera.data.cameras);
+
+            } catch (error) {
+                console.error(error.message)
+                setError("ไม่มีกล้อง")
+            }
+        }
+        fetchListCamera();
+
+    }, [])
 
     // จับเวลาเมื่อบันทึก ฝั่งซ้าย
     useEffect(() => {
@@ -39,6 +67,46 @@ const Record = () => {
         ).padStart(2, '0')}`;
     };
 
+    const handleOpenCamera = async (id) => {
+        try {
+            setActiveCamera(id)
+            const res = await axios.get(`camera/open-camera/${id}`);
+            toast.success(`เปิดกล้อง ${id} แล้ว!`);
+        } catch (error) {
+            console.error(error);
+            toast.error("เปิดกล้องไม่สำเร็จ");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    const handleCloseCamera = async (id) => {
+        try {
+            setActiveCamera(null)
+            const res = await axios.get(`camera/close-camera/${id}`);
+            toast.success(`ปิดกล้อง ${id} แล้ว!`);
+        } catch (err) {
+            console.error(err);
+            toast.error("ปิดกล้องไม่สำเร็จ");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleStartDetect = async (id) => {
+        try {
+            setActiveCamera(id)
+            const res = await axios.get(`camera/start-detect/${id}`);
+            console.log(res.data);
+            toast.success(`กำลังสตีมกล้องที่ ${id} แล้ว!`);
+        } catch (error) {
+            console.error(error);
+            toast.error("ไม่สามารถสตีมกล้องได้");
+        } finally {
+            setLoading(false);
+        }
+    }
+    
     // // จำลองการตรวจจับทุก ๆ 10 วินาทีขณะบันทึก
     // useEffect(() => {
     //     if (isRecording && timer > 0 && timer % 10 === 0) {
@@ -86,9 +154,63 @@ const Record = () => {
                             </div>
                         </div>
 
-                        <div className="border-2 border-gray-300 rounded-2xl h-110 bg-black text-white text-3xl flex items-center justify-center">
-                            ใส่ API จากกล้อง
-                        </div>
+                        {cameras.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                                {cameras.map((cam) => (
+                                    <div
+                                        key={cam.id}
+                                        className="border rounded-2xl p-6 shadow-lg bg-white flex flex-col justify-between w-[540px]"
+                                    >
+                                        <h3 className="font-semibold text-lg mb-4 text-center">{cam.name}</h3>
+
+                                        {/* ส่วนแสดงภาพ */}
+                                        <div className="flex justify-center">
+                                            <div className="flex flex-col items-center">
+                                                <div style={{ textAlign: "center" }}>
+                                                    {activeCamera === cam.id ? (
+                                                        <img
+                                                            src={`http://localhost:8000/api/camera/video/${cam.id}`}
+                                                            alt="camera stream"
+                                                            className='w-full h-[240px] flex'
+                                                        />
+                                                    ) : (
+
+                                                        <p className="text-black text-xl font-medium opacity-80">
+                                                            ยังไม่เปิดกล้อง
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* ปุ่มควบคุม */}
+                                        <div className="flex justify-center gap-4 mt-6">
+
+                                            <button
+                                                onClick={() => handleOpenCamera(cam.id)}
+                                                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                                                disabled={loading}
+                                            >
+                                                เปิดกล้อง
+                                            </button>
+                                            <button
+                                                onClick={() => handleCloseCamera(cam.id)}
+                                                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition disabled:opacity-50"
+                                                disabled={loading}
+                                            >
+                                                ปิดกล้อง
+                                            </button>
+
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-gray-500 text-center text-lg">
+                                ไม่มีกล้องที่เชื่อมต่อ
+                            </p>
+                        )}
+
                     </div>
 
                     {/* โชว์สถานะ ฝั่งขวา */}
@@ -125,26 +247,26 @@ const Record = () => {
                         {/* ปุ่ม */}
                         <div className="flex justify-center gap-4 pt-4">
                             <button
-                                onClick={handleStart}
+                                onClick={() => handleStartDetect(activeCamera)}
                                 disabled={isRecording}
                                 className={`w-50 py-3 rounded-lg font-semibold transition-colors ${isRecording
-                                        ? 'bg-gray-400 text-white cursor-not-allowed'
-                                        : 'bg-blue-900 text-white hover:bg-[#38A738]'
+                                    ? 'bg-gray-400 text-white cursor-not-allowed'
+                                    : 'bg-blue-900 text-white hover:bg-[#38A738]'
                                     }`}
                             >
                                 เริ่มต้นบันทึก
                             </button>
                             <Link to={"/user/summarize"} className="w-50">
-                            <button
-                                onClick={handleStop}
-                                disabled={!isRecording}
-                                className={`w-50 py-3 rounded-lg font-semibold transition-colors ${!isRecording
+                                <button
+                                    onClick={handleStop}
+                                    disabled={!isRecording}
+                                    className={`w-50 py-3 rounded-lg font-semibold transition-colors ${!isRecording
                                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                         : 'bg-[#FDEEED] text-[#74393C] hover:bg-red-600 hover:text-white'
-                                    }`}
-                            >
-                                จบการบันทึก
-                            </button>
+                                        }`}
+                                >
+                                    จบการบันทึก
+                                </button>
                             </Link>
                         </div>
                     </div>

@@ -24,7 +24,7 @@ def scan_cameras():
     found = []
     for i in range(5):  # ตรวจสอบกล้อง 0-4
         try:
-            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)  # ✅ ใช้ CAP_DSHOW แทน DSHOW
+            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)  # ✅ ใช้ CAP_MSMF แทน DSHOW
             if cap is not None and cap.isOpened():
                 found.append({"id": i, "name": f"Camera กล้องตัวที่ {i+1}"})
                 print(f"✅ พบกล้องที่ index {i}")
@@ -273,5 +273,6 @@ async def shutdown_event():
                 cap.release()
         except Exception as e:
             print(f"Error closing {cam_id}: {e}")
+        await asyncio.sleep(0)
     cameras.clear()
     print("✅ All cameras released")

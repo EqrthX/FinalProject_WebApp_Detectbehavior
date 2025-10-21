@@ -12,16 +12,11 @@ const Record = () => {
     const [cameras, setCameras] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    // ✅ เก็บเฟรมของแต่ละกล้อง: { [id]: base64 }
     const [frames, setFrames] = useState({});
-
-    // ✅ เก็บ WebSocket ต่อกล้อง: { [id]: ws }
     const wsRefs = useRef({});
 
     const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
-    const WS_BASE = API_BASE.replace("http", "ws");
 
-    // ---------- Utility ----------
     const safeCloseWS = (id) => {
         try {
             if (wsRefs.current[id]) {
@@ -32,9 +27,7 @@ const Record = () => {
     };
 
     const connectWebSocket = (cameraId) => {
-        // มีแล้วไม่ต้องเปิดซ้ำ
         if (wsRefs.current[cameraId]) return;
-
         const wsUrl = `${import.meta.env.VITE_API_BASE.replace("http", "ws")}/camera/ws/camera/${cameraId}`;
         const ws = new WebSocket(wsUrl);
         wsRefs.current[cameraId] = ws;
@@ -48,23 +41,16 @@ const Record = () => {
             console.error(`WS error cam ${cameraId}`, e);
             toast.error(`สตรีมกล้อง ${cameraId} มีปัญหา`);
         };
-
         ws.onmessage = (event) => {
-            if (typeof event.data === "string" && event.data.startsWith("error:")) {
-                console.error(`Camera ${cameraId}: ${event.data}`);
-                return;
-            }
-            // เก็บ base64 ต่อ id
+            if (typeof event.data === "string" && event.data.startsWith("error:")) return;
             setFrames((prev) => ({ ...prev, [cameraId]: event.data }));
         };
     };
 
-    // ---------- เปิดทุกกล้องตั้งแต่โหลดหน้า ----------
     useEffect(() => {
         const initCameras = async () => {
             try {
                 const res = await axios.get("camera/list-camera");
-                console.log(res.data);
                 const list = res.data.cameras || [];
                 setCameras(list);
 
@@ -73,11 +59,8 @@ const Record = () => {
                     return;
                 }
 
-                // ✅ เปิดกล้องทั้งหมดครั้งเดียว
-                const ck = await axios.get("camera/open-all");
+                await axios.get("camera/open-all");
                 toast.success(`เปิดกล้องทั้งหมด (${list.length}) แล้ว!`);
-
-                // ✅ เชื่อม WebSocket แต่ละตัว
                 list.forEach((cam) => connectWebSocket(cam.id));
             } catch (err) {
                 console.error(err);
@@ -86,16 +69,12 @@ const Record = () => {
         };
 
         initCameras();
-
-        // cleanup ปิด WS และกล้องทั้งหมดเมื่อออกจากหน้า
         return () => {
             Object.values(wsRefs.current).forEach((ws) => ws.close());
             axios.get("camera/close-all").catch(() => { });
         };
     }, []);
 
-
-    // ---------- ปุ่มควบคุม ----------
     const handleCloseCamera = async (id) => {
         try {
             await axios.get(`camera/close-camera/${id}`);
@@ -106,21 +85,17 @@ const Record = () => {
                 return n;
             });
             toast.success(`ปิดกล้อง ${id} แล้ว`);
-        } catch (err) {
-            console.error(err);
+        } catch {
             toast.error("ปิดกล้องไม่สำเร็จ");
         }
     };
 
     const handleReconnect = async (id) => {
         try {
-            // เผื่อกล้องถูกปิดไปก่อนหน้า ให้เปิดใหม่เฉพาะตัวนี้ได้
-            // (ถ้าเปิดอยู่แล้ว endpoint นี้ไม่จำเป็น — แต่ไม่มีผลเสีย)
             await axios.get(`camera/open-all`);
             connectWebSocket(id);
             toast.success(`เชื่อมต่อใหม่ กล้อง ${id} แล้ว`);
-        } catch (err) {
-            console.error(err);
+        } catch {
             toast.error(`เชื่อมต่อใหม่กล้อง ${id} ไม่สำเร็จ`);
         }
     };
@@ -131,13 +106,11 @@ const Record = () => {
             await axios.get("camera/close-all");
             setFrames({});
             toast.success("ปิดกล้องทั้งหมดแล้ว");
-        } catch (err) {
-            console.error(err);
+        } catch {
             toast.error("ปิดกล้องทั้งหมดไม่สำเร็จ");
         }
     };
 
-    // ---------- จับเวลาเมื่อบันทึก ----------
     useEffect(() => {
         let intervalId;
         if (isRecording) {
@@ -159,82 +132,100 @@ const Record = () => {
     return (
         <>
             <Navbar />
-            <div style={{ padding: 24 }}>
+            <div className="p-4 md:p-6 lg:p-8 bg-gray-50 min-h-screen">
                 <MyBreadcrumb />
 
-                <div className="grid grid-cols-3 gap-4 p-6">
-                    {/* กล่องซ้าย */}
-                    <div className="col-span-2 bg-white rounded-2xl shadow p-6 border border-gray-100 h-150">
-                        <div className="flex items-center justify-between mb-4">
+                {/* 🧱 Layout หลัก */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+                    {/* กล่องซ้าย (2 ใน 3 ส่วน) */}
+                    <div className="lg:col-span-2 bg-white rounded-2xl shadow p-4 sm:p-6 md:p-8 border border-gray-200">
+                        {/* Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
                             <div className="flex items-center space-x-3">
                                 <div
-                                    className={`w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-offset-2 ${isRecording ? "ring-red-300" : "ring-green-300"
-                                        }`}
+                                    className={`w-5 h-5 rounded-full ring-2 ring-offset-2 ${isRecording ? "ring-red-300" : "ring-green-300"
+                                        } flex items-center justify-center`}
                                 >
                                     <div
-                                        className={`w-3.5 h-3.5 rounded-full ${isRecording ? "bg-red-500 animate-pulse" : "bg-green-500"
+                                        className={`w-4 h-4 rounded-full ${isRecording ? "bg-red-500 animate-pulse" : "bg-green-500"
                                             }`}
                                     />
                                 </div>
-                                <h2 className="text-lg font-semibold">ตรวจจับพฤติกรรม</h2>
+                                <h2 className="text-lg md:text-xl font-semibold">
+                                    ตรวจจับพฤติกรรม
+                                </h2>
                             </div>
 
-                            {/* ปุ่มรวม */}
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={handleCloseAll}
-                                    className="px-3 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-                                    disabled={loading}
-                                >
-                                    ปิดทั้งหมด
-                                </button>
-                            </div>
+                            <button
+                                onClick={handleCloseAll}
+                                className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 text-sm md:text-base"
+                                disabled={loading}
+                            >
+                                ปิดทั้งหมด
+                            </button>
                         </div>
 
-                        <div className="px-6 pb-4">
-                            <div className="flex items-center justify-center text-sm text-gray-700">
-                                <div className="flex items-center gap-6 sm:gap-12">
-                                    <span className="font-medium">{formatTime(timer)}</span>
-                                    <span>SI235-1</span>
-                                    <span>กลุ่ม 1</span>
-                                    <span>ห้อง 7501</span>
-                                    <span>เวลา 12:20 - 16:10</span>
-                                </div>
-                            </div>
+                        {/* Info bar */}
+                        <div className="flex flex-wrap items-center justify-center text-sm md:text-base text-gray-700 gap-3 md:gap-10 mb-6">
+                            <span className="font-medium">{formatTime(timer)}</span>
+                            <span>SI235-1</span>
+                            <span>กลุ่ม 1</span>
+                            <span>ห้อง 7501</span>
+                            <span>เวลา 12:20 - 16:10</span>
                         </div>
 
-                        {/* กลุ่มกล้อง */}
+                        {/* กล้อง */}
                         {cameras.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                            <div
+                                className="grid
+                            grid-cols-1
+                            sm:grid-cols-2
+                            md:grid-cols-2
+                            xl:grid-cols-3
+                            2xl:grid-cols-4
+                            gap-8
+                            justify-items-center"
+                            >
                                 {cameras.map((cam) => (
                                     <div
                                         key={cam.id}
-                                        className="border rounded-2xl p-6 shadow-lg bg-white flex flex-col items-center"
+                                        className="border rounded-3xl shadow-lg bg-white flex flex-col items-center
+                               p-5 sm:p-6 md:p-8 xl:p-10
+                               hover:shadow-2xl transition-all duration-300 w-full sm:w-[90%] md:w-[85%]"
                                     >
-                                        <h3 className="font-semibold text-lg mb-2">{cam.name}</h3>
+                                        <h3 className="font-semibold text-lg md:text-xl xl:text-2xl mb-4 text-center">
+                                            {cam.name}
+                                        </h3>
 
-                                        <div className="w-[320px] h-[240px] border rounded-lg flex items-center justify-center bg-black">
+                                        <div
+                                            className="w-full max-w-[480px] xl:max-w-[600px]
+                                 aspect-[4/3]
+                                 border-2 border-gray-200 rounded-2xl 
+                                 flex items-center justify-center bg-black"
+                                        >
                                             {frames[cam.id] ? (
                                                 <img
                                                     src={`data:image/jpeg;base64,${frames[cam.id]}`}
                                                     alt={`Camera ${cam.id}`}
-                                                    className="w-full h-full object-contain"
+                                                    className="w-full h-full object-contain rounded-xl"
                                                 />
                                             ) : (
-                                                <p className="text-white opacity-60">กำลังเชื่อมต่อ...</p>
+                                                <p className="text-white opacity-70 text-sm md:text-base">
+                                                    กำลังเชื่อมต่อ...
+                                                </p>
                                             )}
                                         </div>
 
-                                        <div className="flex gap-3 mt-4">
+                                        <div className="flex flex-col sm:flex-row gap-4 mt-6 w-full justify-center">
                                             <button
                                                 onClick={() => handleReconnect(cam.id)}
-                                                className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                                                className="px-6 py-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-base font-medium w-full sm:w-auto"
                                             >
                                                 เชื่อมต่อใหม่
                                             </button>
                                             <button
                                                 onClick={() => handleCloseCamera(cam.id)}
-                                                className="px-3 py-2 rounded-lg bg-rose-600 text-white hover:bg-rose-700"
+                                                className="px-6 py-3 rounded-lg bg-rose-600 text-white hover:bg-rose-700 text-base font-medium w-full sm:w-auto"
                                             >
                                                 ปิดตัวนี้
                                             </button>
@@ -243,16 +234,18 @@ const Record = () => {
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-center text-gray-500">
+                            <p className="text-center text-gray-500 mt-6">
                                 {loading ? "กำลังค้นหากล้อง..." : "ไม่มีกล้องที่เชื่อมต่อ"}
                             </p>
                         )}
                     </div>
 
-                    {/* ฝั่งขวา (log/รายการตรวจจับ) */}
-                    <div className="flex flex-col space-y-4">
-                        <div className="bg-white rounded-2xl shadow flex flex-col h-150 border border-gray-300">
-                            <h1 className="flex justify-center p-9 text-lg font-bold">ไม่ตั้งใจ</h1>
+                    {/* กล่องขวา (Log การตรวจจับ) */}
+                    <div className="flex flex-col gap-6">
+                        <div className="bg-white rounded-2xl shadow border border-gray-300 flex flex-col h-[500px] md:h-[600px] xl:h-[700px]">
+                            <h1 className="flex justify-center p-6 text-lg md:text-xl font-bold">
+                                ไม่ตั้งใจ
+                            </h1>
                             <div className="space-y-4 overflow-y-auto flex-1 px-4 pb-4">
                                 {detections.length === 0 ? (
                                     <div className="text-center text-gray-400 mt-8">
@@ -264,42 +257,41 @@ const Record = () => {
                                             key={item.id}
                                             className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                                         >
-                                            <div className="w-20 h-20 bg-gray-300 rounded-lg flex-shrink-0 overflow-hidden">
+                                            <div className="w-20 h-20 bg-gray-300 rounded-lg overflow-hidden">
                                                 <img
                                                     src={item.image}
                                                     alt={`Detection at ${item.time}`}
                                                     className="w-full h-full object-cover"
                                                 />
                                             </div>
-                                            <div className="flex-1">
-                                                <p className="text-sm font-medium text-gray-700">
-                                                    เวลา {item.time}
-                                                </p>
-                                            </div>
+                                            <p className="text-sm font-medium text-gray-700">
+                                                เวลา {item.time}
+                                            </p>
                                         </div>
                                     ))
                                 )}
                             </div>
                         </div>
 
-                        <div className="flex justify-center gap-4 pt-4">
+                        {/* ปุ่มบันทึก */}
+                        <div className="flex flex-col sm:flex-row justify-center gap-4">
                             <button
                                 onClick={() => setIsRecording(true)}
                                 disabled={isRecording}
-                                className={`w-50 py-3 rounded-lg font-semibold transition-colors ${isRecording
-                                    ? "bg-gray-400 text-white cursor-not-allowed"
-                                    : "bg-blue-900 text-white hover:bg-[#38A738]"
+                                className={`w-full sm:w-40 py-3 rounded-lg font-semibold transition-colors ${isRecording
+                                        ? "bg-gray-400 text-white cursor-not-allowed"
+                                        : "bg-blue-900 text-white hover:bg-[#38A738]"
                                     }`}
                             >
                                 เริ่มต้นบันทึก
                             </button>
-                            <Link to={"/user/summarize"} className="w-50">
+                            <Link to="/user/summarize" className="w-full sm:w-40">
                                 <button
                                     onClick={() => setIsRecording(false)}
                                     disabled={!isRecording}
-                                    className={`w-50 py-3 rounded-lg font-semibold transition-colors ${!isRecording
-                                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                        : "bg-[#FDEEED] text-[#74393C] hover:bg-red-600 hover:text-white"
+                                    className={`w-full py-3 rounded-lg font-semibold transition-colors ${!isRecording
+                                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                            : "bg-[#FDEEED] text-[#74393C] hover:bg-red-600 hover:text-white"
                                         }`}
                                 >
                                     จบการบันทึก

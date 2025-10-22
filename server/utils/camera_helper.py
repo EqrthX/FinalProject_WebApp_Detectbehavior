@@ -3,6 +3,8 @@ import os
 import cv2
 import json
 from decimal import Decimal, ROUND_HALF_EVEN
+from ultralytics import YOLO
+
 
 def empty_flat_dict_behavior ():
     return {
@@ -38,19 +40,3 @@ def calculate_average(dict_count: dict, dict_sum: dict):
             result[key] = None
     
     return result
-
-def save_file_log(history_5min = [], history_1hr = []):
-
-    file_5min = "log_5min.json"
-    file_1hr = "log_1hr.json"
-
-    if history_5min:
-        with open(file_5min, 'w', encoding='utf-8') as file:
-            json.dump(history_5min, file, ensure_ascii=False, indent=2)
-            file.write(',\n')
-
-    if history_1hr:
-        with open(file_1hr, 'w', encoding='utf-8') as file:
-            json.dump(history_1hr, file, ensure_ascii=False, indent=2)
-            file.write(',\n')
-    

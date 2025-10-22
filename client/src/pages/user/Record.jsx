@@ -21,7 +21,7 @@ const Record = () => {
                 wsRefs.current[id].close();
                 delete wsRefs.current[id];
             }
-        } catch (_) { }
+        } catch (_) {_}
     };
 
     const connectWebSocket = (cameraId) => {
@@ -97,9 +97,12 @@ const Record = () => {
             toast.success(`ปิดกล้อง ${id} แล้ว`);
         } catch (err) {
             toast.error("ปิดกล้องไม่สำเร็จ");
+            console.error("ปิดกล้องไม่สำเร็จ :",err);
+            
         }
     };
 
+    // เชื่อมต่อกล้องใหม่
     const handleReconnect = async (id) => {
         try {
             await axios.get(`camera/open-all`);
@@ -110,17 +113,39 @@ const Record = () => {
         }
     };
 
+    // ปิดกล้องทั้งหมด
     const handleCloseAll = async () => {
         try {
             Object.keys(wsRefs.current).forEach((id) => safeCloseWS(id));
             await axios.get("camera/close-all");
             setFrames({});
             toast.success("ปิดกล้องทั้งหมดแล้ว");
+            setIsRecording(false)
         } catch {
             toast.error("ปิดกล้องทั้งหมดไม่สำเร็จ");
         }
     };
 
+    const handleStartDetect = async (cameraId) => {
+        setIsRecording(true)
+        try {
+            const resStartDetect = await axios.get(`camera/start-detect/${cameraId}`)
+            console.log(resStartDetect);
+            
+        } catch (error) {
+            console.error("การตรวจจับเกิดข้อผิดพลาด", error)
+        }
+    }
+
+    // const handleStopDetect = async () => {
+    //     setIsRecording(false)
+    //     try {
+    //         await axios.get(`camera/stop-all`)
+    //         toast.success("หยุดตรวจจับทั้งหมด")
+    //     } catch (error) {
+    //         console.error("การหยุดตรวจจับเกิดข้อผิดพลาด", error)
+    //     }
+    // }
     // ---------- จับเวลา ----------
     useEffect(() => {
         let intervalId;
@@ -270,7 +295,7 @@ const Record = () => {
                         {/* ปุ่ม */}
                         <div className="flex flex-wrap justify-center gap-3 py-4 border-t">
                             <button
-                                onClick={() => setIsRecording(true)}
+                                onClick={() => handleStartDetect(cameras.map(cam => cam.id))}
                                 disabled={isRecording}
                                 className={`px-5 py-3 rounded-lg font-semibold text-sm sm:text-base ${isRecording
                                         ? "bg-gray-400 text-white cursor-not-allowed"
@@ -279,6 +304,16 @@ const Record = () => {
                             >
                                 เริ่มต้นบันทึก
                             </button>
+                            {/* <button
+                                onClick={handleStopDetect}
+                                disabled={!isRecording}
+                                className={`px-5 py-3 rounded-lg font-semibold text-sm sm:text-base ${!isRecording
+                                        ? "bg-gray-400 text-white cursor-not-allowed"
+                                        : "bg-amber-900 text-white hover:bg-[#859710]"
+                                    }`}
+                            >
+                                หยุดบันทึก
+                            </button> */}
                             <Link to={"/user/summarize"}>
                                 <button
                                     onClick={() => setIsRecording(false)}

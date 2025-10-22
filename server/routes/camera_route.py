@@ -8,12 +8,12 @@ import os
 import base64
 import asyncio
 from utils.camera_helper import empty_flat_dict_behavior, calculate_average
-
+from utils.model_loader import get_model
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "..", "..", "runs", "detect", "train", "weights", "best.pt")
-model = YOLO(MODEL_PATH)
+model = get_model()
 
 # เก็บกล้องที่เปิดอยู่ทั้งหมด
 cameras = {}
@@ -37,8 +37,6 @@ async def async_scan_cameras():
             cap.release()
     available_cameras = found
     print(f"📷 กล้องทั้งหมดที่ตรวจพบ: {len(found)} ตัว")
-
-
 
 # ✅ ฟังก์ชันเปิดกล้องเดี่ยว (ใช้ภายใน)
 def open_camera_instance(camera_id: str):
@@ -77,9 +75,9 @@ def open_camera_instance(camera_id: str):
     }
     print(f"✅ Camera {camera_id} opened")
 
-
 # ✅ loop ตรวจจับ YOLO ต่อกล้อง
 async def camera_loop(camera_id: str):
+    frame_count = 0
     cam_state = cameras.get(camera_id)
     if not cam_state:
         print(f"❌ camera_loop: {camera_id} not found")
@@ -122,7 +120,9 @@ async def camera_loop(camera_id: str):
                 if conf > 0.5 and label in cam_state["count"]:
                     cam_state["count"][label] += 1
                     cam_state["sum"][label] += conf
-
+                frame_count += 1
+            
+            print("frame", frame_count)
             if cam_state["seconds"] >= 60:
                 avg = calculate_average(cam_state["count"], cam_state["sum"])
                 print(f"📊 กล้อง {camera_id} avg(1m): {avg}")
@@ -133,11 +133,10 @@ async def camera_loop(camera_id: str):
                     cam_state["sum"][k] = 0.0
                 cam_state["seconds"] = 0
 
-        await asyncio.sleep(0.03)
+        await asyncio.sleep(0.033) # 30 fps
 
     print(f"🛑 stop detect on camera {camera_id}")
     cam_state["detecting"] = False
-
 
 # ✅ เปิดกล้องทั้งหมดพร้อมกัน
 @camera_router.get("/open-all")
@@ -171,6 +170,16 @@ async def start_detect(camera_id: str):
     return {"message": f"Async detection started on camera {camera_id}"}
 
 
+@camera_router.get("/stop-all")
+async def stop_all_detections():
+    stopped = []
+    for cam_id, cam_state in cameras.items():
+        if cam_state.get("detecting"):
+            cam_state["detecting"] = False
+            stopped.append(cam_id)
+    print(f"🛑 Stopped detection for cameras: {stopped}")
+    return {"message": f"Stopped {len(stopped)} cameras", "stopped": stopped}
+
 # ✅ ปิดกล้องเฉพาะตัว
 @camera_router.get("/close-camera/{camera_id}")
 async def camera_close(camera_id: str):
@@ -188,7 +197,6 @@ async def camera_close(camera_id: str):
     cameras.pop(camera_id, None)
     print(f"🧹 Camera {camera_id} closed")
     return {"message": f"Camera {camera_id} closed"}
-
 
 # ✅ ปิดกล้องทั้งหมด
 @camera_router.get("/close-all")
@@ -222,7 +230,7 @@ async def check_list_camera():
 async def camera_ws(websocket: WebSocket, camera_id: str):
     await websocket.accept()
     print(f"📡 Client connected for camera {camera_id}")
-
+    frame_count = 0
     cap = None
     cam_state = cameras.get(camera_id)
     if cam_state and cam_state.get("cap"):
@@ -237,15 +245,19 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
     try:
         while True:
             ret, frame = cap.read()
+            frame_count += 1
             if not ret:
                 await websocket.send_text("error: cannot read frame")
                 break
 
-            _, buffer = cv2.imencode(".jpg", frame)
+            results = model.predict(source=frame, conf=0.2, device="cpu", verbose=False)
+            annotated = results[0].plot()
+
+            _, buffer = cv2.imencode(".jpg", annotated)
             jpg_as_text = base64.b64encode(buffer).decode("utf-8")
             await websocket.send_text(jpg_as_text)
 
-            await asyncio.sleep(0.05)  # ~20 fps
+            await asyncio.sleep(0.033)  # ~30 fps
 
     except WebSocketDisconnect:
         print(f"❌ WS disconnected for camera {camera_id}")

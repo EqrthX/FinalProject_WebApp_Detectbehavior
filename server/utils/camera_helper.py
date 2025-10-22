@@ -37,6 +37,6 @@ def calculate_average(dict_count: dict, dict_sum: dict):
             value = (sum_class / num_class).quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
             result[key] = float(value)
         else:
-            result[key] = None
+            result[key] = 0.0
     
     return result

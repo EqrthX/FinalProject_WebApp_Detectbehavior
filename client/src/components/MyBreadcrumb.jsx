@@ -4,8 +4,8 @@ import { NavLink, useLocation } from 'react-router-dom';
 
 const steps = [
   { key: 'TeachingSchedule', to: '/user/TeachingSchedule', label: 'ตารางสอน' },
-  { key: 'Record',            to: '/user/Record',           label: 'เริ่มบันทึก' },
-  { key: 'summarize',         to: '/user/summarize',        label: 'สรุปผล' },
+  { key: 'Record', to: '/user/Record', label: 'เริ่มบันทึก' },
+  { key: 'summarize', to: '/user/summarize', label: 'สรุปผล' },
 ];
 
 const MyBreadcrumb = () => {

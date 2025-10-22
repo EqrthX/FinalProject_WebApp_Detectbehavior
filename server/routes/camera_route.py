@@ -79,7 +79,7 @@ def open_camera_instance(camera_id: str):
 
 
 # ✅ loop ตรวจจับ YOLO ต่อกล้อง
-def camera_loop(camera_id: str):
+async def camera_loop(camera_id: str):
     cam_state = cameras.get(camera_id)
     if not cam_state:
         print(f"❌ camera_loop: {camera_id} not found")
@@ -97,7 +97,7 @@ def camera_loop(camera_id: str):
     while cam_state.get("running") and cam_state.get("detecting") and cap.isOpened():
         ret, frame = cap.read()
         if not ret:
-            time.sleep(0.03)
+            await asyncio.sleep(0.03)
             continue
 
         # 🔹 YOLO ตรวจจับ
@@ -133,7 +133,7 @@ def camera_loop(camera_id: str):
                     cam_state["sum"][k] = 0.0
                 cam_state["seconds"] = 0
 
-        time.sleep(0.03)
+        await asyncio.sleep(0.03)
 
     print(f"🛑 stop detect on camera {camera_id}")
     cam_state["detecting"] = False
@@ -166,10 +166,9 @@ async def start_detect(camera_id: str):
         return {"message": f"Camera {camera_id} already detecting"}
 
     cam_state["detecting"] = True
-    t = threading.Thread(target=camera_loop, args=(camera_id,), daemon=True)
-    cam_state["thread"] = t
-    t.start()
-    return {"message": f"Detection started on camera {camera_id}"}
+    task = asyncio.create_task(camera_loop(camera_id))
+    cam_state["task"] = task
+    return {"message": f"Async detection started on camera {camera_id}"}
 
 
 # ✅ ปิดกล้องเฉพาะตัว
@@ -207,7 +206,6 @@ async def close_all_cameras():
     print("🧹 All cameras closed")
     return {"message": "All cameras closed"}
 
-
 # ✅ แสดงรายการกล้อง
 @camera_router.get("/list-camera")
 async def check_list_camera():
@@ -215,10 +213,9 @@ async def check_list_camera():
     now = time.time()
     if not available_cameras or (now - last_scan_time > 10):
         last_scan_time = now
-        asyncio.create_task(async_scan_cameras())
+        await async_scan_cameras()
         return {"status": "scanning", "cameras": []}
     return {"status": "done", "cameras": available_cameras}
-
 
 # ✅ WebSocket สำหรับ stream แต่ละกล้อง
 @camera_router.websocket("/ws/camera/{camera_id}")

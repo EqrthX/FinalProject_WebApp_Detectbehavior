@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Menu, X } from "lucide-react"; // ใช้ไอคอนจาก lucide-react (ติดตั้งด้วย npm i lucide-react)
 import Profile from "../assets/Profile.png";
 
 const Navbar = () => {
@@ -7,9 +8,9 @@ const Navbar = () => {
   const navigate = useNavigate();
   const [showLogout, setShowLogout] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // ฟังก์ชันช่วยตรวจว่าอยู่ในเส้นทางที่เกี่ยวข้องกับตารางสอนหรือไม่
   const isTeachingActive = [
     '/user/TeachingSchedule',
     '/user/Record',
@@ -23,7 +24,6 @@ const Navbar = () => {
         setShowLogout(false);
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
@@ -34,31 +34,33 @@ const Navbar = () => {
   };
 
   const handleConfirmLogout = () => {
-    // ใส่ logic การ logout ที่นี่ เช่น ลบ token, clear session
-    // localStorage.removeItem('token');
-    // sessionStorage.clear();
-
     setShowConfirmModal(false);
-    // redirect ไปหน้า login หรือหน้าแรก
     navigate('/login');
   };
 
-  const handleCancelLogout = () => {
-    setShowConfirmModal(false);
-  };
+  const handleCancelLogout = () => setShowConfirmModal(false);
 
   return (
     <>
-      <nav className="relative flex items-center justify-between bg-[#F6F6F4] px-6 py-3 h-25">
-        {/* เมนูหลัก */}
-        <div className="absolute left-1/2 transform -translate-x-1/2 flex bg-white border border-[#E9E9E9] rounded-full p-3 items-center justify-center">
+      {/* 🔹 Navbar Container */}
+      <nav className="relative bg-[#F6F6F4] px-4 sm:px-6 py-3 flex items-center justify-between border-b border-gray-200">
 
+        {/* 🔹 Left: Hamburger (เฉพาะมือถือ) */}
+        <button
+          className="lg:hidden flex items-center text-gray-700"
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        >
+          {isMobileMenuOpen ? <X size={26} /> : <Menu size={26} />}
+        </button>
+
+        {/* 🔹 Center: เมนูหลัก */}
+        <div className="hidden lg:flex bg-white border border-[#E9E9E9] rounded-full p-2 px-3 space-x-3 mx-auto">
           <NavLink
             to="/user/Homepage"
             className={({ isActive }) =>
               isActive
-                ? 'bg-[#38A738] text-white px-10 py-1 rounded-2xl flex items-center justify-center'
-                : 'text-gray-700 flex items-center justify-center px-10 py-1 hover:text-[#38A738]'
+                ? 'bg-[#38A738] text-white px-8 py-1.5 rounded-2xl font-medium'
+                : 'text-gray-700 px-8 py-1.5 rounded-2xl hover:text-[#38A738]'
             }
           >
             หน้าแรก
@@ -68,8 +70,8 @@ const Navbar = () => {
             to="/user/TeachingSchedule"
             className={() =>
               isTeachingActive
-                ? 'bg-[#38A738] text-white px-10 py-1 rounded-2xl flex items-center justify-center'
-                : 'text-gray-700 flex items-center justify-center px-10 py-1 hover:text-[#38A738]'
+                ? 'bg-[#38A738] text-white px-8 py-1.5 rounded-2xl font-medium'
+                : 'text-gray-700 px-8 py-1.5 rounded-2xl hover:text-[#38A738]'
             }
           >
             ตารางสอน
@@ -79,38 +81,32 @@ const Navbar = () => {
             to="/user/ResultsPage"
             className={({ isActive }) =>
               isActive
-                ? 'bg-[#38A738] text-white px-10 py-1 rounded-2xl flex items-center justify-center'
-                : 'text-gray-700 flex items-center justify-center px-10 py-1 hover:text-[#38A738]'
+                ? 'bg-[#38A738] text-white px-8 py-1.5 rounded-2xl font-medium'
+                : 'text-gray-700 px-8 py-1.5 rounded-2xl hover:text-[#38A738]'
             }
           >
             สรุปผล
           </NavLink>
-
         </div>
 
-        {/* โปรไฟล์ */}
-        <div className="ml-auto relative" ref={dropdownRef}>
+        {/* 🔹 ขวา: โปรไฟล์ */}
+        <div className="relative ml-auto" ref={dropdownRef}>
           <button
             onClick={() => setShowLogout(!showLogout)}
-            className="flex items-center space-x-2 bg-white px-3 py-2 rounded-full border border-[#E9E9E9] hover:border-[#38A738] transition-colors"
+            className="flex items-center gap-2 bg-white px-3 py-2 rounded-full border border-[#E9E9E9] hover:border-[#38A738] transition"
           >
-            <img
-              src={Profile}
-              alt="profile"
-              className="w-8 h-8 rounded-full object-cover"
-            />
-            <div className="flex flex-col text-sm">
+            <img src={Profile} alt="profile" className="w-8 h-8 rounded-full object-cover" />
+            <div className="hidden sm:flex flex-col text-sm">
               <span className="font-medium">ตัวฟรี e-sport</span>
               <span className="text-gray-500 text-xs">คณะวิทยาศาสตร์ฯ</span>
             </div>
           </button>
 
-          {/* ออกจากระบบ */}
           {showLogout && (
             <div className="absolute right-0 mt-2 w-48 bg-white border border-[#E9E9E9] rounded-lg shadow-lg z-50">
               <button
                 onClick={handleLogoutClick}
-                className="w-full text-left px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center space-x-2"
+                className="w-full text-left px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition flex items-center space-x-2"
               >
                 <svg
                   className="w-5 h-5"
@@ -132,12 +128,50 @@ const Navbar = () => {
         </div>
       </nav>
 
-      {/* Modal ยืนยันการออกจากระบบ */}
+      {/* 🔹 Mobile menu (เมื่อกด hamburger) */}
+      {isMobileMenuOpen && (
+        <div className="lg:hidden bg-white border-t border-gray-200 shadow-md px-6 py-4 space-y-3">
+          <NavLink
+            to="/user/Homepage"
+            className={({ isActive }) =>
+              isActive
+                ? 'block bg-[#38A738] text-white px-4 py-2 rounded-lg font-medium'
+                : 'block text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100'
+            }
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            หน้าแรก
+          </NavLink>
+
+          <NavLink
+            to="/user/TeachingSchedule"
+            className={() =>
+              isTeachingActive
+                ? 'block bg-[#38A738] text-white px-4 py-2 rounded-lg font-medium'
+                : 'block text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100'
+            }
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            ตารางสอน
+          </NavLink>
+
+          <NavLink
+            to="/user/ResultsPage"
+            className={({ isActive }) =>
+              isActive
+                ? 'block bg-[#38A738] text-white px-4 py-2 rounded-lg font-medium'
+                : 'block text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100'
+            }
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            สรุปผล
+          </NavLink>
+        </div>
+      )}
+
+      {/* 🔹 Modal ยืนยันออกจากระบบ */}
       {showConfirmModal && (
-        <div
-          className="fixed inset-0 flex items-center justify-center z-50 
-               bg-black/60 backdrop-blur-sm"
-        >
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-sm">
           <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
             <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
               <svg
@@ -165,13 +199,13 @@ const Navbar = () => {
             <div className="flex space-x-3">
               <button
                 onClick={handleCancelLogout}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium"
               >
                 ยกเลิก
               </button>
               <button
                 onClick={handleConfirmLogout}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium"
               >
                 ออกจากระบบ
               </button>

@@ -21,7 +21,7 @@ const Record = () => {
                 wsRefs.current[id].close();
                 delete wsRefs.current[id];
             }
-        } catch (_) {_}
+        } catch (_) { _ }
     };
 
     const connectWebSocket = (cameraId) => {
@@ -37,7 +37,7 @@ const Record = () => {
 
         ws.onopen = () => console.log(`✅ WS connected: camera ${cameraId}`);
         ws.onclose = () => {
-            console.log(`🔌 WS closed: camera ${cameraId}`);
+            console.log(`WS closed: camera ${cameraId}`);
             delete wsRefs.current[cameraId];
         };
         ws.onerror = (e) => {
@@ -46,6 +46,7 @@ const Record = () => {
         };
 
         ws.onmessage = (event) => {
+
             if (typeof event.data === "string" && event.data.startsWith("error:")) {
                 console.error(`Camera ${cameraId}: ${event.data}`);
                 return;
@@ -97,8 +98,8 @@ const Record = () => {
             toast.success(`ปิดกล้อง ${id} แล้ว`);
         } catch (err) {
             toast.error("ปิดกล้องไม่สำเร็จ");
-            console.error("ปิดกล้องไม่สำเร็จ :",err);
-            
+            console.error("ปิดกล้องไม่สำเร็จ :", err);
+
         }
     };
 
@@ -131,7 +132,7 @@ const Record = () => {
         try {
             const resStartDetect = await axios.get(`camera/start-detect/${cameraId}`)
             console.log(resStartDetect);
-            
+
         } catch (error) {
             console.error("การตรวจจับเกิดข้อผิดพลาด", error)
         }
@@ -184,8 +185,8 @@ const Record = () => {
                                 >
                                     <div
                                         className={`w-3.5 h-3.5 rounded-full ${isRecording
-                                                ? "bg-red-500 animate-pulse"
-                                                : "bg-green-500"
+                                            ? "bg-red-500 animate-pulse"
+                                            : "bg-green-500"
                                             }`}
                                     />
                                 </div>
@@ -298,8 +299,8 @@ const Record = () => {
                                 onClick={() => handleStartDetect(cameras.map(cam => cam.id))}
                                 disabled={isRecording}
                                 className={`px-5 py-3 rounded-lg font-semibold text-sm sm:text-base ${isRecording
-                                        ? "bg-gray-400 text-white cursor-not-allowed"
-                                        : "bg-blue-900 text-white hover:bg-[#38A738]"
+                                    ? "bg-gray-400 text-white cursor-not-allowed"
+                                    : "bg-blue-900 text-white hover:bg-[#38A738]"
                                     }`}
                             >
                                 เริ่มต้นบันทึก
@@ -319,8 +320,8 @@ const Record = () => {
                                     onClick={() => setIsRecording(false)}
                                     disabled={!isRecording}
                                     className={`px-5 py-3 rounded-lg font-semibold text-sm sm:text-base ${!isRecording
-                                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                            : "bg-[#FDEEED] text-[#74393C] hover:bg-red-600 hover:text-white"
+                                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                        : "bg-[#FDEEED] text-[#74393C] hover:bg-red-600 hover:text-white"
                                         }`}
                                 >
                                     จบการบันทึก

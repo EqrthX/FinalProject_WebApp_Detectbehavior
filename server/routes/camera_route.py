@@ -98,40 +98,65 @@ async def camera_loop(camera_id: str):
             await asyncio.sleep(0.03)
             continue
 
+        frame_count += 1
+
         # 🔹 YOLO ตรวจจับ
         results = model.predict(source=frame, conf=0.2, device="cpu", verbose=False)
         annotated = results[0].plot()
 
-        # 🔹 แปลงเป็น JPEG และเก็บไว้
-        ok, buf = cv2.imencode(".jpg", annotated)
-        if ok:
-            cam_state["last_frame"] = buf.tobytes()
-
-        # 🔹 สะสมค่า
-        now = time.time()
-        if now - last_check_time >= 1.0:
-            cam_state["seconds"] += 1
-            last_check_time = now
-
-            for box in results[0].boxes:  # type: ignore
+        for box in results[0].boxes:  # type: ignore
                 cls = int(box.cls)
                 conf = float(box.conf.item())
                 label = model.names[cls]
                 if conf > 0.5 and label in cam_state["count"]:
                     cam_state["count"][label] += 1
                     cam_state["sum"][label] += conf
-                frame_count += 1
-            
-            print("frame", frame_count)
-            if cam_state["seconds"] >= 60:
-                avg = calculate_average(cam_state["count"], cam_state["sum"])
-                print(f"📊 กล้อง {camera_id} avg(1m): {avg}")
 
+        # 🔹 แปลงเป็น JPEG และเก็บไว้
+        ok, buf = cv2.imencode(".jpg", annotated)
+        if ok:
+            cam_state["last_frame"] = buf.tobytes()
+
+        now = time.time()
+
+        if now - last_check_time >= 1:
+            cam_state["seconds"] += 1
+            last_check_time = now
+            
+            print(f"กล้อง {camera_id} 1 วิ ล่าสุด (จาก {frame_count} frame)")
+            
+            if cam_state["seconds"] >= 30:
+                avg = calculate_average(cam_state["count"], cam_state["sum"])
+                print(f"📊 กล้อง {int(camera_id) + 1} avg(1m): {avg}")
+
+                HIGH_CLASSES = ["Focused", "Drinking", "Eating"]
+                LOW_CLASSES = ["Lookaways", "Sleeping", "UsingPhone"]
+
+                high_dict = {k: avg.get(k, 0.0) for k in HIGH_CLASSES}
+                low_dict = {k: avg.get(k, 0.0) for k in LOW_CLASSES}
+                
+                high_avg = round(sum(high_dict.values()) / len(high_dict), 3)
+                low_avg = round(sum(low_dict.values()) / len(low_dict), 3)
+
+                cam_state["class_behavior"] = {
+                    "High_Attention": {
+                        "avg": high_avg,
+                        "details": high_dict
+                    },
+                    "Low_Attention": {
+                        "avg": low_avg,
+                        "details": low_dict
+                    }
+                }
+
+                frame_count = 0
                 for k in cam_state["count"]:
                     cam_state["count"][k] = 0
                 for k in cam_state["sum"]:
                     cam_state["sum"][k] = 0.0
                 cam_state["seconds"] = 0
+
+                print(f"🎯 class_behavior กล้อง {camera_id}: {cam_state['class_behavior']}")
 
         await asyncio.sleep(0.033) # 30 fps
 
@@ -153,7 +178,6 @@ async def open_all_cameras():
                 print(f"❌ Error opening camera {camera_id}: {e}")
     return {"message": f"{len(available_cameras)} cameras opened"}
 
-
 # ✅ เริ่มตรวจจับ YOLO ทีละกล้อง
 @camera_router.get("/start-detect/{camera_id}")
 async def start_detect(camera_id: str):
@@ -168,7 +192,6 @@ async def start_detect(camera_id: str):
     task = asyncio.create_task(camera_loop(camera_id))
     cam_state["task"] = task
     return {"message": f"Async detection started on camera {camera_id}"}
-
 
 @camera_router.get("/stop-all")
 async def stop_all_detections():

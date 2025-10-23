@@ -12,7 +12,7 @@ import { Toaster } from "react-hot-toast";
 function App() {
   return (
     <>
-      <Toaster>
+      <Toaster/>
         <Routes>
           <Route path="/" element={<LoginPage />} />
           {/* User */}
@@ -28,7 +28,6 @@ function App() {
           {/* Admin */}
           <Route path="/admin/AdminHomePage" element={<AdminHomePage />} />
         </Routes>
-      </Toaster>
     </>
   );
 }

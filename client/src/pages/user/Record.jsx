@@ -13,6 +13,7 @@ const Record = () => {
     const [loading, setLoading] = useState(false);
     const [frames, setFrames] = useState({});
     const wsRefs = useRef({});
+    const summaryRefs = useRef({});
 
     // ---------- Utility ----------
     const safeCloseWS = (id) => {
@@ -22,6 +23,46 @@ const Record = () => {
                 delete wsRefs.current[id];
             }
         } catch (_) { _ }
+    };
+
+    const connectSummarySocket = (cameraId) => {
+        if (summaryRefs.current[cameraId]) return;
+
+        const base = import.meta.env.VITE_API_BASE;
+        const wsProtocol = base.startsWith("https") ? "wss" : "ws";
+        const wsBase = base.replace(/^https?:\/\//, "");
+        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/summary/${cameraId}`;
+        const ws = new WebSocket(wsUrl);
+
+        summaryRefs.current[cameraId] = ws;
+
+        ws.onopen = () => console.log(`📊 Summary WS connected: camera ${cameraId}`);
+        ws.onclose = () => {
+            console.log(`Summary WS closed: camera ${cameraId}`);
+            delete summaryRefs.current[cameraId];
+        };
+        ws.onerror = (err) => console.error("Summary WS error:", err);
+
+        ws.onmessage = (event) => {
+            console.log(event);
+            try {
+                const data = JSON.parse(event.data);
+                // data = { time, avg, maybe class_behavior }
+                setDetections((prev) => [
+                    {
+                        id: Date.now(),
+                        time: data.time || new Date().toLocaleTimeString(),
+                        image: frames[cameraId]
+                            ? `data:image/jpeg;base64,${frames[cameraId]}`
+                            : null,
+                        avg: data.avg,
+                    },
+                    ...prev,
+                ]);
+            } catch (err) {
+                console.error("⚠️ summary parse error:", err);
+            }
+        };
     };
 
     const connectWebSocket = (cameraId) => {
@@ -87,6 +128,7 @@ const Record = () => {
 
     // ---------- ปุ่ม ----------
     const handleCloseCamera = async (id) => {
+        setIsRecording(false)
         try {
             await axios.get(`camera/close-camera/${id}`);
             safeCloseWS(id);
@@ -116,12 +158,20 @@ const Record = () => {
 
     // ปิดกล้องทั้งหมด
     const handleCloseAll = async () => {
+        setIsRecording(false)
         try {
             Object.keys(wsRefs.current).forEach((id) => safeCloseWS(id));
+            Object.key(summaryRefs.current).forEach((id) => {
+                try {
+                    summaryRefs.current[id].close();
+                    delete summaryRefs.current[id]
+                } catch (err) {
+                    console.error("Close WS Summary error:", err)
+                 }
+            })
             await axios.get("camera/close-all");
             setFrames({});
             toast.success("ปิดกล้องทั้งหมดแล้ว");
-            setIsRecording(false)
         } catch {
             toast.error("ปิดกล้องทั้งหมดไม่สำเร็จ");
         }
@@ -132,6 +182,9 @@ const Record = () => {
         try {
             const resStartDetect = await axios.get(`camera/start-detect/${cameraId}`)
             console.log(resStartDetect);
+
+            connectSummarySocket(cameraId);
+            toast.success(`เริ่มตรวจจับกล้อง ${cameraId}`);
 
         } catch (error) {
             console.error("การตรวจจับเกิดข้อผิดพลาด", error)

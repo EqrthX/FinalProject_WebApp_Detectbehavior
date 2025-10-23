@@ -7,24 +7,27 @@ import AdminHomePage from "./pages/admin/AdminHomePage.jsx";
 import Record from "./pages/user/Record.jsx";
 import Summarize from "./pages/user/summarize.jsx";
 import ResultsPage from "./pages/user/ResultsPage.jsx";
+import { Toaster } from "react-hot-toast";
 
 function App() {
   return (
     <>
-      <Routes>
-        <Route path="/" element={<LoginPage />} />
-        <Route path="/user/Homepage" element={<HomePage />} />
-        <Route>
+      <Toaster/>
+        <Routes>
+          <Route path="/" element={<LoginPage />} />
+          {/* User */}
+          <Route path="/user/Homepage" element={<HomePage />} />
+          <Route>
+            <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
+            <Route path="/user/Record" element={<Record />} />
+            <Route path="/user/summarize" element={<Summarize />} />
+          </Route>
+          <Route path="/user/ResultsPage" element={<ResultsPage />} />
           <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
-          <Route path="/user/Record" element={<Record />} />
-          <Route path="/user/summarize" element={<Summarize />} />
-        </Route>
-        <Route path="/user/ResultsPage" element={<ResultsPage />} />
 
-
-        <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
-        <Route path="/admin/AdminHomePage" element={<AdminHomePage />} />
-      </Routes>
+          {/* Admin */}
+          <Route path="/admin/AdminHomePage" element={<AdminHomePage />} />
+        </Routes>
     </>
   );
 }

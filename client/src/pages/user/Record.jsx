@@ -13,6 +13,7 @@ const Record = () => {
     const [loading, setLoading] = useState(false);
     const [frames, setFrames] = useState({});
     const wsRefs = useRef({});
+    const summaryRefs = useRef({});
 
     // ---------- Utility ----------
     const safeCloseWS = (id) => {
@@ -22,6 +23,46 @@ const Record = () => {
                 delete wsRefs.current[id];
             }
         } catch (_) { _ }
+    };
+
+    const connectSummarySocket = (cameraId) => {
+        if (summaryRefs.current[cameraId]) return;
+
+        const base = import.meta.env.VITE_API_BASE;
+        const wsProtocol = base.startsWith("https") ? "wss" : "ws";
+        const wsBase = base.replace(/^https?:\/\//, "");
+        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/summary/${cameraId}`;
+        const ws = new WebSocket(wsUrl);
+
+        summaryRefs.current[cameraId] = ws;
+
+        ws.onopen = () => console.log(`📊 Summary WS connected: camera ${cameraId}`);
+        ws.onclose = () => {
+            console.log(`Summary WS closed: camera ${cameraId}`);
+            delete summaryRefs.current[cameraId];
+        };
+        ws.onerror = (err) => console.error("Summary WS error:", err);
+
+        ws.onmessage = (event) => {
+            console.log(event);
+            try {
+                const data = JSON.parse(event.data);
+                // data = { time, avg, maybe class_behavior }
+                setDetections((prev) => [
+                    {
+                        id: Date.now(),
+                        time: data.time || new Date().toLocaleTimeString(),
+                        image: frames[cameraId]
+                            ? `data:image/jpeg;base64,${frames[cameraId]}`
+                            : null,
+                        avg: data.avg,
+                    },
+                    ...prev,
+                ]);
+            } catch (err) {
+                console.error("⚠️ summary parse error:", err);
+            }
+        };
     };
 
     const connectWebSocket = (cameraId) => {
@@ -56,7 +97,9 @@ const Record = () => {
 
     // ---------- เปิดกล้องทั้งหมด ----------
     useEffect(() => {
-        let retryInterval;
+        const retryRef = { current: null };
+        let scanningToastId = null;
+
         const initCameras = async () => {
             try {
                 const res = await axios.get("camera/list-camera", {
@@ -65,27 +108,48 @@ const Record = () => {
                 const list = res.data.cameras || [];
                 setCameras(list);
 
+                // ✅ ถ้ายังไม่เจอกล้อง → ให้ retry ทุก 3 วิ
                 if (list.length === 0) {
-                    toast.loading("กำลังสแกนกล้อง...");
-                    if (!retryInterval) retryInterval = setInterval(initCameras, 3000);
+                    if (!scanningToastId) {
+                        scanningToastId = toast.loading("กำลังสแกนกล้อง...");
+                    }
+                    if (!retryRef.current) {
+                        retryRef.current = setInterval(initCameras, 3000);
+                    }
                     return;
                 }
 
-                clearInterval(retryInterval);
+                // ✅ เจอกล้องแล้ว → ยกเลิกการ retry + ปิด toast ที่ค้าง
+                if (retryRef.current) {
+                    clearInterval(retryRef.current);
+                    retryRef.current = null;
+                }
+                toast.dismiss(); // ปิด toast ที่ค้างทั้งหมด
+
                 await axios.get("camera/open-all", { timeout: 60000 });
                 toast.success(`เปิดกล้องทั้งหมด (${list.length}) แล้ว!`);
+
                 list.forEach((cam) => connectWebSocket(cam.id));
+
             } catch (err) {
                 console.error(err);
                 toast.error("เกิดข้อผิดพลาดขณะโหลดกล้อง");
             }
         };
+
         initCameras();
-        return () => clearInterval(retryInterval);
+
+        // ✅ cleanup ตอนออกจากหน้า
+        return () => {
+            if (retryRef.current) clearInterval(retryRef.current);
+            toast.dismiss();
+        };
     }, []);
+
 
     // ---------- ปุ่ม ----------
     const handleCloseCamera = async (id) => {
+        setIsRecording(false)
         try {
             await axios.get(`camera/close-camera/${id}`);
             safeCloseWS(id);
@@ -115,12 +179,20 @@ const Record = () => {
 
     // ปิดกล้องทั้งหมด
     const handleCloseAll = async () => {
+        setIsRecording(false)
         try {
             Object.keys(wsRefs.current).forEach((id) => safeCloseWS(id));
+            Object.key(summaryRefs.current).forEach((id) => {
+                try {
+                    summaryRefs.current[id].close();
+                    delete summaryRefs.current[id]
+                } catch (err) {
+                    console.error("Close WS Summary error:", err)
+                }
+            })
             await axios.get("camera/close-all");
             setFrames({});
             toast.success("ปิดกล้องทั้งหมดแล้ว");
-            setIsRecording(false)
         } catch {
             toast.error("ปิดกล้องทั้งหมดไม่สำเร็จ");
         }
@@ -131,6 +203,9 @@ const Record = () => {
         try {
             const resStartDetect = await axios.get(`camera/start-detect/${cameraId}`)
             console.log(resStartDetect);
+
+            connectSummarySocket(cameraId);
+            toast.success(`เริ่มตรวจจับกล้อง ${cameraId}`);
 
         } catch (error) {
             console.error("การตรวจจับเกิดข้อผิดพลาด", error)

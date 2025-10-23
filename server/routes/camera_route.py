@@ -55,119 +55,133 @@ def open_camera_instance(camera_id: str):
         "seconds": 0, # นับวินาที
         "class_behavior": empty_flat_dict_behavior(), #กำลัง class เริ่มต้น
         "history_5min": [], # ประวัติ 5 นาที
-        "history_1hr": [], # ประวัติ 1 ชม
         "last_frame": None, # เก็บภาพจาก model ครั้งสุดท้ายของ frame ส่งมีการส่งไปแสดงผล frontend
+        "frame_count": 0,
         # สะสมต่อกล้อง
-        "count": {
+        "frame_class_count": {
             "Focused": 0,
             "Drinking": 0,
             "Eating": 0,
             "Lookaways": 0,
             "Sleeping": 0,
             "UsingPhone": 0,
+            "Vacant": 0
         },
-        "sum": {
+        "frame_conf_sum": {
             "Focused": 0.0,
             "Drinking": 0.0,
             "Eating": 0.0,
             "Lookaways": 0.0,
             "Sleeping": 0.0,
             "UsingPhone": 0.0,
+            "Vacant": 0.0
         },
     }
     print(f"✅ Camera {camera_id} opened")
 
 # ✅ loop ตรวจจับ YOLO ต่อกล้อง
 async def camera_loop(camera_id: str):
-    frame_count = 0
-    cam_state = cameras.get(camera_id)
-    if not cam_state:
-        print(f"❌ camera_loop: {camera_id} not found")
-        return
+    try:
+        cam_state = cameras.get(camera_id)
+        if not cam_state:
+            print(f"❌ camera_loop: {camera_id} not found")
+            return
 
-    cap = cam_state.get("cap")
-    if cap is None or not cap.isOpened():
-        print(f"❌ camera_loop: cap invalid for {camera_id}")
+        cap = cam_state.get("cap")
+        if cap is None or not cap.isOpened():
+            print(f"❌ camera_loop: cap invalid for {camera_id}")
+            cam_state["detecting"] = False
+            return
+
+        loop = asyncio.get_event_loop()
+
+        print(f"🧠 start detect+calc on camera {camera_id}")
+        last_check_time = time.time()
+
+        # เงื่อนต้องเปิดกล้อง และ กำลังตรวจจับ
+        while cam_state.get("running") and cam_state.get("detecting") and cap.isOpened():
+            found_classes = set()
+            ret, frame = cap.read()
+            if not ret:
+                await asyncio.sleep(0.03)
+                continue
+            cam_state["frame_count"] += 1
+            # 🔹 YOLO ตรวจจับ
+
+            results = await loop.run_in_executor(
+                None, lambda: model.predict(source=frame, conf=0.2, device="cpu", verbose=False)
+            )
+            annotated = results[0].plot()
+
+            for box in results[0].boxes:  # type: ignore
+                    cls = int(box.cls)
+                    conf = float(box.conf.item())
+                    label = model.names[cls]
+                    if conf > 0.6:
+                        found_classes.add(label)
+                        cam_state["frame_class_count"][label] += 1
+                        cam_state["frame_conf_sum"][label] += conf
+
+            # 🔹 แปลงเป็น JPEG และเก็บไว้
+            ok, buf = cv2.imencode(".jpg", annotated)
+            if ok:
+                cam_state["last_frame"] = buf.tobytes()
+
+            now = time.time()
+
+            if now - last_check_time >= 1:
+                cam_state["seconds"] += 1
+                last_check_time = now
+                
+                print(f"กล้อง {int(camera_id) + 1} 1 วิ ล่าสุด (จาก {cam_state["frame_count"]} frame)")
+                
+                if cam_state["seconds"] >= 30:
+                    print(f"\n📸 กล้อง {camera_id} ครบ 30 วิ - รวม {cam_state["frame_count"]} เฟรม และ เฟรม label {cam_state["frame_class_count"]}")
+
+                    # avg = calculate_average(cam_state["count"], cam_state["sum"])
+                    # print(f"📊 กล้อง {int(camera_id) + 1} avg(30 วิ): {avg}")
+
+                    # # สร้าง list ของคลาส
+                    # HIGH_CLASSES = ["Focused", "Drinking", "Eating"]
+                    # LOW_CLASSES = ["Lookaways", "Sleeping", "UsingPhone"]
+                    # # และนำค่า list มากำหนดค่าจากตัวแปร avg ที่คำนวนตาม lable ที่กำหนดไว้
+                    # high_dict = {k: avg.get(k, 0.0) for k in HIGH_CLASSES}
+                    # low_dict = {k: avg.get(k, 0.0) for k in LOW_CLASSES}
+                    # # คำนวนค่าเฉลี่ยจาก sub class 3 class เพื่อหาว่าตัวไหน High Low ในช่วงนี้อะไรเยอะกว่า
+                    # high_avg = round(sum(high_dict.values()) / len(high_dict), 3)
+                    # low_avg = round(sum(low_dict.values()) / len(low_dict), 3)
+
+                    # # state class_behavior เก็บ time High_Attention Low_Attention และมี sub class เป็น avg details ตามที่กำหนดไว้
+                    # cam_state["class_behavior"] = {
+                    #     "time": datetime.now().strftime("%H:%M:%S"), 
+                    #     "High_Attention": {
+                    #         "avg": high_avg,
+                    #         "details": high_dict
+                    #     },
+                    #     "Low_Attention": {
+                    #         "avg": low_avg,
+                    #         "details": low_dict
+                    #     }
+                    # }
+                    
+                    # reset count sum เป็น 0 เพื่อคำนวณใหม่
+                    for k in cam_state["frame_class_count"]:
+                        cam_state["frame_class_count"][k] = 0
+                    for k in cam_state["frame_conf_sum"]:
+                        cam_state["frame_conf_sum"][k] = 0.0
+                    cam_state["frame_count"] = 0
+                    cam_state["seconds"] = 0
+
+                    print(f"🎯 class_behavior กล้อง {camera_id}: {cam_state['class_behavior']}")
+
+            await asyncio.sleep(0.033) # 30 fps
+
+        print(f"🛑 stop detect on camera {camera_id}")
         cam_state["detecting"] = False
-        return
+    except asyncio.CancelledError:
+        print(f"⚠️ camera_loop cancelled for {camera_id}")
+    
 
-    print(f"🧠 start detect+calc on camera {camera_id}")
-    last_check_time = time.time()
-    # เงื่อนต้องเปิดกล้อง และ กำลังตรวจจับ
-    while cam_state.get("running") and cam_state.get("detecting") and cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            await asyncio.sleep(0.03)
-            continue
-
-        frame_count += 1
-
-        # 🔹 YOLO ตรวจจับ
-        results = model.predict(source=frame, conf=0.2, device="cpu", verbose=False)
-        annotated = results[0].plot()
-
-        for box in results[0].boxes:  # type: ignore
-                cls = int(box.cls)
-                conf = float(box.conf.item())
-                label = model.names[cls]
-                if conf > 0.5 and label in cam_state["count"]:
-                    cam_state["count"][label] += 1
-                    cam_state["sum"][label] += conf
-
-        # 🔹 แปลงเป็น JPEG และเก็บไว้
-        ok, buf = cv2.imencode(".jpg", annotated)
-        if ok:
-            cam_state["last_frame"] = buf.tobytes()
-
-        now = time.time()
-
-        if now - last_check_time >= 1:
-            cam_state["seconds"] += 1
-            last_check_time = now
-            
-            print(f"กล้อง {camera_id} 1 วิ ล่าสุด (จาก {frame_count} frame)")
-            
-            if cam_state["seconds"] >= 30:
-                avg = calculate_average(cam_state["count"], cam_state["sum"])
-                print(f"📊 กล้อง {int(camera_id) + 1} avg(1m): {avg}")
-
-                # สร้าง list ของคลาส
-                HIGH_CLASSES = ["Focused", "Drinking", "Eating"]
-                LOW_CLASSES = ["Lookaways", "Sleeping", "UsingPhone"]
-                # และนำค่า list มากำหนดค่าจากตัวแปร avg ที่คำนวนตาม lable ที่กำหนดไว้
-                high_dict = {k: avg.get(k, 0.0) for k in HIGH_CLASSES}
-                low_dict = {k: avg.get(k, 0.0) for k in LOW_CLASSES}
-                # คำนวนค่าเฉลี่ยจาก sub class 3 class เพื่อหาว่าตัวไหน High Low ในช่วงนี้อะไรเยอะกว่า
-                high_avg = round(sum(high_dict.values()) / len(high_dict), 3)
-                low_avg = round(sum(low_dict.values()) / len(low_dict), 3)
-
-                # state class_behavior เก็บ time High_Attention Low_Attention และมี sub class เป็น avg details ตามที่กำหนดไว้
-                cam_state["class_behavior"] = {
-                    "time": datetime.now().strftime("%H:%M:%S"), 
-                    "High_Attention": {
-                        "avg": high_avg,
-                        "details": high_dict
-                    },
-                    "Low_Attention": {
-                        "avg": low_avg,
-                        "details": low_dict
-                    }
-                }
-
-                # reset count sum เป็น 0 เพื่อคำนวณใหม่
-                frame_count = 0
-                for k in cam_state["count"]:
-                    cam_state["count"][k] = 0
-                for k in cam_state["sum"]:
-                    cam_state["sum"][k] = 0.0
-                cam_state["seconds"] = 0
-
-                print(f"🎯 class_behavior กล้อง {camera_id}: {cam_state['class_behavior']}")
-
-        await asyncio.sleep(0.033) # 30 fps
-
-    print(f"🛑 stop detect on camera {camera_id}")
-    cam_state["detecting"] = False
 
 # ✅ เปิดกล้องทั้งหมดพร้อมกัน
 @camera_router.get("/open-all")
@@ -231,13 +245,21 @@ async def camera_close(camera_id: str):
 # ✅ ปิดกล้องทั้งหมด
 @camera_router.get("/close-all")
 async def close_all_cameras():
+
     for cam_id, cam_state in list(cameras.items()):
         try:
+            
             cam_state["detecting"] = False
             cam_state["running"] = False
+
+            task = cam_state.get("task")
+            if task and not task.done():
+                task.cancel()
+
             cap = cam_state.get("cap")
             if cap and cap.isOpened():
                 cap.release()
+                
         except Exception as e:
             print(f"Error closing {cam_id}: {e}")
     cameras.clear()
@@ -254,6 +276,8 @@ async def check_list_camera():
         await async_scan_cameras()
         return {"status": "scanning", "cameras": []}
     return {"status": "done", "cameras": available_cameras}
+
+# ------------- WebSocket -------------
 
 # ✅ WebSocket สำหรับ stream แต่ละกล้อง
 @camera_router.websocket("/ws/camera/{camera_id}")
@@ -294,8 +318,12 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
         print(f"❌ WS disconnected for camera {camera_id}")
 
     finally:
+        try:
+            if not websocket.client_state.name == "CLOSED":
+                await websocket.close()
+        except Exception as e:
+            print(f"🧹 WS stream for camera {camera_id} ended")
         print(f"🧹 WS stream for camera {camera_id} ended")
-        await websocket.close()
 
 # WebSocket ส่งภาพที่วินาที 30 วิ ไปแสดงผล
 @camera_router.websocket("/ws/camera/summary/{camera_id}")

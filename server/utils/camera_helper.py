@@ -14,17 +14,10 @@ def empty_flat_dict_behavior ():
             "Lookaways": 0.0,
             "Sleeping": 0.0,
             "UsingPhone": 0.0,
+            "Vacant": 0.0
     }
 
-def reset_count():
-    return {
-        "Focused": 0,
-        "Drinking": 0,
-        "Eating": 0,
-        "Lookaways": 0,
-        "Sleeping": 0,
-        "UsingPhone": 0,
-    }
+
 
 def calculate_average(dict_count: dict, dict_sum: dict):
     result = {}

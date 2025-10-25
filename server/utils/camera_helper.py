@@ -4,20 +4,20 @@ import cv2
 import json
 from decimal import Decimal, ROUND_HALF_EVEN
 from ultralytics import YOLO
+from utils.instance_class import new_status_dict
 
-
-def empty_flat_dict_behavior ():
+def create_camera_state(cap):
+    """คืนค่า state เริ่มต้นของแต่ละกล้อง"""
     return {
-            "Focused": 0.0,
-            "Drinking": 0.0,
-            "Eating": 0.0,
-            "Lookaways": 0.0,
-            "Sleeping": 0.0,
-            "UsingPhone": 0.0,
-            "Vacant": 0.0
+        "cap": cap,                   # กล้องที่เปิดอยู่
+        "thread": None,               # Thread หรือ task ที่ใช้ detect
+        "running": True,              # เปิดอยู่หรือไม่
+        "detecting": False,           # กำลังตรวจจับอยู่ไหม
+        "seconds": 0,                 # นับเวลา
+        "last_frame": None,           # เฟรมล่าสุด
+        "frame": 0,                   # นับเฟรม
+        "status": new_status_dict(),  # ✅ สถานะคลาสทั้งหมด
     }
-
-
 
 def calculate_average(dict_count: dict, dict_sum: dict):
     result = {}

@@ -17,7 +17,7 @@ def get_model():
         raise FileNotFoundError(f"Model not found: {MODEL_PATH}")
     
     try:
-        print(f"[model_loader] ดึงโมเดลจาก runs/detect/train/weights/best.pt")
+        print(f"[model_loader] ดึงโมเดลจาก {MODEL_PATH}")
         model = YOLO(MODEL_PATH)
         print(f"[model_loader] โหลดโมเดลสำเร็จ ({len(model.names)}) classes")
         return model

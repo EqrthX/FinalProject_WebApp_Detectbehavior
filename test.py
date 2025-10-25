@@ -125,5 +125,25 @@ def run_test(camera_id=0):
     t.start()
     t.join()
 
+array_label = []
+def set_model():
+    
+    labels = list(model.names.values())
+    print(labels)
+    # cap = cv2.VideoCapture(0)
+    # while cap.isOpened:
+    #     ret, frame = cap.read()
+
+    #     # 🔹 ใช้ YOLO ตรวจจับ
+    #     results = model.predict(source=frame, conf=0.3, device="cpu", verbose=False)
+    #     annotated = results[0].plot()
+
+      
+    #     if cv2.waitKey(1) & 0xFF == ord('q'):
+    #         break
+
+
+
 if __name__ == "__main__":
-    run_test(0)
+    # run_test(0)
+    set_model()

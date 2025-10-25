@@ -145,7 +145,38 @@ const Record = () => {
             toast.dismiss();
         };
     }, []);
+    
+    // ---------- ออกจากหน้านี้ให้ปิดกล้องทั้งหมด ----------
+    useEffect(() => {
+        return () => {
+            console.log("ปิดกล้องทั้งหมด");
 
+            Object.keys(wsRefs.current).forEach((id) => {
+                try {
+                    wsRefs.current[id].close();
+                    delete wsRefs.current[id];
+                } catch (error) {
+                    console.error("Error closing WS", error)
+                }
+            });
+
+            Object.keys(summaryRefs.current).forEach((id) => {
+                try {
+                    summaryRefs.current[id].close();
+                    delete summaryRefs.current[id];
+                } catch (error) {
+                    console.error("Error closing summary WS", error);
+                }
+            })
+
+            try {
+                axios.get("camera/close-all")
+                console.log("ปิดกล้องทั้งหมด");
+            } catch (error) {
+                console.error("ปิดกล้องทั้งหมดก่อนออกจาก Record นี้ไม่สำเร็จ", error)
+            }
+        }
+    }, [])
 
     // ---------- ปุ่ม ----------
     const handleCloseCamera = async (id) => {

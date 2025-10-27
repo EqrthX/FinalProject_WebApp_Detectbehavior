@@ -1,8 +1,8 @@
 task: detect
 mode: train
 model: yolo11n.pt
-data: C:\Users\User\Desktop\train\datasetv1\data.yaml
-epochs: 300
+data: C:\Users\User\Desktop\train\Project_Detection.v2-model-v2.yolov11\data.yaml
+epochs: 200
 time: null
 patience: 100
 batch: 16
@@ -11,7 +11,7 @@ save: true
 save_period: -1
 cache: false
 device: null
-workers: 14
+workers: 8
 project: null
 name: train
 exist_ok: false

@@ -85,7 +85,6 @@ const Record = () => {
             console.error(`WS error cam ${cameraId}`, e);
             toast.error(`สตรีมกล้อง ${cameraId} มีปัญหา`);
         };
-
         ws.onmessage = (event) => {
 
             if (typeof event.data === "string" && event.data.startsWith("error:")) {
@@ -146,7 +145,38 @@ const Record = () => {
             toast.dismiss();
         };
     }, []);
+    
+    // ---------- ออกจากหน้านี้ให้ปิดกล้องทั้งหมด ----------
+    useEffect(() => {
+        return () => {
+            console.log("ปิดกล้องทั้งหมด");
 
+            Object.keys(wsRefs.current).forEach((id) => {
+                try {
+                    wsRefs.current[id].close();
+                    delete wsRefs.current[id];
+                } catch (error) {
+                    console.error("Error closing WS", error)
+                }
+            });
+
+            Object.keys(summaryRefs.current).forEach((id) => {
+                try {
+                    summaryRefs.current[id].close();
+                    delete summaryRefs.current[id];
+                } catch (error) {
+                    console.error("Error closing summary WS", error);
+                }
+            })
+
+            try {
+                axios.get("camera/close-all")
+                console.log("ปิดกล้องทั้งหมด");
+            } catch (error) {
+                console.error("ปิดกล้องทั้งหมดก่อนออกจาก Record นี้ไม่สำเร็จ", error)
+            }
+        }
+    }, [])
 
     // ---------- ปุ่ม ----------
     const handleCloseCamera = async (id) => {
@@ -255,8 +285,8 @@ const Record = () => {
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
                             <div className="flex items-center space-x-3">
                                 <div
-                                    className={`w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-offset-2 ${isRecording ? "ring-red-300" : "ring-green-300"
-                                        }`}
+                                    className={`w-5 h-5 rounded-full ring-2 ring-offset-2 ${isRecording ? "ring-red-300" : "ring-green-300"
+                                        } flex items-center justify-center`}
                                 >
                                     <div
                                         className={`w-3.5 h-3.5 rounded-full ${isRecording

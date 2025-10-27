@@ -11,7 +11,7 @@
 - มี swagger สำหรับ Test API
 - ใช้ Cors สำหรับให้ Frontend เรียก Endpoint
 ---
-## Yolov8n 
+## Yolov11n 
 - ใช้สำหรับระบบตรวจจับพฤติกรรม
 - มีการเก็บ dataset สำหรับตรวจจับพฤติกรรม
 

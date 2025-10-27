@@ -1,16 +1,13 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
 from starlette.types import HTTPExceptionHandler
-from ultralytics import YOLO
 import cv2
 import time
-import os
 import base64
 import asyncio
-from utils.camera_helper import create_camera_state
+from utils.camera_helper import create_camera_state, calculate_average, compare_class
 from utils.model_loader import get_model
 from datetime import datetime
-
+import json
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 model = get_model()
@@ -59,7 +56,6 @@ async def async_scan_cameras():
         finally:
             is_scanning = False  # ✅ ปลดล็อกเสมอ
 
-
 # ✅ ฟังก์ชันเปิดกล้องเดี่ยว (ใช้ภายใน)
 def open_camera_instance(camera_id: str):
     source = int(camera_id)
@@ -89,7 +85,7 @@ async def camera_loop(camera_id: str):
             print(f"❌ camera_loop: cap invalid for {camera_id}")
             cam_state["detecting"] = False
             return
-
+        print(f"ID {cam_state["track_id"]} ที่เจอของในกล้องที่ {camera_id} ")
         loop = asyncio.get_event_loop()
 
         print(f"🧠 start detect+calc on camera {camera_id}")
@@ -97,7 +93,6 @@ async def camera_loop(camera_id: str):
 
         # เงื่อนต้องเปิดกล้อง และ กำลังตรวจจับ
         while cam_state.get("running") and cam_state.get("detecting") and cap.isOpened():
-            found_classes = set()
             ret, frame = cap.read()
             if not ret:
                 await asyncio.sleep(0.03)
@@ -106,7 +101,7 @@ async def camera_loop(camera_id: str):
             # 🔹 YOLO ตรวจจับ
 
             results = await loop.run_in_executor(
-                None, lambda: model.predict(source=frame, conf=0.2, device="cpu", verbose=False)
+                None, lambda: model.track(source=frame, conf=0.2, device="cpu", verbose=False, tracker="bytetrack.yaml")
             )
             annotated = results[0].plot()
 
@@ -114,14 +109,19 @@ async def camera_loop(camera_id: str):
                     cls = int(box.cls)
                     conf = float(box.conf.item())
                     label = model.names[cls]
-                    print(f"🔍 Detect: {label} ({conf:.2f})")
-                    if label not in cam_state["status"]["frame_class_count"]:
-                        print(f"⚠️ Skip '{label}' — not in dict keys {list(cam_state['status']['frame_class_count'].keys())}")
-                        continue
-                    if conf > 0.3:
-                        found_classes.add(label)
-                        cam_state["status"]["frame_class_count"][label] += 1
-                        cam_state["status"]["frame_class_sum_conf"][label] += conf
+                    track_id = int(box.id) if box.id is not None else -1
+                    
+                    # เช็คว่า track id ตรงกับ state track_id ไหม
+                    if track_id == cam_state["track_id"]:
+                        print(f"กล้องตัวที่ {camera_id} จับ ID {cam_state["track_id"]}")
+                        if conf > 0.3:
+                            cam_state["status"]["frame_class_count"][label] += 1
+                            cam_state["status"]["frame_class_sum_conf"][label] += conf
+                        print(f"🔍 ID {track_id} Detect: {label} ({conf:.2f})")
+                    
+                    # ถ้าคนเดินผ่านละไม่ใช่ id ที่ track ไว้ตามกล้อง กล้องจะไม่สนใจ id นั้น
+                    elif track_id != -1 and track_id != cam_state["track_id"]:
+                        print(f"🚫 กล้อง {camera_id} ไม่สนใจ ID {track_id} (กำลังจับ ID {cam_state['track_id']})")
 
             # 🔹 แปลงเป็น JPEG และเก็บไว้
             ok, buf = cv2.imencode(".jpg", annotated)
@@ -134,55 +134,53 @@ async def camera_loop(camera_id: str):
                 cam_state["seconds"] += 1
                 last_check_time = now
                 
-                print(f"กล้อง {int(camera_id) + 1} {cam_state["seconds"]} วิ ล่าสุด (จาก {cam_state["frame"]} frame)")
+                print(f"กล้อง {int(camera_id) + 1} ID {cam_state["track_id"]} {cam_state["seconds"]} วิ ล่าสุด (จาก {cam_state["frame"]} frame)")
+                print(f"counter class: {cam_state["status"]["frame_class_count"]}")
+                print(f"sumconf at class: {cam_state["status"]["frame_class_sum_conf"]}")
                 
                 if cam_state["seconds"] >= 30:
-                    print(f"\n📸 กล้อง {camera_id} ครบ 30 วิ - รวม {cam_state["frame"]} เฟรม และ เฟรม label {cam_state["status"]["frame_class_count"]}")
+                    print(f"\n📸 กล้อง {camera_id} ID {cam_state["track_id"]} ครบ 30 วิ - รวม {cam_state["frame"]} เฟรม")
+                    print(f"\n ID {cam_state["track_id"]} จำนวนที่เจอ Class Counter {cam_state["status"]["frame_class_count"]}")
+                    print(f"\n ID {cam_state["track_id"]} ผลรวมค่าความแม่นยำ Class Conf {cam_state["status"]["frame_class_sum_conf"]}")
 
-                    # avg = calculate_average(cam_state["count"], cam_state["sum"])
-                    # print(f"📊 กล้อง {int(camera_id) + 1} avg(30 วิ): {avg}")
-
-                    # # สร้าง list ของคลาส
-                    # HIGH_CLASSES = ["Focused", "Drinking", "Eating"]
-                    # LOW_CLASSES = ["Lookaways", "Sleeping", "UsingPhone"]
-                    # # และนำค่า list มากำหนดค่าจากตัวแปร avg ที่คำนวนตาม lable ที่กำหนดไว้
-                    # high_dict = {k: avg.get(k, 0.0) for k in HIGH_CLASSES}
-                    # low_dict = {k: avg.get(k, 0.0) for k in LOW_CLASSES}
-                    # # คำนวนค่าเฉลี่ยจาก sub class 3 class เพื่อหาว่าตัวไหน High Low ในช่วงนี้อะไรเยอะกว่า
-                    # high_avg = round(sum(high_dict.values()) / len(high_dict), 3)
-                    # low_avg = round(sum(low_dict.values()) / len(low_dict), 3)
-
-                    # # state class_behavior เก็บ time High_Attention Low_Attention และมี sub class เป็น avg details ตามที่กำหนดไว้
-                    # cam_state["class_behavior"] = {
-                    #     "time": datetime.now().strftime("%H:%M:%S"), 
-                    #     "High_Attention": {
-                    #         "avg": high_avg,
-                    #         "details": high_dict
-                    #     },
-                    #     "Low_Attention": {
-                    #         "avg": low_avg,
-                    #         "details": low_dict
-                    #     }
-                    # }
+                    avg = calculate_average(
+                        cam_state["frame"], 
+                        cam_state["status"]["frame_class_count"], 
+                        cam_state["status"]["frame_class_sum_conf"]
+                    )
                     
-                    print(f"🎯 class ที่เจอในกล้อง {int(camera_id) + 1}: {cam_state["status"]}")
+                    print(avg)
+                    data = {
+                        "ID": cam_state["track_id"],
+                        "Time": datetime.now().strftime("%H:%M:%S"),
+                        "Data_avg": avg
+                    }
+                    file_name = "test_data.json"
+                    with open(file_name, "w") as json_file:
+                        json.dump(data, json_file, indent=4)
+                    # compare_class(avg_dict=avg)
+                    
+                    break
+                    cam_state["class_behavior"] = {
+                        "Time": datetime.now().strftime("%H:%M:%S"),
+                        "Result": avg
+                    }
 
+                    print(f"🎯 class ที่เจอในกล้อง {int(camera_id) + 1}: { cam_state["class_behavior"]}")
                     # reset count sum เป็น 0 เพื่อคำนวณใหม่
                     for k in cam_state["status"]["frame_class_count"]:
                         cam_state["status"]["frame_class_count"][k] = 0
                     for k in cam_state["status"]["frame_class_sum_conf"]:
                         cam_state["status"]["frame_class_sum_conf"][k] = 0.0
-                    cam_state["status"]["frame"] = 0
                     cam_state["seconds"] = 0
 
-            await asyncio.sleep(0.033) # 30 fps
+            await asyncio.sleep(0.016) # ~60 fps
 
         print(f"🛑 stop detect on camera {camera_id}")
         cam_state["detecting"] = False
     except asyncio.CancelledError:
         print(f"⚠️ camera_loop cancelled for {camera_id}")
     
-
 
 # ✅ เปิดกล้องทั้งหมดพร้อมกัน
 @camera_router.get("/open-all")
@@ -220,11 +218,14 @@ async def start_detect(camera_id: str):
 # endpoint ที่หยุดการทำงาน
 @camera_router.get("/stop-all")
 async def stop_all_detections():
+
     stopped = []
+
     for cam_id, cam_state in cameras.items():
         if cam_state.get("detecting"):
             cam_state["detecting"] = False
             stopped.append(cam_id)
+            
     print(f"🛑 Stopped detection for cameras: {stopped}")
     return {"message": f"Stopped {len(stopped)} cameras", "stopped": stopped}
 
@@ -312,9 +313,15 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
                 await websocket.send_text("error: cannot read frame")
                 break
 
-            results = model.predict(source=frame, conf=0.2, device="cpu", verbose=False)
+            results = model.track(source=frame, conf=0.2, device="cpu", verbose=False, tracker="bytetrack.yaml")
             annotated = results[0].plot()
 
+            for box in results[0].boxes:
+                track_id = int(box.id) if box.id is not None else -1
+
+                # เพิ่มการตรวจสอบว่าถ้าไม่มีใครในกล้องให้ track id คนนั้นเป็นคนแรก
+                if "track_id" is not cam_state or cam_state["track_id"] is None:
+                    cam_state["track_id"] = track_id
             ok, buffer = cv2.imencode(".jpg", annotated)
             if ok:
                 cam_state["last_frame"] = buffer.tobytes()
@@ -322,7 +329,7 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
             jpg_as_text = base64.b64encode(buffer).decode("utf-8")
             await websocket.send_text(jpg_as_text)
 
-            await asyncio.sleep(0.033)  # ~30 fps
+            await asyncio.sleep(0.016)  # ~60 fps
 
     except WebSocketDisconnect:
         print(f"❌ WS disconnected for camera {camera_id}")

@@ -47,16 +47,25 @@ const AdminNavbar = () => {
                   " lg:w-52 lg:h-10 lg:px-4 lg:gap-3" // <-- จอใหญ่
               }
             >
-              <img
-                className="w-3 h-3 md:w-3.5 md:h-3.5"
-                src={menuDB}
-                alt="menuDB"
-              />
-              Dashboard
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="w-3 h-3 md:w-3.5 md:h-3.5 transition-all duration-200"
+                    src={menuDB}
+                    alt="menuDB"
+                    style={{
+                      filter: isActive
+                        ? "brightness(0) invert(1)" // ✅ สีขาวตอน active
+                        : "brightness(0) invert(0)", // ✅ สีดำตอนปกติ
+                    }}
+                  />
+                  Dashboard
+                </>
+              )}
             </NavLink>
 
             <NavLink
-              to="/admin/TeachingSchedule"
+              to="/admin/AdminTeachers"
               className={({ isActive }) =>
                 (isActive
                   ? "bg-[#38a738] text-white"
@@ -66,16 +75,25 @@ const AdminNavbar = () => {
                 " lg:w-52 lg:h-10 lg:px-4 lg:gap-3"
               }
             >
-              <img
-                className="w-4 h-4 md:w-5 md:h-5"
-                src={menuCL}
-                alt="menuCL"
-              />
-              ตารางสอน
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="w-5 h-5 md:w-5 md:h-5 transition-all duration-200"
+                    src={menuCL}
+                    alt="menuCL"
+                    style={{
+                      filter: isActive
+                        ? "brightness(0) invert(1)" // ✅ สีขาวตอน active
+                        : "brightness(0) invert(0)", // ✅ สีดำตอนปกติ
+                    }}
+                  />
+                  อาจารย์
+                </>
+              )}
             </NavLink>
 
             <NavLink
-              to="/admin/Teachers"
+              to="/admin/AdminTeachingschedule"
               className={({ isActive }) =>
                 (isActive
                   ? "bg-[#38a738] text-white"
@@ -85,12 +103,21 @@ const AdminNavbar = () => {
                 " lg:w-52 lg:h-10 lg:px-4 lg:gap-3"
               }
             >
-              <img
-                className="w-3.5 h-3.5 md:w-4 md:h-4"
-                src={menuTC}
-                alt="menuTC"
-              />
-              อาจารย์
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="w-3.5 h-3.5 md:w-4 md:h-4 transition-all duration-200"
+                    src={menuTC}
+                    alt="menuTC"
+                    style={{
+                      filter: isActive
+                        ? "brightness(0) invert(1)" // ✅ สีขาวตอน active
+                        : "brightness(0) invert(0)", // ✅ สีดำตอนปกติ
+                    }}
+                  />
+                  ตารางสอน
+                </>
+              )}
             </NavLink>
 
             <AdminLogout />

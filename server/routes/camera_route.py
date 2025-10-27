@@ -18,7 +18,7 @@ available_cameras = []
 last_scan_time = 0
 backends_cameras = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
 is_scanning = False
-scan_lock = asyncio.Lock()  # ✅ lock กัน async call ซ้ำ
+scan_lock = asyncio.Lock()  # lock กัน async call ซ้ำ
 
 # ✅ ฟังก์ชันสแกนกล้องในเครื่อง
 async def async_scan_cameras():
@@ -320,7 +320,7 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
                 track_id = int(box.id) if box.id is not None else -1
 
                 # เพิ่มการตรวจสอบว่าถ้าไม่มีใครในกล้องให้ track id คนนั้นเป็นคนแรก
-                if "track_id" is not cam_state or cam_state["track_id"] is None:
+                if "track_id" not in cam_state or cam_state["track_id"] is None:
                     cam_state["track_id"] = track_id
             ok, buffer = cv2.imencode(".jpg", annotated)
             if ok:
@@ -348,6 +348,10 @@ async def camera_summary(websocket: WebSocket, camera_id: str):
     await websocket.accept()
     cam_state = cameras.get(camera_id)
 
+    if cam_state is None:
+        print(f"หา State ของกล้องไม่เจอของกล้องที่ {camera_id}")
+        await websocket.close()
+        return
     try:
         while cam_state.get("running") and cam_state.get("detecting"):
             await asyncio.sleep(30)

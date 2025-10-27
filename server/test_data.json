@@ -1,13 +1,23 @@
 {
     "ID": 1,
-    "Time": "14:50:53",
+    "Time": "18:38:41",
     "Data_avg": {
-        "Talking": {
-            "avg_conf_detect": 0.7,
-            "avg_conf_frame": 0.26,
-            "ratio": 0.37
+        "Ipad": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "Book": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
         },
         "Phone": {
+            "avg_conf_detect": 0.46,
+            "avg_conf_frame": 0.02,
+            "ratio": 0.03
+        },
+        "LookingAway": {
             "avg_conf_detect": 0.0,
             "avg_conf_frame": 0.0,
             "ratio": 0.0
@@ -17,32 +27,22 @@
             "avg_conf_frame": 0.0,
             "ratio": 0.0
         },
-        "UsingPhone": {
-            "avg_conf_detect": 0.0,
-            "avg_conf_frame": 0.0,
-            "ratio": 0.0
-        },
         "Focused": {
             "avg_conf_detect": 0.0,
             "avg_conf_frame": 0.0,
             "ratio": 0.0
         },
-        "Looking_at_the_board": {
-            "avg_conf_detect": 0.62,
-            "avg_conf_frame": 0.01,
-            "ratio": 0.01
+        "Talking": {
+            "avg_conf_detect": 0.57,
+            "avg_conf_frame": 0.22,
+            "ratio": 0.39
         },
-        "LookingAway": {
-            "avg_conf_detect": 0.3,
-            "avg_conf_frame": 0.01,
-            "ratio": 0.02
-        },
-        "Ipad": {
-            "avg_conf_detect": 0.31,
+        "UsingPhone": {
+            "avg_conf_detect": 0.0,
             "avg_conf_frame": 0.0,
-            "ratio": 0.01
+            "ratio": 0.0
         },
-        "Book": {
+        "Looking_at_the_board": {
             "avg_conf_detect": 0.0,
             "avg_conf_frame": 0.0,
             "ratio": 0.0

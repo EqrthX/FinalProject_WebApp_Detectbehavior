@@ -149,16 +149,16 @@ async def camera_loop(camera_id: str):
                         cam_state["status"]["frame_class_sum_conf"]
                     )
                     
-                    print(avg)
+                    compare = compare_class(avg_dict=avg)
                     data = {
                         "ID": cam_state["track_id"],
                         "Time": datetime.now().strftime("%H:%M:%S"),
-                        "Data_avg": avg
+                        "Data Average": avg,
+                        "Compare(ยังไม่ได้เปรียบเทียบ)": compare
                     }
                     file_name = "test_data.json"
                     with open(file_name, "w") as json_file:
                         json.dump(data, json_file, indent=4)
-                    # compare_class(avg_dict=avg)
                     
                     break
                     cam_state["class_behavior"] = {
@@ -322,10 +322,10 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
                 # เพิ่มการตรวจสอบว่าถ้าไม่มีใครในกล้องให้ track id คนนั้นเป็นคนแรก
                 if "track_id" not in cam_state or cam_state["track_id"] is None:
                     cam_state["track_id"] = track_id
+            
             ok, buffer = cv2.imencode(".jpg", annotated)
             if ok:
                 cam_state["last_frame"] = buffer.tobytes()
-            
             jpg_as_text = base64.b64encode(buffer).decode("utf-8")
             await websocket.send_text(jpg_as_text)
 

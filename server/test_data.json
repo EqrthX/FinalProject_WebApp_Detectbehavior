@@ -1,28 +1,9 @@
 {
+    "CameraID": "2",
     "ID": 1,
-    "Time": "18:38:41",
-    "Data_avg": {
-        "Ipad": {
-            "avg_conf_detect": 0.0,
-            "avg_conf_frame": 0.0,
-            "ratio": 0.0
-        },
-        "Book": {
-            "avg_conf_detect": 0.0,
-            "avg_conf_frame": 0.0,
-            "ratio": 0.0
-        },
-        "Phone": {
-            "avg_conf_detect": 0.46,
-            "avg_conf_frame": 0.02,
-            "ratio": 0.03
-        },
-        "LookingAway": {
-            "avg_conf_detect": 0.0,
-            "avg_conf_frame": 0.0,
-            "ratio": 0.0
-        },
-        "Taking_notes": {
+    "Time": "14:49:53",
+    "Data Average": {
+        "UsingPhone": {
             "avg_conf_detect": 0.0,
             "avg_conf_frame": 0.0,
             "ratio": 0.0
@@ -32,20 +13,40 @@
             "avg_conf_frame": 0.0,
             "ratio": 0.0
         },
-        "Talking": {
-            "avg_conf_detect": 0.57,
-            "avg_conf_frame": 0.22,
-            "ratio": 0.39
+        "Book": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
         },
-        "UsingPhone": {
+        "Talking": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "Ipad": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "Taking_notes": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "LookingAway": {
+            "avg_conf_detect": 0.34,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.01
+        },
+        "Phone": {
             "avg_conf_detect": 0.0,
             "avg_conf_frame": 0.0,
             "ratio": 0.0
         },
         "Looking_at_the_board": {
-            "avg_conf_detect": 0.0,
-            "avg_conf_frame": 0.0,
-            "ratio": 0.0
+            "avg_conf_detect": 0.46,
+            "avg_conf_frame": 0.19,
+            "ratio": 0.41
         }
     }
 }

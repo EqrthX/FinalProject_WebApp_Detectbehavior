@@ -232,10 +232,13 @@ const Record = () => {
     const handleStartDetect = async (cameraId) => {
         setIsRecording(true)
         try {
-            const resStartDetect = await axios.get(`camera/start-detect/${cameraId}`)
+            const resStartDetect = await axios.get(`camera/start-all`)
             console.log(resStartDetect);
+            const started_ids = resStartDetect.data.started || []
+            for(const id in started_ids) {
 
-            connectSummarySocket(cameraId);
+                connectSummarySocket(id);
+            }
             toast.success(`เริ่มตรวจจับกล้อง ${cameraId}`);
 
         } catch (error) {

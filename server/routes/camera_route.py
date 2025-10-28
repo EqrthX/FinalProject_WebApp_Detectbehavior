@@ -85,7 +85,7 @@ async def camera_loop(camera_id: str):
             print(f"❌ camera_loop: cap invalid for {camera_id}")
             cam_state["detecting"] = False
             return
-        print(f"ID {cam_state["track_id"]} ที่เจอของในกล้องที่ {camera_id} ")
+        print(f"ID {cam_state['track_id']} ที่เจอของในกล้องที่ {camera_id} ")
         loop = asyncio.get_event_loop()
 
         print(f"🧠 start detect+calc on camera {camera_id}")
@@ -113,7 +113,7 @@ async def camera_loop(camera_id: str):
                     
                     # เช็คว่า track id ตรงกับ state track_id ไหม
                     if track_id == cam_state["track_id"]:
-                        print(f"กล้องตัวที่ {camera_id} จับ ID {cam_state["track_id"]}")
+                        print(f"กล้องตัวที่ {camera_id} จับ ID {track_id}")
                         if conf > 0.3:
                             cam_state["status"]["frame_class_count"][label] += 1
                             cam_state["status"]["frame_class_sum_conf"][label] += conf
@@ -133,15 +133,11 @@ async def camera_loop(camera_id: str):
             if now - last_check_time >= 1:
                 cam_state["seconds"] += 1
                 last_check_time = now
-                
-                print(f"กล้อง {int(camera_id) + 1} ID {cam_state["track_id"]} {cam_state["seconds"]} วิ ล่าสุด (จาก {cam_state["frame"]} frame)")
-                print(f"counter class: {cam_state["status"]["frame_class_count"]}")
-                print(f"sumconf at class: {cam_state["status"]["frame_class_sum_conf"]}")
-                
+            
                 if cam_state["seconds"] >= 30:
-                    print(f"\n📸 กล้อง {camera_id} ID {cam_state["track_id"]} ครบ 30 วิ - รวม {cam_state["frame"]} เฟรม")
-                    print(f"\n ID {cam_state["track_id"]} จำนวนที่เจอ Class Counter {cam_state["status"]["frame_class_count"]}")
-                    print(f"\n ID {cam_state["track_id"]} ผลรวมค่าความแม่นยำ Class Conf {cam_state["status"]["frame_class_sum_conf"]}")
+                    print(f"\n📸 กล้อง {int(camera_id) + 1} ID {cam_state['track_id']} ครบ 30 วิ - รวม {cam_state['frame']} เฟรม")
+                    print(f"\n กล้องที่ {int(camera_id) + 1} ID {cam_state['track_id']} จำนวนที่เจอ Class Counter {cam_state['status']['frame_class_count']}")
+                    print(f"\n กล้องที่ {int(camera_id) + 1} ID {cam_state['track_id']} ผลรวมค่าความแม่นยำ Class Conf {cam_state['status']['frame_class_sum_conf']}")
 
                     avg = calculate_average(
                         cam_state["frame"], 
@@ -149,30 +145,30 @@ async def camera_loop(camera_id: str):
                         cam_state["status"]["frame_class_sum_conf"]
                     )
                     
-                    compare = compare_class(avg_dict=avg)
+                    compare_class(avg_dict=avg)
                     data = {
+                        "CameraID": camera_id,
                         "ID": cam_state["track_id"],
                         "Time": datetime.now().strftime("%H:%M:%S"),
                         "Data Average": avg,
-                        "Compare(ยังไม่ได้เปรียบเทียบ)": compare
                     }
                     file_name = "test_data.json"
                     with open(file_name, "w") as json_file:
                         json.dump(data, json_file, indent=4)
                     
                     break
-                    cam_state["class_behavior"] = {
-                        "Time": datetime.now().strftime("%H:%M:%S"),
-                        "Result": avg
-                    }
+                    # cam_state["class_behavior"] = {
+                    #     "Time": datetime.now().strftime("%H:%M:%S"),
+                    #     "Result": avg
+                    # }
 
-                    print(f"🎯 class ที่เจอในกล้อง {int(camera_id) + 1}: { cam_state["class_behavior"]}")
-                    # reset count sum เป็น 0 เพื่อคำนวณใหม่
-                    for k in cam_state["status"]["frame_class_count"]:
-                        cam_state["status"]["frame_class_count"][k] = 0
-                    for k in cam_state["status"]["frame_class_sum_conf"]:
-                        cam_state["status"]["frame_class_sum_conf"][k] = 0.0
-                    cam_state["seconds"] = 0
+                    # print(f"🎯 class ที่เจอในกล้อง {int(camera_id) + 1}: { cam_state['class_behavior']}")
+                    # # reset count sum เป็น 0 เพื่อคำนวณใหม่
+                    # for k in cam_state["status"]["frame_class_count"]:
+                    #     cam_state["status"]["frame_class_count"][k] = 0
+                    # for k in cam_state["status"]["frame_class_sum_conf"]:
+                    #     cam_state["status"]["frame_class_sum_conf"][k] = 0.0
+                    # cam_state["seconds"] = 0
 
             await asyncio.sleep(0.016) # ~60 fps
 
@@ -214,6 +210,23 @@ async def start_detect(camera_id: str):
     task = asyncio.create_task(camera_loop(camera_id))
     cam_state["task"] = task
     return {"message": f"Async detection started on camera {camera_id}"}
+
+@camera_router.get("/start-all")
+async def start_all_detections():
+    started = []
+    
+    # วนลูปกล้องทั้งหมดที่มี
+    for cam_id, cam_state in cameras.items():
+        # เช็คว่ากล้องเปิดอยู่ (running) และ ยังไม่ได้ตรวจจับ (not detecting)
+        if cam_state.get("running") and not cam_state.get("detecting"):
+            
+            cam_state["detecting"] = True
+            task = asyncio.create_task(camera_loop(cam_id))
+            cam_state["task"] = task
+            started.append(cam_id)
+            
+    print(f"🚀 Started detection for cameras: {started}")
+    return {"message": f"Started {len(started)} cameras", "started": started}
 
 # endpoint ที่หยุดการทำงาน
 @camera_router.get("/stop-all")
@@ -322,7 +335,6 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
                 # เพิ่มการตรวจสอบว่าถ้าไม่มีใครในกล้องให้ track id คนนั้นเป็นคนแรก
                 if "track_id" not in cam_state or cam_state["track_id"] is None:
                     cam_state["track_id"] = track_id
-            
             ok, buffer = cv2.imencode(".jpg", annotated)
             if ok:
                 cam_state["last_frame"] = buffer.tobytes()

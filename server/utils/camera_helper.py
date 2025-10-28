@@ -42,7 +42,7 @@ def calculate_average(frame_total, dict_count: dict, dict_sum: dict):
 
 def compare_class(avg_dict: dict):
     HIGH_CLASSES = ["Focused", "Looking_at_the_board", "Taking_notes"]
-    LOW_CLASSES = ["Lookaways", "Talking", "UsingPhone",]
+    LOW_CLASSES = ["LookingAway", "Talking", "UsingPhone",]
     
     high_conf_sum_detect, high_conf_sum_frame, high_ratio_sum, high_count = 0.0, 0.0, 0.0, 0
     low_conf_sum, low_conf_sum_frame, low_ratio_sum, low_count = 0.0, 0.0, 0.0, 0

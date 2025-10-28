@@ -6,7 +6,7 @@ const AdminLogout = () => {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    navigate("../pages/LoginPage");
+    navigate("/");
   };
 
   return (

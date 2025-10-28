@@ -59,7 +59,7 @@ const AdminHomePage = () => {
             {[
               { title: "คณะทั้งหมด", value: 6 },
               { title: "วิชาทั้งหมด", value: 124 },
-              { title: "อาจารย์ทั้งหมด", value: 42 },
+              // { title: "อาจารย์ทั้งหมด", value: 42 },
             ].map((item, i) => (
               <div
                 key={i}

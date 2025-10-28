@@ -46,13 +46,18 @@ const ResultsPage = () => {
 
   // กราฟวงกลม
   const data = [
-    { name: 'Focused', value: 870 },
-    { name: 'Inactive', value: 130 },
+    { name: 'Focused', value: 230 },
+    { name: 'Drinking', value: 20 },
+    { name: 'Eating', value: 20 },
+    { name: 'Lookaways', value: 20 },
+    { name: 'UsingPhone', value: 20 },
+    { name: 'Vacant', value: 20 },
+
 
   ];
 
   const RADIAN = Math.PI / 180;
-  const COLORS = ['#0068c9', '#fe2b2b'];
+  const COLORS = ['#0068c9','#fe2b2b', '#8622FF', '#739206ff', '#FE0056', '#00B7EB', '#FF8000', '#00FFCE', '#FFFF00'];
 
   // เพิ่มฟังก์ชัน handleCourseClick
   const handleCourseClick = (courseId) => {

@@ -21,7 +21,7 @@ const data = [
 
 const PercentBarChart = () => {
   return (
-    <div className=" w-full sm:max-w-[650px] md:max-w-[900px] lg:max-w-[740px] h-[420px] md:h-[480px] lg:h-[350px] bg-white border border-gray-200 rounded-2xl shadow-sm p-5 md:p-6 lg:p-8 ">
+    <div className=" w-full sm:max-w-[650px] md:max-w-[900px] lg:max-w-[740px] h-[420px] md:h-[480px] lg:h-[350px] bg-white border border-gray-200 rounded-2xl shadow-sm p-5 md:p-6 lg:p-8">
       {/* ... */}
 
       <h2 className="text-md font-semibold mb-5">

@@ -28,10 +28,7 @@ function App() {
             <Route path="/user/summarize" element={<Summarize />} />
           </Route>
           <Route path="/user/ResultsPage" element={<ResultsPage />} />
-          <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
 
-
-        <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
         <Route path="/admin/AdminHomePage" element={<AdminHomePage />} />
         <Route path="/admin/AdminTeachingschedule" element={<AdminTeachingschedule />} />
         <Route path="/admin/AdminTeachers" element={<AdminTeachers />} />

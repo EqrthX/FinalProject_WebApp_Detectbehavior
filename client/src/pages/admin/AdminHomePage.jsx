@@ -51,10 +51,7 @@ const AdminHomePage = () => {
 
             {/* กล่องคณะทั้งหมด */}
             <div
-            className="
-              flex flex-wrap justify-between gap-6
-              w-full
-            "
+            className=" flex justify-between gap-11 w-full items-center ml-"
           >
             {[
               { title: "คณะทั้งหมด", value: 6 },
@@ -64,7 +61,7 @@ const AdminHomePage = () => {
               <div
                 key={i}
                 className="
-                  flex-1 min-w-[250px] max-w-[350px]
+                  flex-1 min-w-[350px] max-w-[600px]
                   bg-white rounded-[20px] border border-[#e9e9e9]
                   p-6 shadow-sm flex flex-col items-center justify-center
                   transition-all

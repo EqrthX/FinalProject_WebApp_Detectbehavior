@@ -15,26 +15,16 @@ def create_camera_state(cap):
         "track_id": None
     }
 
-def calculate_average(frame_total, dict_count: dict, dict_sum: dict):
+def calculate_average(frame_total, dict_count: dict, ):
     result = {}
     
-    for key in dict_count.keys() & dict_sum.keys():
-        num_class = Decimal(str(dict_count[key])) # ใช้ frame_class_count จำนวนครั้งที่เจอ
-        sum_conf = Decimal(str(dict_sum[key])) # ใช้ frame_conf_count ผลรวม conf
-        
-
-        # ค่าเฉลี่ย conf ต่อเฟรมทั้งหมด 
-        avg_conf_frame = (sum_conf / Decimal(str(frame_total))).quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN) if frame_total != 0 else Decimal("0.00") 
-
-        # ค่าเฉลี่ย conf เฉพาะตอนที่เจอ class นั้น
-        avg_conf_detect = (sum_conf / num_class).quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN) if num_class != 0 else Decimal("0.00")
-
+    for key in dict_count.keys() :
+        num_class = Decimal(str(dict_count[key])) # ใช้ frame_class_count จำนวนครั้งที่เจอในแต่ละ class นั้นๆ
+    
         # อัตราส่วนความถี่ต่อจำนวนเฟรมทั้งหมด
         ratio = (num_class / Decimal(str(frame_total))).quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN) if frame_total != 0 else Decimal("0.00")  
 
         result[key] = {
-            "avg_conf_detect": float(avg_conf_detect),
-            "avg_conf_frame": float(avg_conf_frame),
             "ratio": float(ratio)
         }  
 
@@ -44,39 +34,20 @@ def compare_class(avg_dict: dict):
     HIGH_CLASSES = ["Focused", "Looking_at_the_board", "Taking_notes"]
     LOW_CLASSES = ["LookingAway", "Talking", "UsingPhone",]
     
-    high_conf_sum_detect, high_conf_sum_frame, high_ratio_sum, high_count = 0.0, 0.0, 0.0, 0
-    low_conf_sum, low_conf_sum_frame, low_ratio_sum, low_count = 0.0, 0.0, 0.0, 0
+    high_ratio_sum =  0.0
+    low_ratio_sum = 0.0
+    total_ratio = sum(val['ratio'] for val in avg_dict.values())
 
-    for key, val in avg_dict.items():
-        avg_conf_frame = val.get("avg_conf_frame", 0.0)
-        avg_conf_detect = val.get("avg_conf_detect", 0.0)
-        ratio = val.get("ratio", 0.0)
-
-        if key in HIGH_CLASSES:
-            print(f"🎓 High -> {key}: conf={avg_conf_detect}, ratio={ratio}")
-            high_conf_sum_detect += avg_conf_detect
-            high_conf_sum_frame += avg_conf_frame
-            high_ratio_sum += ratio
-            high_count += 1
-        elif key in LOW_CLASSES:
-            print(f"💤 Low -> {key}: conf={avg_conf_detect}, ratio={ratio}")
-            low_conf_sum += avg_conf_detect
-            low_conf_sum_frame += avg_conf_frame
-            low_ratio_sum += ratio
-            low_count += 1
-
-    # คำนวนค่าเฉลี่ยที่ detect เจอ โดยการเอาที่ detect class เจอ ทั้งหมดมาบวกกันและหาร จำนวน class ที่เจอใน HIGH หรือ LOW
-    high_conf_avg_detect = round(high_conf_sum_detect / high_count, 3) if high_count else len(HIGH_CLASSES)
-    low_conf_avg_detect = round(low_conf_sum / low_count, 3) if low_count else len(LOW_CLASSES)
-
-    # คำนวนค่าเฉลี่ยโดยที่เอาผลรวมของ conf / frame ทั้งหมดของแต่ละ class มาอยู่ใน HIGH หรือ LOW
-    high_conf_avg_frame = round(high_conf_sum_frame / high_count, 3) if high_count else len(HIGH_CLASSES)
-    low_conf_avg_frame = round(low_conf_sum_frame / low_count, 3) if low_count else len(LOW_CLASSES)
+    if total_ratio == 0:
+        total_ratio= 1
+    
+    # Normaalize ให้รวมเป็น 1.0
+    normalized = {k: v["ratio"] / total_ratio for k, v in avg_dict.items() }
     
     # คำนวนหาค่าเฉลี่ยของอัตราการตรวจเจอ
-    high_ratio_avg = round(high_ratio_sum / high_count, 3) if high_count else len(HIGH_CLASSES)
-    low_ratio_avg = round(low_ratio_sum / low_count, 3) if low_count else len(LOW_CLASSES)
+    high_ratio_sum = sum(normalized[k] for k in HIGH_CLASSES if k in normalized)
+    low_ratio_sum = sum(normalized[k] for k in LOW_CLASSES if k in normalized)
 
     print("\n📊 สรุปผลรวม:")
-    print(f"🎓 High Avg Conf Detect: {high_conf_avg_detect}, Avg Conf Frame: {high_conf_avg_frame}, Avg Ratio: {high_ratio_avg}\n")
-    print(f"💤 Low  Avg Conf Detect: {low_conf_avg_detect}, Avg Conf Frame:{low_conf_avg_frame}, Avg Ratio: {low_ratio_avg}\n")
+    print(f"🎓 High Avg Ratio: {round(high_ratio_sum, 2)}")
+    print(f"💤 Low  Avg Ratio: {round(low_ratio_sum, 2)}")

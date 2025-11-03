@@ -22,12 +22,11 @@ def new_status_dict():
         labels: List[str] = list(get_model().names.values())
     except Exception as e:
         print(f"⚠️ [new_status_dict] Warning: cannot load model names ({e})")
-        labels = ["Book","Focused", "Ipad", "Lookaways", "Looking_at_the_board", "SlePhoneeping", "Taking_notes", "Talking", "UsingPhone"]
+        labels = ["Book","Focused", "Ipad", "LookingAway", "Looking_at_the_board", "Phone", "Taking_notes", "Talking", "UsingPhone"]
 
 
     return {
         "frame_class_count": {cls: 0 for cls in labels},
-        "frame_class_sum_conf": {cls: 0.0 for cls in labels}
     }
 
 def new_history_dict():

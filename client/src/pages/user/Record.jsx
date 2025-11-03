@@ -213,7 +213,7 @@ const Record = () => {
         setIsRecording(false)
         try {
             Object.keys(wsRefs.current).forEach((id) => safeCloseWS(id));
-            Object.key(summaryRefs.current).forEach((id) => {
+            Object.keys(summaryRefs.current).forEach((id) => {
                 try {
                     summaryRefs.current[id].close();
                     delete summaryRefs.current[id]

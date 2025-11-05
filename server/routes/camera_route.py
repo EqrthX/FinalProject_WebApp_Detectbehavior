@@ -7,7 +7,8 @@ import asyncio
 from utils.camera_helper import create_camera_state, calculate_average, compare_class
 from utils.model_loader import get_model
 from datetime import datetime
-import json
+from config.bn_supabase import supabase_client
+
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 model = get_model()
@@ -93,9 +94,6 @@ async def camera_loop(camera_id: str):
                 "last_time": time.time()
             }
         
-        if "show_class" not in cam_state:
-            cam_state["show_class"] = {}
-        
         loop = asyncio.get_event_loop()
 
         print(f"🧠 start detect on camera {int(camera_id) + 1}")
@@ -155,6 +153,7 @@ async def camera_loop(camera_id: str):
                     cam_state["last_frame"] = buf.tobytes()
 
                 print(f'วินาที่ที่ {cam_state['seconds']}')
+                
                 if now - last_check_time >= 1:
                     cam_state["seconds"] += 1
                     last_check_time = now
@@ -191,6 +190,7 @@ async def camera_loop(camera_id: str):
                         )
 
                         print(f"{'*'*3}|{'='*50}|{'*'*3}")
+
                         print(f"📸 กล้อง {int(camera_id) + 1} ID {cam_state['track_id']} ครบ {cam_state['seconds']} วิ - รวม {cam_state['frame']} เฟรม")
                         
                         print("สิ่งที่ตรวจจับเจอของแต่ละ Class")
@@ -203,19 +203,32 @@ async def camera_loop(camera_id: str):
                             
                         print(f"{'*'*3}|{'='*50}|{'*'*3}")
 
-                        compare_class(avg)
-                        
+                        high, low = compare_class(avg)
+
+                        cam_state["hour_buffer"].append({
+                            "camera_id": int(camera_id) + 1,
+                            "timestamp": datetime.now().isoformat(),
+                            "high_att": high,
+                            "low_att": low
+                        })
+
                         cam_state["show_class"] = {
-                            "Camera at ": int(camera_id) + 1,
+                            "CameraId": int(camera_id) + 1,
                             "ID": cam_state["track_id"],
-                            "Time": datetime.now().strftime("%H:%M:%S")
+                            "Time": datetime.now().strftime("%H:%M:%S"),
+                            "image": cam_state['last_frame']
                         }
 
                         # reset count sum เป็น 0 เพื่อคำนวณใหม่
                         for k in cam_state["status"]["frame_class_count"]:
                             cam_state["status"]["frame_class_count"][k] = 0
                         cam_state["seconds"] = 0
+                    
+                    if len(cam_state['hour_buffer']) >= 60:
+                        print("ครบ 60 นาที -> รวมผล")
 
+                        avg_high = sum(x["high_att"] for x in cam_state['hour_buffer']) / 60
+                        avg_low = sum(x["low_att"] for x in cam_state["hour_buffer"]) / 60
                 await asyncio.sleep(0.016) # ~60 fps
 
             print(f"🛑 stop detect on camera {int(camera_id) + 1}")
@@ -235,7 +248,6 @@ async def camera_loop(camera_id: str):
         print(f"⚠️ ฟังก์ชั่น [camera_loop] มีปัญหา")
         return
     
-
 # ✅ เปิดกล้องทั้งหมดพร้อมกัน
 @camera_router.get("/open-all")
 async def open_all_cameras():

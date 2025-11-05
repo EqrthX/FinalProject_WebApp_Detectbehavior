@@ -51,3 +51,5 @@ def compare_class(avg_dict: dict):
     print("\n📊 สรุปผลรวม:")
     print(f"🎓 High Avg Ratio: {round(high_ratio_sum, 2)}")
     print(f"💤 Low  Avg Ratio: {round(low_ratio_sum, 2)}")
+
+    return high_ratio_sum, low_ratio_sum

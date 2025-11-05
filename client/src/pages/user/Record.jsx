@@ -36,7 +36,7 @@ const Record = () => {
 
         summaryRefs.current[cameraId] = ws;
 
-        ws.onopen = () => console.log(`📊 Summary WS connected: camera ${cameraId}`);
+        ws.onopen = () => console.log(`📊 Summary WS connected: camera ${cameraId + 1}`);
         ws.onclose = () => {
             console.log(`Summary WS closed: camera ${cameraId}`);
             delete summaryRefs.current[cameraId];
@@ -76,7 +76,7 @@ const Record = () => {
 
         wsRefs.current[cameraId] = ws;
 
-        ws.onopen = () => console.log(`✅ WS connected: camera ${cameraId}`);
+        ws.onopen = () => console.log(`✅ WS connected: camera ${cameraId + 1}`);
         ws.onclose = () => {
             console.log(`WS closed: camera ${cameraId}`);
             delete wsRefs.current[cameraId];
@@ -209,7 +209,7 @@ const Record = () => {
     };
 
     // ปิดกล้องทั้งหมด
-    const handleCloseAll = async () => {
+    const handleCloseAll = async () => {    
         setIsRecording(false)
         try {
             Object.keys(wsRefs.current).forEach((id) => safeCloseWS(id));
@@ -384,16 +384,20 @@ const Record = () => {
                                         key={item.id}
                                         className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100"
                                     >
+                                        <div className="flex-1">
+                                            <h1 className="text-lg font-medium text-gray-700">{item.CameraId}</h1>
+                                            <h1 className="text-lg font-medium text-gray-700">{item.ID}</h1>
+                                        </div>
                                         <div className="w-20 h-20 bg-gray-300 rounded-lg overflow-hidden flex-shrink-0">
                                             <img
                                                 src={item.image}
-                                                alt={item.time}
+                                                alt={item.Time}
                                                 className="w-full h-full object-cover"
                                             />
                                         </div>
                                         <div className="flex-1">
                                             <p className="text-sm font-medium text-gray-700">
-                                                เวลา {item.time}
+                                                เวลา {item.Time}
                                             </p>
                                         </div>
                                     </div>

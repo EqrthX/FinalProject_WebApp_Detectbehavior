@@ -20,6 +20,7 @@ last_scan_time = 0
 backends_cameras = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
 is_scanning = False
 scan_lock = asyncio.Lock()  # lock กัน async call ซ้ำ
+
 # ✅ ฟังก์ชันสแกนกล้องในเครื่อง
 async def async_scan_cameras():
     global available_cameras, is_scanning
@@ -43,7 +44,7 @@ async def async_scan_cameras():
                         print(f"✅ Camera {i} found with backend {backend}")
                         found.append({
                             "id": i,
-                            "name": f"Camera กล้องตัวที่ {i+1}",
+                            "name": f"กล้องตัวที่ {i+1}",
                             "backend_camera": backend
                         })
                         cap.release()
@@ -205,6 +206,13 @@ async def camera_loop(camera_id: str):
 
                         high, low = compare_class(avg)
 
+                        # insert ratio to supabase
+                        supabase_client.table("class_ratios_json").insert({
+                            "camera_id": int(camera_id) + 1,
+                            "timestamp": datetime.now().isoformat(),
+                            "ratios": avg
+                        }).execute()                        
+
                         cam_state["hour_buffer"].append({
                             "camera_id": int(camera_id) + 1,
                             "timestamp": datetime.now().isoformat(),
@@ -216,7 +224,7 @@ async def camera_loop(camera_id: str):
                             "CameraId": int(camera_id) + 1,
                             "ID": cam_state["track_id"],
                             "Time": datetime.now().strftime("%H:%M:%S"),
-                            "image": cam_state['last_frame']
+                            "image": base64.b64encode(cam_state['last_frame']).decode('utf-8')
                         }
 
                         # reset count sum เป็น 0 เพื่อคำนวณใหม่
@@ -229,6 +237,13 @@ async def camera_loop(camera_id: str):
 
                         avg_high = sum(x["high_att"] for x in cam_state['hour_buffer']) / 60
                         avg_low = sum(x["low_att"] for x in cam_state["hour_buffer"]) / 60
+
+                        supabase_client.table("camera_logs_hr").insert({
+                            "camera_id": int(camera_id) + 1,
+                            "timestamp": datetime.now().isoformat(),
+                            "high_att": avg_high,
+                            "low_att": avg_low
+                        }).execute()
                 await asyncio.sleep(0.016) # ~60 fps
 
             print(f"🛑 stop detect on camera {int(camera_id) + 1}")
@@ -335,7 +350,7 @@ async def camera_close(camera_id: str):
 async def close_all_cameras():
     tasks_to_cancel = []
 
-    for cam_id, cam_state in list(cameras.items()):
+    for _, cam_state in list(cameras.items()):
         cam_state["detecting"] = False
         cam_state["running"] = False
 
@@ -349,7 +364,7 @@ async def close_all_cameras():
         await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
 
     # ✅ cleanup กล้อง
-    for cam_id, cam_state in list(cameras.items()):
+    for _, cam_state in list(cameras.items()):
         cap = cam_state.get("cap")
         if cap and cap.isOpened():
             cap.release()
@@ -442,12 +457,18 @@ async def camera_summary(websocket: WebSocket, camera_id: str):
         return
     try:
         while cam_state.get("running") and cam_state.get("detecting"):
-            await asyncio.sleep(30)
+            await asyncio.sleep(60)
 
-            payload = cam_state.get("show_class", {})
-            if payload:
-                await websocket.send_json(payload)
-                print(f"📊 ส่ง summary กล้อง {int(camera_id) + 1}: {payload}")
+            payload = cam_state.get("show_class", {}).copy()
+
+            if "image" in payload and isinstance(payload['image'], (bytes, bytearray)):
+                payload['image'] = base64.b64encode(payload['image']).decode('utf-8')
+            if not payload:
+                payload = {
+                    "CameraId": int(camera_id) + 1,
+                    "Time": datetime.now().strftime("%H:%M:%S")
+                }
+            await websocket.send_json(payload)
     except Exception as e:
         print("Summary ws:", e)
     finally:

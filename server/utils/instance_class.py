@@ -1,18 +1,6 @@
 from utils.model_loader import get_model
 from typing import List
-def create_camera_state(cap):
-    return {
-        "cap": cap, # เปิดกล้อง
-        "thread": None, # การทำงานของ thread
-        "running": True, # เช็คว่ากล้องเปิดและ run อยู่ไหม
-        "detecting": False, # เช็คการตรวจจับ
-        "seconds": 0, # นับวินาที
-        "last_frame": None, # เก็บภาพจาก model ครั้งสุดท้ายของ frame ส่งมีการส่งไปแสดงผล frontend
-        "frame": 0,
-        "status": new_status_dict(),
-        "show_class": {},
-        "hour_buffer": [] #เก็บ ข้อมูลทุกๆนาทีคนจบ 60 ตัว
-    }
+
 
 def new_status_dict():
     try:

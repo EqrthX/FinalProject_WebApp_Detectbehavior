@@ -12,7 +12,10 @@ def create_camera_state(cap):
         "last_frame": None,           # เฟรมล่าสุด
         "frame": 0,                   # นับเฟรม
         "status": new_status_dict(),  # ✅ สถานะคลาสทั้งหมด
-        "track_id": None
+        "track_id": None,
+        "show_class": {},
+        "hour_buffer": [] #เก็บ ข้อมูลทุกๆนาทีคนจบ 60 ตัว
+
     }
 
 def calculate_average(frame_total, dict_count: dict, ):

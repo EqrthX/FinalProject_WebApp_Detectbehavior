@@ -36,26 +36,25 @@ const Record = () => {
 
         summaryRefs.current[cameraId] = ws;
 
-        ws.onopen = () => console.log(`📊 Summary WS connected: camera ${cameraId + 1}`);
+        ws.onopen = () => console.log(`📊 Summary WS connected: camera ${Number(cameraId + 1)}`);
         ws.onclose = () => {
-            console.log(`Summary WS closed: camera ${cameraId}`);
+            console.log(`Summary WS closed: camera ${Number(cameraId + 1)}`);
             delete summaryRefs.current[cameraId];
         };
         ws.onerror = (err) => console.error("Summary WS error:", err);
 
         ws.onmessage = (event) => {
-            console.log(event);
             try {
                 const data = JSON.parse(event.data);
                 // data = { time, avg, maybe class_behavior }
                 setDetections((prev) => [
                     {
-                        id: Date.now(),
-                        time: data.time || new Date().toLocaleTimeString(),
+                        cameraId: data.CameraId,
+                        id: data.ID,
+                        time: data.Time || new Date().toLocaleTimeString(),
                         image: frames[cameraId]
                             ? `data:image/jpeg;base64,${frames[cameraId]}`
                             : null,
-                        avg: data.avg,
                     },
                     ...prev,
                 ]);
@@ -78,17 +77,17 @@ const Record = () => {
 
         ws.onopen = () => console.log(`✅ WS connected: camera ${cameraId + 1}`);
         ws.onclose = () => {
-            console.log(`WS closed: camera ${cameraId}`);
+            console.log(`WS closed: camera ${cameraId + 1}`);
             delete wsRefs.current[cameraId];
         };
         ws.onerror = (e) => {
-            console.error(`WS error cam ${cameraId}`, e);
-            toast.error(`สตรีมกล้อง ${cameraId} มีปัญหา`);
+            console.error(`WS error cam ${cameraId + 1}`, e);
+            toast.error(`สตรีมกล้อง ${cameraId + 1} มีปัญหา`);
         };
         ws.onmessage = (event) => {
 
             if (typeof event.data === "string" && event.data.startsWith("error:")) {
-                console.error(`Camera ${cameraId}: ${event.data}`);
+                console.error(`Camera ${cameraId + 1}: ${event.data}`);
                 return;
             }
             setFrames((prev) => ({ ...prev, [cameraId]: event.data }));
@@ -145,25 +144,25 @@ const Record = () => {
             toast.dismiss();
         };
     }, []);
-    
+
     // ---------- ออกจากหน้านี้ให้ปิดกล้องทั้งหมด ----------
     useEffect(() => {
         return () => {
             console.log("ปิดกล้องทั้งหมด");
 
-            Object.keys(wsRefs.current).forEach((id) => {
+            Object.keys(wsRefs.current).forEach((cameraId) => {
                 try {
-                    wsRefs.current[id].close();
-                    delete wsRefs.current[id];
+                    wsRefs.current[cameraId].close();
+                    delete wsRefs.current[cameraId];
                 } catch (error) {
                     console.error("Error closing WS", error)
                 }
             });
 
-            Object.keys(summaryRefs.current).forEach((id) => {
+            Object.keys(summaryRefs.current).forEach((cameraId) => {
                 try {
-                    summaryRefs.current[id].close();
-                    delete summaryRefs.current[id];
+                    summaryRefs.current[cameraId].close();
+                    delete summaryRefs.current[cameraId];
                 } catch (error) {
                     console.error("Error closing summary WS", error);
                 }
@@ -179,17 +178,17 @@ const Record = () => {
     }, [])
 
     // ---------- ปุ่ม ----------
-    const handleCloseCamera = async (id) => {
+    const handleCloseCamera = async (cameraId) => {
         setIsRecording(false)
         try {
-            await axios.get(`camera/close-camera/${id}`);
-            safeCloseWS(id);
+            await axios.get(`camera/close-camera/${cameraId}`);
+            safeCloseWS(cameraId);
             setFrames((prev) => {
                 const n = { ...prev };
-                delete n[id];
+                delete n[cameraId];
                 return n;
             });
-            toast.success(`ปิดกล้อง ${id} แล้ว`);
+            toast.success(`ปิดกล้อง ${cameraId + 1} แล้ว`);
         } catch (err) {
             toast.error("ปิดกล้องไม่สำเร็จ");
             console.error("ปิดกล้องไม่สำเร็จ :", err);
@@ -198,18 +197,18 @@ const Record = () => {
     };
 
     // เชื่อมต่อกล้องใหม่
-    const handleReconnect = async (id) => {
+    const handleReconnect = async (cameraId) => {
         try {
             await axios.get(`camera/open-all`);
-            connectWebSocket(id);
-            toast.success(`เชื่อมต่อใหม่ กล้อง ${id} แล้ว`);
+            connectWebSocket(cameraId);
+            toast.success(`เชื่อมต่อใหม่ กล้อง ${cameraId + 1} แล้ว`);
         } catch {
-            toast.error(`เชื่อมต่อใหม่กล้อง ${id} ไม่สำเร็จ`);
+            toast.error(`เชื่อมต่อใหม่กล้อง ${cameraId + 1} ไม่สำเร็จ`);
         }
     };
 
     // ปิดกล้องทั้งหมด
-    const handleCloseAll = async () => {    
+    const handleCloseAll = async () => {
         setIsRecording(false)
         try {
             Object.keys(wsRefs.current).forEach((id) => safeCloseWS(id));
@@ -235,11 +234,11 @@ const Record = () => {
             const resStartDetect = await axios.get(`camera/start-all`)
             console.log(resStartDetect);
             const started_ids = resStartDetect.data.started || []
-            for(const id in started_ids) {
+            for (const id in started_ids) {
 
                 connectSummarySocket(id);
             }
-            toast.success(`เริ่มตรวจจับกล้อง ${cameraId}`);
+            toast.success(`เริ่มตรวจจับกล้อง ${cameraId + 1}`);
 
         } catch (error) {
             console.error("การตรวจจับเกิดข้อผิดพลาด", error)
@@ -370,8 +369,8 @@ const Record = () => {
 
                     {/* ✅ ฝั่งขวา (log ตรวจจับ) */}
                     <div className="bg-white rounded-2xl shadow flex flex-col border border-gray-200 h-full">
-                        <h1 className="text-center py-4 text-lg font-bold border-b">
-                            ไม่ตั้งใจ
+                        <h1 className="text-center py-4 text-lg font-bold border-b md:text-3xl">
+                            พฤติกรรม
                         </h1>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3">
                             {detections.length === 0 ? (
@@ -382,25 +381,25 @@ const Record = () => {
                                 detections.map((item) => (
                                     <div
                                         key={item.id}
-                                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100"
+                                        className="flex justify-between items-center gap-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 text-center"
                                     >
-                                        <div className="flex-1">
-                                            <h1 className="text-lg font-medium text-gray-700">{item.CameraId}</h1>
-                                            <h1 className="text-lg font-medium text-gray-700">{item.ID}</h1>
-                                        </div>
-                                        <div className="w-20 h-20 bg-gray-300 rounded-lg overflow-hidden flex-shrink-0">
+                                        <h1 className="text-lg font-medium text-gray-700">
+                                            กล้องตัวที่ {item.cameraId}
+                                        </h1>
+
+                                        <div className="w-24 h-24 bg-gray-300 rounded-lg overflow-hidden">
                                             <img
                                                 src={item.image}
-                                                alt={item.Time}
+                                                alt={item.time}
                                                 className="w-full h-full object-cover"
                                             />
                                         </div>
-                                        <div className="flex-1">
-                                            <p className="text-sm font-medium text-gray-700">
-                                                เวลา {item.Time}
-                                            </p>
-                                        </div>
+
+                                        <p className="text-sm font-medium text-gray-700">
+                                            เวลา {item.time}
+                                        </p>
                                     </div>
+
                                 ))
                             )}
                         </div>

@@ -1,7 +1,7 @@
 from decimal import Decimal, ROUND_HALF_EVEN
 from utils.instance_class import new_status_dict
 
-def create_camera_state(cap):
+def create_camera_state(cap, teacher_id=None):
     """คืนค่า state เริ่มต้นของแต่ละกล้อง"""
     return {
         "cap": cap,                   # กล้องที่เปิดอยู่
@@ -12,6 +12,7 @@ def create_camera_state(cap):
         "last_frame": None,           # เฟรมล่าสุด
         "frame": 0,                   # นับเฟรม
         "status": new_status_dict(),  # ✅ สถานะคลาสทั้งหมด
+        "teacher_id": teacher_id,
         "track_id": None,
         "show_class": {},
         "hour_buffer": [] #เก็บ ข้อมูลทุกๆนาทีคนจบ 60 ตัว

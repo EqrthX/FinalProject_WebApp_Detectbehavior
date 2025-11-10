@@ -1,10 +1,42 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AdminNavbar from "../../components/AdminNavbar";
+import { supabase } from "../../config/supabase";
+import toast from "react-hot-toast";
+import axios from "../../util/axios";
 
 const AdminTeachingschedule = () => {
+
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
+  const [faculty, setFaculty] = useState([]);
+  const [selectedFacultyId, setSelectedFacultyId] = useState('');
+  const [selectedMajor, setSelectedMajor] = useState('');
+  const [fullname, setFullname] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [teacherId, setTeacherId] = useState('');
+
+  useEffect(() => {
+    const fetechFacultyAndMajor = async () => {
+      try {
+        const { data, error } = await supabase.from('faculty')
+        .select(`*,
+                majors (*)`);
+
+        if (error) {
+          throw error
+        }
+
+        setFaculty(data)
+
+      } catch (error) {
+        console.error("Fetch Faculty and Major error:", error)
+      }
+
+    }
+    fetechFacultyAndMajor();
+  }, [])
 
   // ตัวอย่างข้อมูลจำลอง
   const teachers = Array.from({ length: 15 }).map((_, i) => ({
@@ -24,6 +56,36 @@ const AdminTeachingschedule = () => {
 
   // ✅ ฟังก์ชันปิด modal
   const closeModal = () => setShowModal(false);
+  const majorsToShow = faculty.find((f) => f.faculty_id === selectedFacultyId)?.majors || [];
+
+  const onCreateTeacher = async (event) => {
+    event.preventDefault();
+    try {
+      
+      if (!email || !password || !teacherId || !fullname || !faculty || !selectedMajor) return toast.error("กรุณากรอกข้อมูลให้ครบ");
+
+      const formData = new FormData();
+
+      formData.append("email", email);
+      formData.append("password", password);
+      formData.append("teacher_id", teacherId);
+      formData.append("fullname", fullname);
+      formData.append("major", selectedMajor);
+      
+      const response = await axios.post(`admin/create-teacher`, formData, {
+        headers: {"Content-Type": "multipart/form-data"}
+      });
+      
+      toast.success(response.data.detail || "เพิ่มข้อมูลอาจารย์เสร็จสิ้น ✅");
+      
+    } catch (error) {
+
+      const message = error.response?.data?.detail || "เกิดข้อผิดพลาดในการเพิ่มข้อมูล ❌"
+      console.error("Error to create teacher", error)
+      toast.error(message);
+      
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4">
@@ -121,32 +183,78 @@ const AdminTeachingschedule = () => {
           <div className="bg-[#f8f8f8] p-8 rounded-lg shadow-lg w-[90%] max-w-md border border-gray-300">
             <h2 className="text-2xl font-bold mb-6">อัพโหลดรายชื่อ</h2>
 
-            <form className="space-y-4">
+            <form className="space-y-4" method="POST" onSubmit={onCreateTeacher}>
+              <input
+                type="text"
+                placeholder="อีเมล"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
+              />
+              <input
+                type="text"
+                placeholder="รหัสผ่าน"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
+              />
               <input
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
                 placeholder="รหัสประจำตัว"
+                value={teacherId}
                 onChange={(e) => {
-                  e.target.value = e.target.value.replace(/[^0-9]/g, "");
+                  setTeacherId(e.target.value.replace(/[^0-9]/g, ""));
                 }}
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
               />
+
               <input
                 type="text"
                 placeholder="ชื่อ - นามสกุล"
+                value={fullname}
+                onChange={(e) => setFullname(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
               />
-              <input
+
+              <select
                 type="text"
                 placeholder="คณะ"
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
-              />
-              <input
-                type="text"
-                placeholder="สาขา"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
-              />
+                value={selectedFacultyId}
+                onChange={(e) => setSelectedFacultyId(e.target.value)}
+              >
+
+                {/* 2. (แนะนำ) เพิ่มตัวเลือกเริ่มต้นที่เลือกไม่ได้ */}
+                <option value="" disabled selected>
+                  กรุณาเลือกคณะ
+                </option>
+
+                {/* 3. โค้ดของคุณที่แก้ไขแล้ว */}
+                {faculty.map((item) => (
+                  <option key={item.faculty_id} value={item.faculty_id}>
+                    {item.faculty_name}
+                  </option>
+                ))}
+
+              </select>
+
+              <select
+                className="w-full px-4 py-2 border border-gray-300 rounded-md"
+                disabled={!selectedFacultyId}
+                value={selectedMajor}
+                onChange={(e) => setSelectedMajor(e.target.value)}
+              >
+                <option value="" disabled selected>
+                  กรุณาเลือกสาขา
+                </option>
+                {majorsToShow.map((major) => (
+                  <option key={major.major_id} value={major.major_id}>
+                    {major.major_name}
+                  </option>
+                ))}
+              </select>
 
               <div className="flex justify-end mt-6 gap-2">
                 <button
@@ -163,6 +271,7 @@ const AdminTeachingschedule = () => {
                   ยืนยัน
                 </button>
               </div>
+
             </form>
           </div>
         </div>

@@ -1,149 +1,107 @@
-import cv2
-import time
-import threading
-from ultralytics import YOLO
+import pillow_heif
+from PIL import Image
+import os
 
-# โหลดโมเดล YOLO
-MODEL_PATH = "runs/detect/train/weights/best.pt"  # ← ปรับ path ตามจริง
-model = YOLO(MODEL_PATH)
-
-# เก็บสถานะกล้อง
-cameras = {}
-
-# ✅ ฟังก์ชันสร้าง dict สำหรับเก็บค่าพฤติกรรม
-def create_behavior_dict():
-    return {
-        "Focused": 0,
-        "Drinking": 0,
-        "Eating": 0,
-        "Lookaways": 0,
-        "Sleeping": 0,
-        "UsingPhone": 0,
-    }
-
-# ✅ ฟังก์ชันคำนวณค่าเฉลี่ย conf
-def calculate_average(count_dict, sum_dict):
-    result = {}
-    for k in count_dict:
-        if count_dict[k] > 0:
-            result[k] = round(sum_dict[k] / count_dict[k], 3)
-        else:
-            result[k] = 0.0
-    return result
-
-# ✅ เปิดกล้อง
-def open_camera_instance(camera_id: str):
-    cap = cv2.VideoCapture(int(camera_id), cv2.CAP_MSMF)
-    if not cap.isOpened():
-        raise Exception(f"❌ ไม่สามารถเปิดกล้อง {camera_id} ได้")
-
-    cameras[camera_id] = {
-        "cap": cap,
-        "running": True,
-        "detecting": False,
-        "seconds": 0,
-        "count": create_behavior_dict(),
-        "sum": {k: 0.0 for k in create_behavior_dict()},
-    }
-    print(f"✅ เปิดกล้อง {camera_id} สำเร็จ")
-
-# ✅ ปิดกล้อง
-def close_camera_instance(camera_id: str):
-    cam_state = cameras.get(camera_id)
-    if not cam_state:
-        print(f"กล้อง {camera_id} ปิดไปแล้ว")
-        return
-
-    cam_state["running"] = False
-    cap = cam_state["cap"]
-    if cap and cap.isOpened():
-        cap.release()
-
-    cameras.pop(camera_id, None)
-    print(f"🧹 ปิดกล้อง {camera_id} แล้ว")
-
-# ✅ ตรวจจับ YOLO
-def camera_loop(camera_id: str):
-    cam_state = cameras[camera_id]
-    cap = cam_state["cap"]
-
-    cam_state["detecting"] = True
-    print(f"🧠 เริ่มตรวจจับพฤติกรรมจากกล้อง {camera_id}")
-
-    last_check_time = time.time()
-
-    while cam_state["running"] and cam_state["detecting"]:
-        ret, frame = cap.read()
-        if not ret:
-            print("ไม่สามารถอ่านภาพจากกล้องได้")
-            break
-
-        # 🔹 ใช้ YOLO ตรวจจับ
-        results = model.predict(source=frame, conf=0.3, device="cpu", verbose=False)
-        annotated = results[0].plot()
-
-        # 🔹 แสดงภาพ (ปิดได้โดยกด q)
-        cv2.imshow(f"Camera {camera_id}", annotated)
-
-        now = time.time()
-        if now - last_check_time >= 1.0:
-            cam_state["seconds"] += 1
-            last_check_time = now
-
-            # เก็บ count/conf ของแต่ละคลาส
-            for box in results[0].boxes:
-                cls = int(box.cls)
-                conf = float(box.conf.item())
-                label = model.names[cls]
-                if conf > 0.5 and label in cam_state["count"]:
-                    cam_state["count"][label] += 1
-                    cam_state["sum"][label] += conf
-
-            # ทุก 60 วินาที สรุปผล
-            if cam_state["seconds"] >= 60:
-                avg = calculate_average(cam_state["count"], cam_state["sum"])
-                print(f"📊 ค่าเฉลี่ย (1 นาที): {avg}")
-
-                # reset
-                cam_state["count"] = create_behavior_dict()
-                cam_state["sum"] = {k: 0.0 for k in cam_state["sum"]}
-                cam_state["seconds"] = 0
-
-        # ปิดได้ด้วยปุ่ม q
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    cam_state["detecting"] = False
-    close_camera_instance(camera_id)
-    cv2.destroyAllWindows()
-    print(f"🛑 หยุดตรวจจับกล้อง {camera_id}")
-
-# ✅ main function สำหรับทดสอบ
-def run_test(camera_id=0):
-    open_camera_instance(str(camera_id))
-    t = threading.Thread(target=camera_loop, args=(str(camera_id),), daemon=True)
-    t.start()
-    t.join()
-
-array_label = []
-def set_model():
+def convert_file(input_file, output_file, format="JPEG"):
+    """
+    แปลงไฟล์ HEIC เป็น Format ที่ระบุ (JPEG, PNG)
     
-    labels = list(model.names.values())
-    print(labels)
-    # cap = cv2.VideoCapture(0)
-    # while cap.isOpened:
-    #     ret, frame = cap.read()
+    Args:
+        input_path (str): Path ไปยังไฟล์ .heic ต้นทาง
+        output_path (str): Path ที่จะบันทึกไฟล์ใหม่
+        format (str): Format ที่ต้องการ ("JPEG", "PNG")
+    """
+    try:
+        # 1. อ่านไฟล์ HEIC (ได้เป็น "ตู้คอนเทนเนอร์" หรือ HeifFile)
+        heif_file = pillow_heif.read_heif(input_file)
 
-    #     # 🔹 ใช้ YOLO ตรวจจับ
-    #     results = model.predict(source=frame, conf=0.3, device="cpu", verbose=False)
-    #     annotated = results[0].plot()
+        # 2. 🔥 จุดแก้ไขสำคัญ 🔥
+        # ดึงเอารูปภาพ "รูปแรก" หรือ "รูปหลัก" ออกมาจากตู้
+        # (ถ้าไฟล์มีรูปเดียว heif_file[0] ก็คือรูปนั้น)
+        primary_image = heif_file[0] 
 
-      
-    #     if cv2.waitKey(1) & 0xFF == ord('q'):
-    #         break
+        # 3. แปลง HeifImage (primary_image) เป็น PIL Image object
+        image = Image.frombytes(
+            primary_image.mode,
+            primary_image.size,
+            primary_image.data,
+            "raw",
+        )
+        
+        # 4. ดึงข้อมูล EXIF จาก "รูปหลัก"
+        exif_data = None
+        if hasattr(primary_image, "exif"):
+            exif_data = primary_image.exif  # ดึงข้อมูล EXIF (เป็น bytes)
 
+        # 5. กำหนด Format ที่จะบันทึก
+        save_format = "JPEG" if format.upper() in ["JPEG", "JPG"] else format.upper()
 
+        # 6. บันทึกไฟล์ (และแก้ typo 'quanlity' เป็น 'quality')
+        if save_format == "JPEG":
+            if exif_data:
+                image.save(output_file, format=save_format, quality=95, exif=exif_data)
+            else:
+                image.save(output_file, format=save_format, quality=95) # <-- แก้ไข typo
+        
+        elif save_format == "PNG":
+            image.save(output_file, format=save_format)
+            
+        else:
+            print(f"Error: Format '{save_format}' is not supported (only JPEG, JPG, PNG).")
+            return
 
-if __name__ == "__main__":
-    # run_test(0)
-    set_model()
+        # ไม่ต้อง print ถ้าสำเร็จ เพื่อไม่ให้ log ยาวเกินไป
+        # print(f"✅ Success: Converted '{input_file}' to '{output_file}' as {save_format}")
+
+    except Exception as e:
+        # 🔥 พิมพ์ Error ให้ชัดเจนว่าไฟล์ไหนมีปัญหา
+        print(f"❌ Error converting file: {input_file}")
+        print(f"   Error message: {e}")
+        print(f"   Skipping this file...")
+        
+
+# --- ส่วนของการวน Loop (โค้ดเดิมของคุณถูกต้องแล้ว) ---
+
+input_directory = "หันหน้า"
+output_directory = "หันหน้า" # บันทึกไว้ที่เดิม (หรือเปลี่ยนเป็นโฟลเดอร์ใหม่ก็ได้)
+# os.makedirs(output_directory, exist_ok=True) # ถ้าใช้โฟลเดอร์ใหม่
+
+contents = os.listdir(input_directory)
+
+files_to_convert = []
+for item in contents:
+    if item.lower().endswith((".heic", ".heif")): # รองรับ .heif ด้วย
+        full_path = os.path.join(input_directory, item)
+        if os.path.isfile(full_path):
+            files_to_convert.append(item) 
+
+print(f"Found {len(files_to_convert)} .HEIC/.HEIF files to convert.")
+converted_count = 0
+deleted_count = 0
+# วน Loop เพื่อแปลงไฟล์
+for file_name in files_to_convert:
+    
+    input_path = os.path.join(input_directory, file_name)
+    
+    base_name = os.path.splitext(file_name)[0]
+    output_name = base_name + ".jpg" # ตั้งชื่อ .jpg ไปเลยง่ายๆ
+    output_path = os.path.join(output_directory, output_name)
+    
+    # 3. เรียกใช้ฟังก์ชันด้วย Path ที่ถูกต้อง
+    print(f"Converting: {file_name} ...")
+    success = convert_file(input_path, output_path, format="JPG")
+
+    if success:
+        print(f"Converted to : {output_path}")
+        converted_count += 1 
+        try:
+            os.remove(input_path)
+            print(f"  🗑️ Deleted original: {file_name}")
+            deleted_count += 1
+        except Exception as e:
+            print(f"  ❌ Error deleting file {input_path}: {e}")
+    else:
+        print(f"  Conversion failed for {file_name}. Original file was NOT deleted.")
+print("--- Conversion Complete! ---")
+print(f"Total files converted: {converted_count}")
+print(f"Total original files deleted: {deleted_count}")

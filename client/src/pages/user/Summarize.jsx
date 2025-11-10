@@ -4,6 +4,7 @@ import MyBreadcrumb from '../../components/MyBreadcrumb'
 import { Link } from 'react-router-dom';
 import { BarChartOutlined } from '@ant-design/icons';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
+import { supabase } from "../../config/supabase.js"
 
 
 const summarize = () => {

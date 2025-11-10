@@ -1,11 +1,11 @@
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from starlette.types import HTTPExceptionHandler
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
 import cv2
 import time
 import base64
 import asyncio
 from utils.camera_helper import create_camera_state, calculate_average, compare_class
 from utils.model_loader import get_model
+from utils.auth import verify_token
 from datetime import datetime
 from config.bn_supabase import supabase_client
 
@@ -24,7 +24,6 @@ scan_lock = asyncio.Lock()  # lock กัน async call ซ้ำ
 # ✅ ฟังก์ชันสแกนกล้องในเครื่อง
 async def async_scan_cameras():
     global available_cameras, is_scanning
-
     # ✅ กันสแกนซ้ำ
     async with scan_lock:
         if is_scanning:
@@ -58,7 +57,7 @@ async def async_scan_cameras():
             is_scanning = False  # ✅ ปลดล็อกเสมอ
 
 # ✅ ฟังก์ชันเปิดกล้องเดี่ยว (ใช้ภายใน)
-def open_camera_instance(camera_id: str):
+def open_camera_instance(camera_id: str, teacher_id = None):
     source = int(camera_id)
     backend = cv2.CAP_ANY
     for cam in available_cameras:
@@ -70,8 +69,8 @@ def open_camera_instance(camera_id: str):
         raise HTTPException(status_code=500, detail=f"ไม่สามารถเปิดกล้อง {int(camera_id) + 1}")
 
     # สร้าง dict cameras ที่เก็บ key value สำหรับการควบคุมกล้อง ใช้ id เพื่อเช็คตามกล้อง
-    cameras[camera_id] = create_camera_state(cap)
-    print(f"✅ Camera {int(camera_id) + 1} เปิด")
+    cameras[camera_id] = create_camera_state(cap, teacher_id=teacher_id)
+    print(f"✅ Camera {int(camera_id) + 1} เปิด รหัสอาจารย์ {teacher_id}")
 
 # ใช้กับ endpoint start-detect เมื่อเวลาเรียก api เส้นนี้จะทำการตรวจจับจาก webcam แล้วก็ให้มีการคำนวน
 async def camera_loop(camera_id: str):
@@ -210,7 +209,8 @@ async def camera_loop(camera_id: str):
                         supabase_client.table("class_ratios_json").insert({
                             "camera_id": int(camera_id) + 1,
                             "timestamp": datetime.now().isoformat(),
-                            "ratios": avg
+                            "ratios": avg,
+                            "teacher_id": cam_state["teacher_id"]
                         }).execute()                        
 
                         cam_state["hour_buffer"].append({
@@ -242,7 +242,8 @@ async def camera_loop(camera_id: str):
                             "camera_id": int(camera_id) + 1,
                             "timestamp": datetime.now().isoformat(),
                             "high_att": avg_high,
-                            "low_att": avg_low
+                            "low_att": avg_low,
+                            "teacher_id": cam_state["teacher_id"]
                         }).execute()
                 await asyncio.sleep(0.016) # ~60 fps
 
@@ -265,7 +266,20 @@ async def camera_loop(camera_id: str):
     
 # ✅ เปิดกล้องทั้งหมดพร้อมกัน
 @camera_router.get("/open-all")
-async def open_all_cameras():
+async def open_all_cameras(user=Depends(verify_token)):
+
+    teacher = (
+        supabase_client
+        .table("teacher")
+        .select("teacher_id")
+        .eq("id", user["id"])
+        .execute()
+    )
+
+    teacher_id = None
+    if teacher.data:
+        teacher_id = teacher.data[0]["teacher_id"]
+
     if not available_cameras and not is_scanning:
         await async_scan_cameras() # ให้ตัวสแกนกล้องทำงานอยู่เบื้องหลังจะได้ไม่ชนกับ process อื่นๆ
         return {"status": "scanning"}
@@ -275,10 +289,10 @@ async def open_all_cameras():
         camera_id = str(cam["id"])
         if camera_id not in cameras:
             try:
-                open_camera_instance(camera_id) # ถ้าเจอกล้องแล้วจะให้เปิดกล้องและทำการใช้ state ที่สร้างขึ้นใน func นี้
+                open_camera_instance(camera_id, teacher_id=teacher_id) # ถ้าเจอกล้องแล้วจะให้เปิดกล้องและทำการใช้ state ที่สร้างขึ้นใน func นี้
             except Exception as e:
                 print(f"❌ ข้อผิดพลาดเปิดกล้องตัวที่ {int(camera_id) + 1}: {e}")
-    return {"message": f"{len(available_cameras)} cameras opened"}
+    return {"message": f"{len(available_cameras)} cameras opened", "teacher_id": teacher}
 
 # ✅ เริ่มตรวจจับ YOLO ทีละกล้อง
 @camera_router.get("/start-detect/{camera_id}")
@@ -374,12 +388,19 @@ async def close_all_cameras():
     print("🧹 All cameras closed successfully.")
     return {"message": "All cameras closed"}
 
-
 # ✅ แสดงรายการกล้อง
 @camera_router.get("/list-camera")
-async def check_list_camera():
+async def check_list_camera(user=Depends(verify_token)):
     global available_cameras, last_scan_time
     now = time.time()
+    teacher_result = supabase_client.table('teacher').select('teacher_id').eq('id', user['id']).execute()
+
+    teacher_id = None
+    if teacher_result.data and len(teacher_result.data) > 0:
+        teacher_id = teacher_result.data[0]['teacher_id']
+        print(f"รหัสอาจารย์ ${teacher_id}")
+    else:
+        print(f"ไม่พบรหัสอาจารย์ {teacher_id}")
 
     if is_scanning:
         print("⏳ Skip scanning, already in progress")

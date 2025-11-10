@@ -2,14 +2,20 @@ import React, { useState, useRef, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Menu, X } from "lucide-react"; // ใช้ไอคอนจาก lucide-react (ติดตั้งด้วย npm i lucide-react)
 import Profile from "../assets/Profile.png";
+import {supabase} from "../config/supabase"
 
 const Navbar = () => {
+
   const location = useLocation();
   const navigate = useNavigate();
   const [showLogout, setShowLogout] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  // localStorage
+  const name = localStorage.getItem("fullname")
+  const major = localStorage.getItem("major");
 
   const isTeachingActive = [
     '/user/TeachingSchedule',
@@ -28,14 +34,27 @@ const Navbar = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  
+
   const handleLogoutClick = () => {
     setShowLogout(false);
     setShowConfirmModal(true);
+    
+
   };
 
-  const handleConfirmLogout = () => {
+  const handleConfirmLogout = async () => {
+
+    await supabase.auth.signOut();
+
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    localStorage.removeItem("fullname");
+    localStorage.removeItem("teacher_id");
+    localStorage.removeItem("major"); 
+
     setShowConfirmModal(false);
-    navigate('/login');
+    navigate('/');
   };
 
   const handleCancelLogout = () => setShowConfirmModal(false);
@@ -97,8 +116,8 @@ const Navbar = () => {
           >
             <img src={Profile} alt="profile" className="w-8 h-8 rounded-full object-cover" />
             <div className="hidden sm:flex flex-col text-sm">
-              <span className="font-medium">ตัวฟรี e-sport</span>
-              <span className="text-gray-500 text-xs">คณะวิทยาศาสตร์ฯ</span>
+              <span className="font-medium">{name}</span>
+              <span className="text-gray-500 text-xs">{major}</span>
             </div>
           </button>
 

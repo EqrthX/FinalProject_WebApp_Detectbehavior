@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ReactDOM from "react-dom";
 import logout from "../assets/logout.png";
+import {supabase} from "../config/supabase";
 
 const LogoutModal = ({ onCancel, onConfirm }) => {
   return ReactDOM.createPortal(
@@ -61,7 +62,9 @@ const AdminLogout = () => {
   const handleLogoutClick = () => setShowConfirmModal(true);
   const handleCancelLogout = () => setShowConfirmModal(false);
 
-  const handleConfirmLogout = () => {
+  const handleConfirmLogout = async () => {
+    await supabase.auth.signOut();
+
     setShowConfirmModal(false);
     navigate("/"); // ✅ เปลี่ยนหน้าออกจากระบบ
   };

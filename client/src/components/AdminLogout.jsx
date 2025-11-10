@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ReactDOM from "react-dom";
 import logout from "../assets/logout.png";
+import {supabase} from "../config/supabase";
 
 const LogoutModal = ({ onCancel, onConfirm }) => {
   return ReactDOM.createPortal(
@@ -61,7 +62,17 @@ const AdminLogout = () => {
   const handleLogoutClick = () => setShowConfirmModal(true);
   const handleCancelLogout = () => setShowConfirmModal(false);
 
-  const handleConfirmLogout = () => {
+  const handleConfirmLogout = async () => {
+    const {error} = await supabase.auth.signOut();
+    if (error) console.error("Logout:",error);
+
+    localStorage.removeItem("supabase.auth.token");
+    localStorage.removeItem("supabase.auth.refresh_token");
+
+    localStorage.clear();
+
+    await new Promise((res) => setTimeout(res, 300)); // delay 0.3 วิ กัน session race
+
     setShowConfirmModal(false);
     navigate("/"); // ✅ เปลี่ยนหน้าออกจากระบบ
   };

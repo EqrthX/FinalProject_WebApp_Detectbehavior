@@ -38,6 +38,7 @@ async def login_by_teacher_id(
             raise HTTPException(status_code=400, detail="ผู้ใช้นี้ไม่มีอีเมลในระบบ Auth")
 
         # ✅ 3. ทำการ login ด้วย email + password ผ่าน auth
+        supabase_client.auth.sign_out()
         login_response = supabase_client.auth.sign_in_with_password({
             "email": email,
             "password": password
@@ -47,21 +48,28 @@ async def login_by_teacher_id(
             raise HTTPException(status_code=401, detail="รหัสผ่านไม่ถูกต้อง")
 
         fullname = ""
+        major_name = None
         # ✅ 4. ตรวจว่าคนนี้อยู่ใน table teacher ไหม
         role = "teacher" if teacher.data else "admin"
-
+        
         if is_teacher:
             first = teacher.data[0].get("first_name", "")
             last = teacher.data[0].get("last_name", "")
             fullname = f"{first} {last}".strip()
 
+            major_id = teacher.data[0].get("major_id")
+            if major_id:
+                major_result = supabase_client.table("majors").select("major_name").eq("major_id", major_id).execute()
+                if major_result.data:
+                    major_name = major_result.data[0]["major_name"]
         print(f"✅ Login success for {email} ({role})")
 
         return {
             "status": "success",
             "role": role,
             "teacher_id": teacher_id,
-            "fullname": fullname,'yh'
+            "fullname": fullname,
+            "major": major_name,
             "access_token": login_response.session.access_token,
             "refresh_token": login_response.session.refresh_token,
         }

@@ -47,6 +47,7 @@ const LoginPage = () => {
       localStorage.setItem("teacher_id", data.teacher_id);
       localStorage.setItem("fullname", data.fullname);
       localStorage.setItem("major", data.major)
+      
       if (data.role === "admin") navigate("/admin/AdminHomepage");
       else if (data.role === "teacher") navigate("/user/Homepage");
       else setErrorMessage("ไม่พบสิทธิ์ของผู้ใช้บัญชีนี้");

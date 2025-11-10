@@ -11,14 +11,14 @@ const AdminNavbar = () => {
     <div className="flex min-h-screen bg-[#F6F6F4]">
       <aside
         className="
-    bg-white border border-[#e9e9e9] rounded-[20px] shadow-sm
-    lg:fixed lg:top-2 lg:left-1      /* fixed เฉพาะ lg ขึ้นไป */
-    md:static md:mt-6 md:ml-8        /* โน้ตบุ๊กให้เป็น static + มีระยะห่าง */
-    flex flex-col justify-between
-    w-44 lg:w-56 md:w-48 h-[85vh] 
-    md:h-auto lg:min-h-[85vh] lg:max-h-[85vh]
-    transition-all
-  "
+          bg-white border border-[#e9e9e9] rounded-[20px] shadow-sm
+          lg:fixed lg:top-2 lg:left-1      /* fixed เฉพาะ lg ขึ้นไป */
+          md:static md:mt-6 md:ml-8        /* โน้ตบุ๊กให้เป็น static + มีระยะห่าง */
+          flex flex-col justify-between
+          w-44 lg:w-56 md:w-48 h-[85vh] 
+          md:h-auto lg:min-h-[85vh] lg:max-h-[85vh]
+          transition-all
+        "
       >
         <div className="p-4">
           {/* ส่วนโปรไฟล์ */}

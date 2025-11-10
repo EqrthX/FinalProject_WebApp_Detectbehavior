@@ -52,6 +52,9 @@ const Navbar = () => {
     localStorage.removeItem("fullname");
     localStorage.removeItem("teacher_id");
     localStorage.removeItem("major"); 
+    localStorage.clear(); 
+
+    await new Promise((res) => setTimeout(res, 300)); // delay 0.3 วิ กัน session race
 
     setShowConfirmModal(false);
     navigate('/');

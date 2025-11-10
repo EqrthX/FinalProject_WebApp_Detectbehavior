@@ -63,7 +63,15 @@ const AdminLogout = () => {
   const handleCancelLogout = () => setShowConfirmModal(false);
 
   const handleConfirmLogout = async () => {
-    await supabase.auth.signOut();
+    const {error} = await supabase.auth.signOut();
+    if (error) console.error("Logout:",error);
+
+    localStorage.removeItem("supabase.auth.token");
+    localStorage.removeItem("supabase.auth.refresh_token");
+
+    localStorage.clear();
+
+    await new Promise((res) => setTimeout(res, 300)); // delay 0.3 วิ กัน session race
 
     setShowConfirmModal(false);
     navigate("/"); // ✅ เปลี่ยนหน้าออกจากระบบ

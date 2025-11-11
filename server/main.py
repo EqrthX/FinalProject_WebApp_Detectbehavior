@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-# from routes.user_route import router
 from routes.camera_route import camera_router, cameras
-
+from routes.admin_route import admin_route
+from routes.auth_rote import auth_route
 app = FastAPI()
 
 
@@ -15,6 +15,8 @@ app.add_middleware(
 )
 
 app.include_router(camera_router)
+app.include_router(admin_route)
+app.include_router(auth_route)
 
 @app.on_event("shutdown")
 async def shutdown_event():

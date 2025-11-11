@@ -3,7 +3,7 @@ import cv2
 import time
 import base64
 import asyncio
-from utils.camera_helper import create_camera_state, calculate_average, compare_class
+from utils.camera_helper import create_camera_state, define_LOW_CLASS, define_HIGH_CLASS
 from utils.model_loader import get_model
 from utils.auth import verify_token
 from datetime import datetime
@@ -20,6 +20,9 @@ last_scan_time = 0
 backends_cameras = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
 is_scanning = False
 scan_lock = asyncio.Lock()  # lock กัน async call ซ้ำ
+ATTENDENCE = define_HIGH_CLASS()
+NON_ATTENDENCE = define_LOW_CLASS()
+
 
 # ✅ ฟังก์ชันสแกนกล้องในเครื่อง
 async def async_scan_cameras():
@@ -40,7 +43,7 @@ async def async_scan_cameras():
                 for backend in backends_cameras:
                     cap = cv2.VideoCapture(i, backend)
                     if cap.isOpened():
-                        print(f"✅ Camera {i} found with backend {backend}")
+                        print(f"✅ กล้องตัวที่ {i + 1} found with backend {backend}")
                         found.append({
                             "id": i,
                             "name": f"กล้องตัวที่ {i+1}",
@@ -87,12 +90,12 @@ async def camera_loop(camera_id: str):
             return
         
         if "class_timer" not in cam_state:
-            cam_state["class_timer"] = {
+            cam_state.setdefault("class_timer", {
                 "current_class": None,
                 "duration": 0.0,
                 "frame_count": 0,
                 "last_time": time.time()
-            }
+            })
         
         loop = asyncio.get_event_loop()
 
@@ -107,7 +110,6 @@ async def camera_loop(camera_id: str):
                     await asyncio.sleep(0.03)
                     continue
 
-                cam_state["frame"] += 1
                 label = None
                 
                 results = await loop.run_in_executor(
@@ -117,20 +119,29 @@ async def camera_loop(camera_id: str):
                 annotated = results[0].plot()
 
                 now = time.time()
+                found_valid_detection = False
+
                 for box in results[0].boxes:  
                     delta = now - cam_state['class_timer']['last_time']
                     cam_state['class_timer']['last_time'] = now
+
                     cls = int(box.cls)
                     conf = float(box.conf.item())
                     label = model.names[cls]
                     track_id = int(box.id) if box.id is not None else -1
                         
                         # เช็คว่า track id ตรงกับ state track_id ไหม
-                    if track_id == cam_state["track_id"] and conf > 0.3:
+                    if track_id == cam_state["track_id"] and conf > 0.5:
+                        found_valid_detection = True
                         """
                         ต้องเอา conf มาเช็คว่าถ้ามากจาก default ที่ตั้งจะให้มันทำการ count ของ class นั้นและหาร frame ทั้งหมด     
                         """
-                        cam_state["status"]["frame_class_count"][label] += 1
+                        if label in ATTENDENCE:
+                            cam_state["status"]["frame_class_count"][label] += 1
+                        elif label in NON_ATTENDENCE:
+                            cam_state["status"]["frame_class_count"][label] += 1
+                        else:
+                            cam_state["status"]["frame_class_count"]["Other"] += 1
 
                         if cam_state['class_timer']['current_class'] == label:
                             cam_state['class_timer']['duration'] += delta
@@ -146,6 +157,10 @@ async def camera_loop(camera_id: str):
                         # ถ้าคนเดินผ่านละไม่ใช่ id ที่ track ไว้ตามกล้อง กล้องจะไม่สนใจ id นั้น
                     elif track_id != -1 and track_id != cam_state["track_id"]:
                         print(f"🚫 กล้อง {int(camera_id) + 1} ไม่สนใจ ID {track_id} (กำลังจับ ID {cam_state['track_id']})")
+
+                if not found_valid_detection:
+                    cam_state['status']['frame_class_count']['Other'] += 1
+                    print(f"😶 กล้อง {int(camera_id)+1}: ไม่เจอ object → บวก Other 1 เฟรม")
 
                 # 🔹 แปลงเป็น JPEG และเก็บไว้
                 ok, buf = cv2.imencode(".jpg", annotated)
@@ -169,7 +184,8 @@ async def camera_loop(camera_id: str):
                             cam_state['class_timer'] = {
                                 "current_class": None,
                                 "duration": 0.0,
-                                "frame_count": 0
+                                "frame_count": 0,
+                                "last_time": time.time()
                             }
                     
                         elif 10.0 <= time_duration_max < 15.0 :
@@ -180,38 +196,59 @@ async def camera_loop(camera_id: str):
                             cam_state['class_timer'] = {
                                 "current_class": None,
                                 "duration": 0.0,
-                                "frame_count": 0
+                                "frame_count": 0,
+                                "last_time": time.time()
                             }
-                        
-                    if cam_state["seconds"] >= 60:
-                        avg = calculate_average(
-                            cam_state["frame"], 
-                            cam_state["status"]["frame_class_count"], 
-                        )
+                       
+                    if cam_state["seconds"] >= 30:
+                        total_frame = sum(cam_state['status']['frame_class_count'].values())
+                        # avg = calculate_average(
+                        #     total_frame, 
+                        #     cam_state["status"]["frame_class_count"], 
+                        # )
 
                         print(f"{'*'*3}|{'='*50}|{'*'*3}")
+                        print(f"📸 กล้อง {int(camera_id) + 1} ID {cam_state['track_id']} ครบ {cam_state['seconds']} วิ - รวม {total_frame} เฟรม\n")
 
-                        print(f"📸 กล้อง {int(camera_id) + 1} ID {cam_state['track_id']} ครบ {cam_state['seconds']} วิ - รวม {cam_state['frame']} เฟรม")
-                        
-                        print("สิ่งที่ตรวจจับเจอของแต่ละ Class")
+                        print("🎯 สิ่งที่ตรวจจับเจอของแต่ละ Class\n")
+
+                        print("🟢 ตั้งใจเรียน (ATTENDENCE):")
                         for k, v in cam_state['status']['frame_class_count'].items():
-                            print(f"\t*{k:<20} : {v:>5}")
-                        
-                        print("\nคิดเป็นกี่เปอร์เซ็นเมื่อนำจำนวนที่ตรวจจับของแต่ละ Class หารด้วย Frame ทั้งหมด (ก่อนนำมาเปรียบเทียบ)")
-                        for k, v in avg.items():
-                            print(f"\t*{k:<20} : {v['ratio']:>5}")
-                            
+                            if k in ATTENDENCE:
+                                print(f"\t*{k:<25} : {v:>5}")
+
+                        print("\n🔴 ไม่ตั้งใจเรียน (NON_ATTENDENCE):")
+                        for k, v in cam_state['status']['frame_class_count'].items():
+                            if k in NON_ATTENDENCE:
+                                print(f"\t*{k:<25} : {v:>5}")
+
+                        print("\n⚪ อื่น ๆ (OTHER):")
+                        for k, v in cam_state['status']['frame_class_count'].items():
+                            if k not in ATTENDENCE and k not in NON_ATTENDENCE:
+                                print(f"\t*{k:<25} : {v:>5}")
+
                         print(f"{'*'*3}|{'='*50}|{'*'*3}")
 
-                        high, low = compare_class(avg)
+                        print("\nคิดเป็นกี่เปอร์เซ็นเมื่อนำจำนวนที่ตรวจจับของแต่ละ Class หารด้วย Frame ทั้งหมด")
+                        attendence_sum = sum(v for k, v in cam_state['status']['frame_class_count'].items() if k in ATTENDENCE)
+                        non_attendence_sum = sum(v for k, v in cam_state['status']['frame_class_count'].items() if k in NON_ATTENDENCE)
+                        other_sum = sum(v for k, v in cam_state['status']['frame_class_count'].items() if k not in ATTENDENCE and k not in NON_ATTENDENCE)
 
-                        # insert ratio to supabase
-                        supabase_client.table("class_ratios_json").insert({
-                            "camera_id": int(camera_id) + 1,
-                            "timestamp": datetime.now().isoformat(),
-                            "ratios": avg,
-                            "teacher_id": cam_state["teacher_id"]
-                        }).execute()                        
+                        result_attendence = attendence_sum / total_frame
+                        result_non_attendence = non_attendence_sum / total_frame
+                        result_other = other_sum / total_frame
+
+                        print(f"ตั้งใจ {result_attendence:.2f}")
+                        print(f"ไม่ตั้งใจ {result_non_attendence:.2f}")
+                        print(f"อื่นๆ {result_other:.2f}")
+
+                        # for k, v in avg.items():
+                        #     print(f"\t*{k:<20} : {v['ratio']:>5}")
+                            
+                        # print(f"{'*'*3}|{'='*50}|{'*'*3}")
+
+                        # high, low = compare_class(avg)
+                        break                      
 
                         cam_state["hour_buffer"].append({
                             "camera_id": int(camera_id) + 1,
@@ -350,6 +387,7 @@ async def camera_close(camera_id: str):
 
     cam_state["detecting"] = False
     cam_state["running"] = False
+    cam_state["track_id"] = None
 
     cap = cam_state.get("cap")
     if cap and cap.isOpened():
@@ -367,6 +405,7 @@ async def close_all_cameras():
     for _, cam_state in list(cameras.items()):
         cam_state["detecting"] = False
         cam_state["running"] = False
+        cam_state["track_id"] = None
 
         task = cam_state.get("task")
         if task and not task.done():
@@ -398,7 +437,7 @@ async def check_list_camera(user=Depends(verify_token)):
     teacher_id = None
     if teacher_result.data and len(teacher_result.data) > 0:
         teacher_id = teacher_result.data[0]['teacher_id']
-        print(f"รหัสอาจารย์ ${teacher_id}")
+        print(f"รหัสอาจารย์ {teacher_id}")
     else:
         print(f"ไม่พบรหัสอาจารย์ {teacher_id}")
 
@@ -473,24 +512,47 @@ async def camera_summary(websocket: WebSocket, camera_id: str):
     cam_state = cameras.get(camera_id)
 
     if cam_state is None:
-        print(f"หา State ของกล้องไม่เจอของกล้องที่ {int(camera_id) + 1}")
-        await websocket.close()
+        print(f"❌ หา State ของกล้องไม่เจอ (กล้อง {int(camera_id) + 1})")
+        # ปิดแค่ครั้งเดียว
+        await websocket.close(code=1000)
         return
+
     try:
+        print(f"📡 Summary WS started for camera {int(camera_id) + 1}")
         while cam_state.get("running") and cam_state.get("detecting"):
             await asyncio.sleep(60)
 
-            payload = cam_state.get("show_class", {}).copy()
-
-            if "image" in payload and isinstance(payload['image'], (bytes, bytearray)):
-                payload['image'] = base64.b64encode(payload['image']).decode('utf-8')
+            payload = cam_state.get("show_class", {}).copy() or {}
             if not payload:
                 payload = {
                     "CameraId": int(camera_id) + 1,
                     "Time": datetime.now().strftime("%H:%M:%S")
                 }
-            await websocket.send_json(payload)
+
+            # 🔹 ถ้ามี image เป็น bytes → แปลง base64
+            if "image" in payload and isinstance(payload["image"], (bytes, bytearray)):
+                payload["image"] = base64.b64encode(payload["image"]).decode("utf-8")
+
+            try:
+                await websocket.send_json(payload)
+            except RuntimeError:
+                # ถ้า WS ปิดไปแล้ว ไม่ต้องส่งซ้ำ
+                print(f"⚠️ Summary WS: Attempted send after close (camera {int(camera_id) + 1})")
+                break
+            except WebSocketDisconnect:
+                print(f"🔌 Summary WS disconnected (camera {int(camera_id) + 1})")
+                break
+
+            await asyncio.sleep(1)
+
+    except WebSocketDisconnect:
+        print(f"🔌 WebSocket disconnected normally (camera {int(camera_id) + 1})")
+
     except Exception as e:
-        print("Summary ws:", e)
+        print(f"❗ Summary WS error (camera {int(camera_id) + 1}): {e}")
+
     finally:
-        await websocket.close()
+        # ✅ ป้องกัน double-close
+        if not websocket.client_state.name == "DISCONNECTED":
+            await websocket.close(code=1000)
+        print(f"🛑 Summary WS closed (camera {int(camera_id) + 1})")

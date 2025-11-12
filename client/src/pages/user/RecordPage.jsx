@@ -14,6 +14,9 @@ const Record = () => {
     const [frames, setFrames] = useState({});
     const wsRefs = useRef({});
     const summaryRefs = useRef({});
+    const didInit = useRef(false);
+    const retryInterval = useRef(null);
+    const scanningToastId = useRef(null);
 
     // ---------- Utility ----------
     const safeCloseWS = (id) => {
@@ -96,10 +99,6 @@ const Record = () => {
 
     // ---------- เปิดกล้องทั้งหมด ----------
     useEffect(() => {
-        let didInit = false;
-        let retryInterval = null;
-        let scanningToastId = null;
-
         const initCameras = async () => {
             try {
                 const res = await axios.get("camera/list-camera", {
@@ -110,25 +109,26 @@ const Record = () => {
 
                 // 🔹 ถ้ายังไม่มีกล้อง → retry ต่อ
                 if (list.length === 0) {
-                    if (!scanningToastId) {
-                        scanningToastId = toast.loading("กำลังสแกนกล้อง...");
+                    if (!scanningToastId.current) {
+                        scanningToastId.current = toast.loading("กำลังสแกนกล้อง...");
                     }
-                    if (!retryInterval) {
-                        retryInterval = setInterval(initCameras, 3000);
+                    if (!retryInterval.current) {
+                        retryInterval.current = setInterval(initCameras, 3000);
                     }
                     return;
                 }
 
                 // 🔹 ถ้ามีกล้องแล้ว → ยกเลิก retry + toast
-                if (retryInterval) {
-                    clearInterval(retryInterval);
-                    retryInterval = null;
+                if (retryInterval.current) {
+                    clearInterval(retryInterval.current);
+                    retryInterval.current = null;
                 }
-                toast.dismiss(scanningToastId);
+                toast.dismiss(scanningToastId.current);
+                scanningToastId.current = null
 
                 // 🔹 เปิดกล้องทั้งหมด (ทำแค่รอบแรกเท่านั้น)
-                if (!didInit) {
-                    didInit = true; // ✅ กันซ้ำเฉพาะเปิดกล้องรอบแรก
+                if (!didInit.current) {
+                    didInit.current = true; // ✅ กันซ้ำเฉพาะเปิดกล้องรอบแรก
                     await axios.get("camera/open-all", { timeout: 60000 });
                     list.forEach((cam) => connectWebSocket(cam.id));
                     toast.success("เปิดกล้องทั้งหมดแล้ว!");
@@ -145,8 +145,8 @@ const Record = () => {
 
         // ✅ cleanup
         return () => {
-            if (retryInterval) clearInterval(retryInterval);
-            toast.dismiss(scanningToastId);
+            if (retryInterval) clearInterval(retryInterval.current);
+            toast.dismiss(scanningToastId.current);
         };
     }, []);
 

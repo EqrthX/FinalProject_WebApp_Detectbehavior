@@ -3,6 +3,7 @@ import cv2
 import time
 import base64
 import asyncio
+from datetime import datetime
 from utils.camera_helper import create_camera_state, define_LOW_CLASS, define_HIGH_CLASS
 from utils.model_loader import get_model
 from utils.auth import verify_token
@@ -20,9 +21,10 @@ last_scan_time = 0
 backends_cameras = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
 is_scanning = False
 scan_lock = asyncio.Lock()  # lock กัน async call ซ้ำ
+
 ATTENDENCE = define_HIGH_CLASS()
 NON_ATTENDENCE = define_LOW_CLASS()
-
+# ----------------------------------------
 
 # ✅ ฟังก์ชันสแกนกล้องในเครื่อง
 async def async_scan_cameras():
@@ -131,11 +133,8 @@ async def camera_loop(camera_id: str):
                     track_id = int(box.id) if box.id is not None else -1
                         
                         # เช็คว่า track id ตรงกับ state track_id ไหม
-                    if track_id == cam_state["track_id"] and conf > 0.5:
+                    if track_id == cam_state["track_id"] and conf > 0.3:
                         found_valid_detection = True
-                        """
-                        ต้องเอา conf มาเช็คว่าถ้ามากจาก default ที่ตั้งจะให้มันทำการ count ของ class นั้นและหาร frame ทั้งหมด     
-                        """
                         if label in ATTENDENCE:
                             cam_state["status"]["frame_class_count"][label] += 1
                         elif label in NON_ATTENDENCE:
@@ -201,61 +200,67 @@ async def camera_loop(camera_id: str):
                             }
                        
                     if cam_state["seconds"] >= 30:
+                        class_result_json = {}
+                        print_lines = {
+                            "att": [],
+                            "non": [],
+                            "oth": []
+                        }
+                        attendence_sum = 0
+                        non_attendence_sum = 0
+                        other_sum = 0
+                        
                         total_frame = sum(cam_state['status']['frame_class_count'].values())
-                        # avg = calculate_average(
-                        #     total_frame, 
-                        #     cam_state["status"]["frame_class_count"], 
-                        # )
 
-                        print(f"{'*'*3}|{'='*50}|{'*'*3}")
-                        print(f"📸 กล้อง {int(camera_id) + 1} ID {cam_state['track_id']} ครบ {cam_state['seconds']} วิ - รวม {total_frame} เฟรม\n")
-
-                        print("🎯 สิ่งที่ตรวจจับเจอของแต่ละ Class\n")
-
-                        print("🟢 ตั้งใจเรียน (ATTENDENCE):")
                         for k, v in cam_state['status']['frame_class_count'].items():
+                            ratio = 0.0
+                            if total_frame > 0:
+                                ratio = v / total_frame
+
+                            class_result_json[k] = round(ratio, 3)
+
+                            line_to_print = f"\t*{k:<25} : {v:>5}"
                             if k in ATTENDENCE:
-                                print(f"\t*{k:<25} : {v:>5}")
-
-                        print("\n🔴 ไม่ตั้งใจเรียน (NON_ATTENDENCE):")
-                        for k, v in cam_state['status']['frame_class_count'].items():
-                            if k in NON_ATTENDENCE:
-                                print(f"\t*{k:<25} : {v:>5}")
-
-                        print("\n⚪ อื่น ๆ (OTHER):")
-                        for k, v in cam_state['status']['frame_class_count'].items():
-                            if k not in ATTENDENCE and k not in NON_ATTENDENCE:
-                                print(f"\t*{k:<25} : {v:>5}")
-
-                        print(f"{'*'*3}|{'='*50}|{'*'*3}")
-
-                        print("\nคิดเป็นกี่เปอร์เซ็นเมื่อนำจำนวนที่ตรวจจับของแต่ละ Class หารด้วย Frame ทั้งหมด")
-                        attendence_sum = sum(v for k, v in cam_state['status']['frame_class_count'].items() if k in ATTENDENCE)
-                        non_attendence_sum = sum(v for k, v in cam_state['status']['frame_class_count'].items() if k in NON_ATTENDENCE)
-                        other_sum = sum(v for k, v in cam_state['status']['frame_class_count'].items() if k not in ATTENDENCE and k not in NON_ATTENDENCE)
+                                print_lines["att"].append(line_to_print)
+                                attendence_sum += v
+                            elif k in NON_ATTENDENCE:
+                                print_lines["non"].append(line_to_print)
+                                non_attendence_sum += v
+                            else:
+                                print_lines['oth'].append(line_to_print)
+                                other_sum += v
 
                         result_attendence = attendence_sum / total_frame
                         result_non_attendence = non_attendence_sum / total_frame
                         result_other = other_sum / total_frame
 
+                        print(f"{'*'*3}|{'='*50}|{'*'*3}")
+                        print(f"รหัสอาจารย์ {cam_state['teacher_id']} 📸 กล้อง {int(camera_id) + 1} ID {cam_state['track_id']} ครบ {cam_state['seconds']} วิ - รวม {total_frame} เฟรม\n")
+                        print("🎯 สิ่งที่ตรวจจับเจอของแต่ละ Class\n")
+
+                        print("🟢 ตั้งใจเรียน (ATTENDENCE):")
+                        for line in print_lines["att"]: print(line)
+                        
+                        print("\n🔴 ไม่ตั้งใจเรียน (NON_ATTENDENCE):")
+                        for line in print_lines["non"]: print(line)
+                        
+                        print("\n⚪ อื่น ๆ (OTHER):")
+                        for line in print_lines["oth"]: print(line)
+                        
                         print(f"ตั้งใจ {result_attendence:.2f}")
                         print(f"ไม่ตั้งใจ {result_non_attendence:.2f}")
                         print(f"อื่นๆ {result_other:.2f}")
+                        print(f"{'*'*3}|{'='*50}|{'*'*3}")
 
-                        # for k, v in avg.items():
-                        #     print(f"\t*{k:<20} : {v['ratio']:>5}")
-                            
-                        # print(f"{'*'*3}|{'='*50}|{'*'*3}")
-
-                        # high, low = compare_class(avg)
-                        break                      
-
-                        cam_state["hour_buffer"].append({
-                            "camera_id": int(camera_id) + 1,
-                            "timestamp": datetime.now().isoformat(),
-                            "high_att": high,
-                            "low_att": low
-                        })
+                        supabase_client.table("camera_logs").insert({
+                            "camera_id":int(camera_id) + 1,
+                            "track_id":cam_state['track_id'],
+                            "teacher_id":cam_state['teacher_id'],
+                            "Attention":round(result_attendence, 3),
+                            "Non_Attention":round(result_non_attendence, 3),
+                            "Other":round(result_other, 3),
+                            "class_json": class_result_json
+                        }).execute()
 
                         cam_state["show_class"] = {
                             "CameraId": int(camera_id) + 1,
@@ -264,24 +269,12 @@ async def camera_loop(camera_id: str):
                             "image": base64.b64encode(cam_state['last_frame']).decode('utf-8')
                         }
 
+                        cam_state.get("summary_ready_event").set()
                         # reset count sum เป็น 0 เพื่อคำนวณใหม่
                         for k in cam_state["status"]["frame_class_count"]:
                             cam_state["status"]["frame_class_count"][k] = 0
                         cam_state["seconds"] = 0
                     
-                    if len(cam_state['hour_buffer']) >= 60:
-                        print("ครบ 60 นาที -> รวมผล")
-
-                        avg_high = sum(x["high_att"] for x in cam_state['hour_buffer']) / 60
-                        avg_low = sum(x["low_att"] for x in cam_state["hour_buffer"]) / 60
-
-                        supabase_client.table("camera_logs_hr").insert({
-                            "camera_id": int(camera_id) + 1,
-                            "timestamp": datetime.now().isoformat(),
-                            "high_att": avg_high,
-                            "low_att": avg_low,
-                            "teacher_id": cam_state["teacher_id"]
-                        }).execute()
                 await asyncio.sleep(0.016) # ~60 fps
 
             print(f"🛑 stop detect on camera {int(camera_id) + 1}")
@@ -514,13 +507,13 @@ async def camera_summary(websocket: WebSocket, camera_id: str):
     if cam_state is None:
         print(f"❌ หา State ของกล้องไม่เจอ (กล้อง {int(camera_id) + 1})")
         # ปิดแค่ครั้งเดียว
-        await websocket.close(code=1000)
         return
-
+    summary_event = cam_state.get("summary_ready_event")
     try:
         print(f"📡 Summary WS started for camera {int(camera_id) + 1}")
         while cam_state.get("running") and cam_state.get("detecting"):
-            await asyncio.sleep(60)
+
+            await summary_event.wait()
 
             payload = cam_state.get("show_class", {}).copy() or {}
             if not payload:
@@ -543,7 +536,7 @@ async def camera_summary(websocket: WebSocket, camera_id: str):
                 print(f"🔌 Summary WS disconnected (camera {int(camera_id) + 1})")
                 break
 
-            await asyncio.sleep(1)
+            summary_event.clear()
 
     except WebSocketDisconnect:
         print(f"🔌 WebSocket disconnected normally (camera {int(camera_id) + 1})")

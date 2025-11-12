@@ -13,7 +13,8 @@ const SummarizePage = () => {
   const [lineChartData, setLineChartData] = useState([]);
   const [summary, setSummary] = useState({ att: 0, nonAtt: 0, other: 0 });
   const [dateToDetect, setDateToDetect] = useState(null);
-
+  const [pieChartData, setPieChartData] = useState([]);
+  
   useEffect(() => {
     const fetechResult = async () => {
       try {
@@ -38,6 +39,28 @@ const SummarizePage = () => {
 
   useEffect(() => {
     if (result && result.length > 0) {
+      const totals = {
+        Focused: 0,
+        Looking_at_the_board: 0,
+        Taking_notes: 0,
+        LookingAway: 0,
+        Talking: 0,
+        UsingPhone: 0,
+        Other: 0
+      }
+
+      result.forEach(log => {        
+        const ratios = log.class_json || {};
+
+        totals.Focused += ratios.Focused || 0;
+        totals.Looking_at_the_board += ratios.Looking_at_the_board || 0;
+        totals.Taking_notes += ratios.Taking_notes || 0;
+        totals.LookingAway += ratios.LookingAway || 0;
+        totals.Talking += ratios.Talking || 0;
+        totals.UsingPhone += ratios.UsingPhone || 0;
+        totals.Other += ratios.Other || 0;
+      })
+
       if (!dateToDetect) {
         const firstLogDate = new Date(result[0].created_at);
         setDateToDetect(firstLogDate.toLocaleDateString('th-TH', {
@@ -81,19 +104,22 @@ const SummarizePage = () => {
         nonAtt: avgNonAttenion,
         other: avgOhther
       })
+
+      const dataForPie = [
+        { name: "Focused", value: totals.Focused / totalLogs },
+        { name: "Looking_at_the_board", value: totals.Looking_at_the_board / totalLogs },
+        { name: "Taking_notes", value: totals.Taking_notes / totalLogs },
+        { name: "LookingAway", value: totals.LookingAway / totalLogs },
+        { name: "UsingPhone", value: totals.UsingPhone / totalLogs },
+        { name: "Other", value: totals.Other / totalLogs },
+      ]
+      setPieChartData(dataForPie);
     }
   }, [result])
 
 
-  // กราฟวงกลม
-  const data = [
-    { name: 'Focused', value: 870 },
-    { name: 'Inactive', value: 130 },
-
-  ];
-
   const RADIAN = Math.PI / 180;
-  const COLORS = ['#0068c9', '#fe2b2b'];
+  const COLORS = ['#0068c9', '#fe2b2b', '#780cdf', '#00B7EB', '#00FFCE', '#FF00FF', '#000'];
 
   // เพิ่มฟังก์ชัน handleCourseClick
   const handleCourseClick = (courseId) => {
@@ -126,7 +152,7 @@ const SummarizePage = () => {
               <div className="mb-6 ">
                 <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
                   <BarChartOutlined className="text-2xl text-blue-500" />
-                  ผลรวมรายวัน
+                  ผลรวมรายวัน {dateToDetect}
                 </h2>
               </div>
               <div className="flex justify-center gap-50">
@@ -179,12 +205,12 @@ const SummarizePage = () => {
                       stroke="#FF3300"
                       strokeWidth={2}
                     />
-                    <Line
+                    {/* <Line
                       type="monotone"
                       dataKey="อื่นๆ"
                       stroke="#000"
                       strokeWidth={2}
-                    />
+                    /> */}
                   </LineChart>
 
                 </ResponsiveContainer>
@@ -196,11 +222,11 @@ const SummarizePage = () => {
           {/* กล่องฝั่งขวา */}
           <div className="flex flex-col space-y-4">
             <div className="bg-white rounded-2xl shadow flex flex-col h-140 border border-gray-300">
-              <h2 className="flex justify-start ml-15 p-9 text-lg font-bold">ผลรวม</h2>
+              <h2 className="flex justify-start ml-15 p-9 text-lg font-bold">ผลรวมของพฤติกรรมของนักศึกษา</h2>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
                   <Pie
-                    data={data}
+                    data={pieChartData}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
@@ -209,11 +235,11 @@ const SummarizePage = () => {
                     fill="#8884d8"
                     dataKey="value"
                   >
-                    {data.map((entry, index) => (
+                    {pieChartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip formatter={(value) => `${(value * 100).toFixed(1)}%`} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>

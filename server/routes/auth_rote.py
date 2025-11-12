@@ -76,4 +76,4 @@ async def login_by_teacher_id(
 
     except Exception as e:
         print("❌ Login error:", e)
-        raise HTTPException(status_code=400, detail=f"Login 400: {e}")
+        raise HTTPException(status_code=400, detail=f"รหัสประจำตัว / รหัสผ่านไม่ถูกต้อง")

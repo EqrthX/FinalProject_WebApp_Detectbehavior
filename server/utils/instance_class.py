@@ -7,11 +7,30 @@ def new_status_dict():
         model = get_model()
         if not hasattr(model, "names"):
             raise RuntimeError("YOLO model not loaded")
-        labels: List[str] = list(get_model().names.values())
+
+        # บังคับให้เป็น list เสมอ
+        labels = list(model.names.values())
+
+        # 🔹 ตัด class ที่ไม่ต้องการ
+        remove_classes = {"Book", "Ipad", "Phone"}
+        labels = [cls for cls in labels if cls not in remove_classes]
+
+        # 🔹 เพิ่ม class "Other"
+        if "Other" not in labels:
+            labels.append("Other")
+
     except Exception as e:
         print(f"⚠️ [new_status_dict] Warning: cannot load model names ({e})")
-        labels = ["Book","Focused", "Ipad", "LookingAway", "Looking_at_the_board", "Phone", "Taking_notes", "Talking", "UsingPhone"]
-
+        # fallback ถ้าโหลด model ไม่ได้
+        labels = [
+            "Focused",
+            "LookingAway",
+            "Looking_at_the_board",
+            "Taking_notes",
+            "Talking",
+            "UsingPhone",
+            "Other"
+        ]
 
     return {
         "frame_class_count": {cls: 0 for cls in labels},

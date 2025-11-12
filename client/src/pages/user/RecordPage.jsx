@@ -14,6 +14,9 @@ const Record = () => {
     const [frames, setFrames] = useState({});
     const wsRefs = useRef({});
     const summaryRefs = useRef({});
+    const didInit = useRef(false);
+    const retryInterval = useRef(null);
+    const scanningToastId = useRef(null);
 
     // ---------- Utility ----------
     const safeCloseWS = (id) => {
@@ -96,9 +99,6 @@ const Record = () => {
 
     // ---------- เปิดกล้องทั้งหมด ----------
     useEffect(() => {
-        const retryRef = { current: null };
-        let scanningToastId = null;
-
         const initCameras = async () => {
             try {
                 const res = await axios.get("camera/list-camera", {
@@ -107,43 +107,49 @@ const Record = () => {
                 const list = res.data.cameras || [];
                 setCameras(list);
 
-                // ✅ ถ้ายังไม่เจอกล้อง → ให้ retry ทุก 3 วิ
+                // 🔹 ถ้ายังไม่มีกล้อง → retry ต่อ
                 if (list.length === 0) {
-                    if (!scanningToastId) {
-                        scanningToastId = toast.loading("กำลังสแกนกล้อง...");
+                    if (!scanningToastId.current) {
+                        scanningToastId.current = toast.loading("กำลังสแกนกล้อง...");
                     }
-                    if (!retryRef.current) {
-                        retryRef.current = setInterval(initCameras, 3000);
+                    if (!retryInterval.current) {
+                        retryInterval.current = setInterval(initCameras, 3000);
                     }
                     return;
                 }
 
-                // ✅ เจอกล้องแล้ว → ยกเลิกการ retry + ปิด toast ที่ค้าง
-                if (retryRef.current) {
-                    clearInterval(retryRef.current);
-                    retryRef.current = null;
+                // 🔹 ถ้ามีกล้องแล้ว → ยกเลิก retry + toast
+                if (retryInterval.current) {
+                    clearInterval(retryInterval.current);
+                    retryInterval.current = null;
                 }
-                toast.dismiss(); // ปิด toast ที่ค้างทั้งหมด
+                toast.dismiss(scanningToastId.current);
+                scanningToastId.current = null
 
-                await axios.get("camera/open-all", { timeout: 60000 });
-                toast.success(`เปิดกล้องทั้งหมด (${list.length}) แล้ว!`);
-
-                list.forEach((cam) => connectWebSocket(cam.id));
+                // 🔹 เปิดกล้องทั้งหมด (ทำแค่รอบแรกเท่านั้น)
+                if (!didInit.current) {
+                    didInit.current = true; // ✅ กันซ้ำเฉพาะเปิดกล้องรอบแรก
+                    await axios.get("camera/open-all", { timeout: 60000 });
+                    list.forEach((cam) => connectWebSocket(cam.id));
+                    toast.success("เปิดกล้องทั้งหมดแล้ว!");
+                }
 
             } catch (err) {
-                console.error(err);
+                console.error("❌ โหลดกล้องล้มเหลว:", err);
                 toast.error("เกิดข้อผิดพลาดขณะโหลดกล้อง");
             }
         };
 
+        // ✅ เริ่มต้นเรียกครั้งแรก
         initCameras();
 
-        // ✅ cleanup ตอนออกจากหน้า
+        // ✅ cleanup
         return () => {
-            if (retryRef.current) clearInterval(retryRef.current);
-            toast.dismiss();
+            if (retryInterval) clearInterval(retryInterval.current);
+            toast.dismiss(scanningToastId.current);
         };
     }, []);
+
 
     // ---------- ออกจากหน้านี้ให้ปิดกล้องทั้งหมด ----------
     useEffect(() => {
@@ -235,10 +241,9 @@ const Record = () => {
             console.log(resStartDetect);
             const started_ids = resStartDetect.data.started || []
             for (const id in started_ids) {
-
                 connectSummarySocket(id);
             }
-            toast.success(`เริ่มตรวจจับกล้อง ${cameraId + 1}`);
+            toast.success(`เริ่มตรวจจับกล้อง ${Number(cameraId + 1)}`);
 
         } catch (error) {
             console.error("การตรวจจับเกิดข้อผิดพลาด", error)
@@ -368,7 +373,7 @@ const Record = () => {
                     </div>
 
                     {/* ✅ ฝั่งขวา (log ตรวจจับ) */}
-                    <div className="bg-white rounded-2xl shadow flex flex-col border border-gray-200 h-full">
+                    <div className="bg-white rounded-2xl shadow flex flex-col border border-gray-200 h-[500px]">
                         <h1 className="text-center py-4 text-lg font-bold border-b md:text-3xl">
                             พฤติกรรม
                         </h1>
@@ -381,7 +386,7 @@ const Record = () => {
                                 detections.map((item) => (
                                     <div
                                         key={item.id}
-                                        className="flex justify-between items-center gap-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 text-center"
+                                        className="flex justify-between items-center gap-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 text-center overflow-y-auto"
                                     >
                                         <h1 className="text-lg font-medium text-gray-700">
                                             กล้องตัวที่ {item.cameraId}

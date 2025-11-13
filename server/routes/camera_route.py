@@ -341,9 +341,16 @@ async def start_detect(camera_id: str):
     return {"message": f"Async detection started on camera {int(camera_id) + 1}"}
 
 @camera_router.get("/start-all")
-async def start_all_detections():
+async def start_all_detections(user = Depends(verify_token)):
     started = []
+    teacher_result = supabase_client.table('teacher').select('teacher_id').eq('id', user['id']).execute()
     
+    teacher_id = None
+    if teacher_result.data and len(teacher_result.data) > 0:
+        teacher_id = teacher_result.data[0]['teacher_id']
+        print(f"[/start-all] รหัสอาจารย์ {teacher_id}")
+    else:
+        print(f"[/start-all] ไม่พบรหัสอาจารย์ {teacher_id}")
     # วนลูปกล้องทั้งหมดที่มี
     for cam_id, cam_state in cameras.items():
         # เช็คว่ากล้องเปิดอยู่ (running) และ ยังไม่ได้ตรวจจับ (not detecting)

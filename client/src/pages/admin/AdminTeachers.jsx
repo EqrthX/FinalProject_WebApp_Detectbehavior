@@ -10,6 +10,7 @@ const AdminTeachingschedule = () => {
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [faculty, setFaculty] = useState([]);
+  const [teachers, setTeachers] = useState([]);
   const [selectedFacultyId, setSelectedFacultyId] = useState('');
   const [selectedMajor, setSelectedMajor] = useState('');
   const [fullname, setFullname] = useState('');
@@ -38,14 +39,63 @@ const AdminTeachingschedule = () => {
     fetechFacultyAndMajor();
   }, [])
 
-  // ตัวอย่างข้อมูลจำลอง
-  const teachers = Array.from({ length: 15 }).map((_, i) => ({
-    id: i + 1,
-    code: "0123456789012",
-    name: "นายสมศักดิ์ พงศ์ดี",
-    faculty: "วิทยาศาสตร์และเทคโนโลยี",
-    major: "เทคโนโลยีสารสนเทศและการสื่อสาร",
-  }));
+  useEffect(() => {
+    const fetchTeachers = async () => {
+      try {
+        console.log("🔍 กำลังดึงข้อมูลอาจารย์...");
+        
+        const { data, error } = await supabase
+          .from('teachers')
+          .select(`
+            id,
+            teacher_id,
+            first_name,
+            last_name,
+            majors (
+              major_name,
+              faculty (
+                faculty_name
+              )
+            )
+          `);
+
+        console.log("📊 Response:", { data, error });
+
+        if (error) {
+          console.error("❌ Supabase Error:", error);
+          toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
+          throw error;
+        }
+
+        if (!data || data.length === 0) {
+          console.warn("⚠️ ไม่พบข้อมูลอาจารย์ในฐานข้อมูล");
+          setTeachers([]);
+          return;
+        }
+
+        // แปลงข้อมูลให้อยู่ในรูปแบบที่ใช้งาน
+        const formattedTeachers = data.map((teacher) => {
+          console.log("👨‍🏫 Teacher:", teacher);
+          return {
+            id: teacher.id,
+            teacherId: teacher.teacher_id,
+            fullname: `${teacher.first_name} ${teacher.last_name}`,
+            faculty: teacher.majors?.faculty?.faculty_name || '-',
+            major: teacher.majors?.major_name || '-',
+          };
+        });
+
+        console.log("✅ Teachers formatted:", formattedTeachers);
+        setTeachers(formattedTeachers);
+
+      } catch (error) {
+        console.error("❌ Fetch Teachers error:", error);
+        toast.error("เกิดข้อผิดพลาดในการดึงข้อมูลอาจารย์");
+      }
+    };
+
+    fetchTeachers();
+  }, [])
 
   // ✅ ฟังก์ชันเมื่อคลิกแถว
   const handleClick = (t) => {
@@ -77,6 +127,35 @@ const AdminTeachingschedule = () => {
       });
       
       toast.success(response.data.detail || "เพิ่มข้อมูลอาจารย์เสร็จสิ้น ✅");
+      
+      closeModal();
+      
+      // รีเฟรชข้อมูลอาจารย์
+      const { data: teachersData, error: fetchError } = await supabase
+        .from('teachers')
+        .select(`
+          id,
+          teacher_id,
+          first_name,
+          last_name,
+          majors (
+            major_name,
+            faculty (
+              faculty_name
+            )
+          )
+        `);
+
+      if (!fetchError && teachersData) {
+        const formattedTeachers = teachersData.map((teacher) => ({
+          id: teacher.id,
+          teacherId: teacher.teacher_id,
+          fullname: `${teacher.first_name} ${teacher.last_name}`,
+          faculty: teacher.majors?.faculty?.faculty_name || '-',
+          major: teacher.majors?.major_name || '-',
+        }));
+        setTeachers(formattedTeachers);
+      }
       
     } catch (error) {
 
@@ -147,26 +226,34 @@ const AdminTeachingschedule = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {teachers.map((t) => (
-                    <tr
-                      key={t.id}
-                      onClick={() => handleClick(t)}
-                      className="hover:bg-gray-100 cursor-pointer transition-colors duration-150"
-                    >
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.code}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.name}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.faculty}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.major}
+                  {teachers.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" className="px-4 py-8 text-center text-gray-500">
+                        ไม่พบข้อมูลอาจารย์ในระบบ
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    teachers.map((t) => (
+                      <tr
+                        key={t.id}
+                        onClick={() => handleClick(t)}
+                        className="hover:bg-gray-100 cursor-pointer transition-colors duration-150"
+                      >
+                        <td className="px-4 py-2 border border-gray-300">
+                          {t.teacherId}
+                        </td>
+                        <td className="px-4 py-2 border border-gray-300">
+                          {t.fullname}
+                        </td>
+                        <td className="px-4 py-2 border border-gray-300">
+                          {t.faculty}
+                        </td>
+                        <td className="px-4 py-2 border border-gray-300">
+                          {t.major}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

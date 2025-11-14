@@ -24,6 +24,6 @@ If you are developing a production application, we recommend using TypeScript wi
 
 >.\venv\Scripts\activate 
 > cd server
-> Uvicorn main:app --reload
+> uvicorn main:app --reload
 
 ไปที่ URL นี้ [ http://localhost:8000/docs#/ ]

@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import AdminNavbar from "../../components/AdminNavbar";
+import { supabase } from "../../config/supabase";
+
 
 const AdminTeachers = () => {
   const [showModal, setShowModal] = useState(false);
@@ -15,6 +17,61 @@ const AdminTeachers = () => {
     time: "12:00-16:10",
     teacher: "นาย ก นามสมุด",
   }));
+
+  // --- ✅ 2. ฟังก์ชัน handler ทั่วไปสำหรับ input ---
+  const handleInputChange = (e) => {
+    const { id, value } = e.target;
+    setNewCourse(prev => ({ ...prev, [id]: value }));
+  };
+
+  // --- ✅ 3. ฟังก์ชันสำหรับ "กลุ่ม" (รับเฉพาะตัวเลข) ---
+  const handleGroupChange = (e) => {
+    const numericValue = e.target.value.replace(/[^0-9]/g, "");
+    setNewCourse(prev => ({ ...prev, group: numericValue }));
+  };
+  
+  // --- ✅ 4. ฟังก์ชันสำหรับ "เวลาเริ่มต้น" (คำนวณเวลาสิ้นสุด +3 ชม.) ---
+  const handleStartTimeChange = (e) => {
+    const startTime = e.target.value;
+    let endTime = newCourse.endTime; // เก็บค่าเดิมไว้ก่อน
+
+    if (startTime) {
+      try {
+        const [hours, minutes] = startTime.split(':').map(Number);
+        const newHours = (hours + 3) % 24; // % 24 เพื่อให้วนกลับถ้าเกินเที่ยงคืน
+
+        // แปลงกลับเป็น format HH:mm
+        const newHoursString = String(newHours).padStart(2, '0');
+        const minutesString = String(minutes).padStart(2, '0');
+        endTime = `${newHoursString}:${minutesString}`;
+      } catch (error) {
+        console.error("Error calculating end time:", error);
+        endTime = ""; // Reset ถ้า format ผิด
+      }
+    }
+
+    // อัปเดต State ทั้งเวลาเริ่มต้นและสิ้นสุด
+    setNewCourse(prev => ({
+      ...prev,
+      startTime: startTime,
+      endTime: endTime
+    }));
+  };
+
+  // --- ✅ 5. ฟังก์ชันเปิด/ปิด Modal (พร้อม Reset State) ---
+  const openModal = () => {
+    // Reset ฟอร์มทุกครั้งที่เปิด
+    setNewCourse({
+      code: "", name: "", year: "", group: "",
+      credit: "", teacher: "", startTime: "", endTime: ""
+    });
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+  };
+
 
   return (
     <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4">
@@ -96,57 +153,90 @@ const AdminTeachers = () => {
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-sm">
           <div className="bg-[#f8f8f8] p-8 rounded-lg shadow-lg w-[90%] max-w-2xl border border-gray-300">
-            <h2 className="text-2xl font-bold mb-6">อัพโหลดรายชื่อ</h2>
+            <h2 className="text-2xl font-bold mb-6">อัพโหลดรายวิชา</h2>
 
-            <form className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             <form className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input
                 type="text"
+                id="code" // <-- เปลี่ยน
                 placeholder="รหัสวิชา"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                onChange={(e) =>
-                  (e.target.value = e.target.value.replace(/[^0-9]/g, ""))
-                }
+                value={newCourse.code} // <-- เพิ่ม
+                onChange={handleInputChange} // <-- เปลี่ยน
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
               />
               <input
                 type="text"
+                id="name" // <-- เปลี่ยน
                 placeholder="ชื่อวิชา"
+                value={newCourse.name} // <-- เพิ่ม
+                onChange={handleInputChange} // <-- เปลี่ยน
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
               />
 
               <input
                 type="text"
+                id="year" // <-- เปลี่ยน
                 placeholder="ปี/ภาคการศึกษา"
+                value={newCourse.year} // <-- เพิ่ม
+                onChange={handleInputChange} // <-- เปลี่ยน
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
               />
               <input
                 type="text"
+                id="group" // <-- เปลี่ยน
                 placeholder="กลุ่ม"
                 inputMode="numeric"
-                pattern="[0-9]*"
-                onChange={(e) =>
-                  (e.target.value = e.target.value.replace(/[^0-9]/g, ""))
-                }
+                value={newCourse.group} // <-- เพิ่ม
+                onChange={handleGroupChange} // <-- เปลี่ยน
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
               />
 
               <input
                 type="text"
+                id="credit" // <-- เปลี่ยน
                 placeholder="หน่วยกิต"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
-              />
-              <input
-                type="text"
-                placeholder="เวลาเรียน"
+                value={newCourse.credit} // <-- เพิ่ม
+                onChange={handleInputChange} // <-- เปลี่ยน
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
               />
 
               <input
                 type="text"
+                id="teacher" // <-- เปลี่ยน
                 placeholder="ผู้สอน"
+                value={newCourse.teacher} // <-- เพิ่ม
+                onChange={handleInputChange} // <-- เปลี่ยน
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
               />
+
+              {/* --- บล็อคเวลาเริ่มต้น --- */}
+              <div>
+                <label htmlFor="startTime" className="block text-sm font-medium text-gray-700 mb-1">
+                  เวลาเริ่มต้น
+                </label>
+                <input
+                  type="time"
+                  id="startTime" // <-- เปลี่ยน
+                  value={newCourse.startTime} // <-- เพิ่ม
+                  onChange={handleStartTimeChange} // <-- เปลี่ยน
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
+                />
+              </div>
+
+              {/* --- บล็อคเวลาสิ้นสุด --- */}
+              <div>
+                <label htmlFor="endTime" className="block text-sm font-medium text-gray-700 mb-1">
+                  เวลาสิ้นสุด
+                </label>
+                <input
+                  type="time"
+                  id="endTime" // <-- เปลี่ยน
+                  value={newCourse.endTime} // <-- เพิ่ม
+                  onChange={handleInputChange} // <-- เปลี่ยน (ใช้ handler ธรรมดาเพื่อให้ override ได้)
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
+                />
+              </div>
+
             </form>
 
             <div className="flex justify-end mt-6 gap-2">

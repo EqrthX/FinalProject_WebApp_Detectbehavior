@@ -4,49 +4,55 @@ import AdminNavbar from "../../components/AdminNavbar";
 import { supabase } from "../../config/supabase";
 import toast from "react-hot-toast";
 import axios from "../../util/axios";
+import { Pagination } from "antd";
 
 const AdminTeachingschedule = () => {
-
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+
   const [faculty, setFaculty] = useState([]);
   const [teachers, setTeachers] = useState([]);
-  const [selectedFacultyId, setSelectedFacultyId] = useState('');
-  const [selectedMajor, setSelectedMajor] = useState('');
-  const [fullname, setFullname] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [teacherId, setTeacherId] = useState('');
+  const [selectedFacultyId, setSelectedFacultyId] = useState("");
+  const [selectedMajor, setSelectedMajor] = useState("");
+  const [fullname, setFullname] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [teacherId, setTeacherId] = useState("");
+
+  // ❗️ เพิ่ม: State สำหรับ Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10); 
 
   useEffect(() => {
-    const fetechFacultyAndMajor = async () => {
+    
+    const fetchFacultyAndMajor = async () => {
       try {
-        const { data, error } = await supabase.from('faculty')
-        .select(`*,
-                majors (*)`);
+        const { data, error } = await supabase
+          .from("faculty")
+          .select(`*, majors (*)`);
 
         if (error) {
-          throw error
+          throw error;
         }
 
-        setFaculty(data)
-
+        setFaculty(data);
       } catch (error) {
-        console.error("Fetch Faculty and Major error:", error)
+        console.error("Fetch Faculty and Major error:", error);
       }
-
-    }
-    fetechFacultyAndMajor();
-  }, [])
+    };
+    fetchFacultyAndMajor(); 
+  }, []);
 
   useEffect(() => {
     const fetchTeachers = async () => {
       try {
         console.log("🔍 กำลังดึงข้อมูลอาจารย์...");
-        
+
         const { data, error } = await supabase
-          .from('teachers')
-          .select(`
+          .from("teacher")
+          .select(
+            `
             id,
             teacher_id,
             first_name,
@@ -57,7 +63,8 @@ const AdminTeachingschedule = () => {
                 faculty_name
               )
             )
-          `);
+          `
+          );
 
         console.log("📊 Response:", { data, error });
 
@@ -80,14 +87,13 @@ const AdminTeachingschedule = () => {
             id: teacher.id,
             teacherId: teacher.teacher_id,
             fullname: `${teacher.first_name} ${teacher.last_name}`,
-            faculty: teacher.majors?.faculty?.faculty_name || '-',
-            major: teacher.majors?.major_name || '-',
+            faculty: teacher.majors?.faculty?.faculty_name || "-",
+            major: teacher.majors?.major_name || "-",
           };
         });
 
         console.log("✅ Teachers formatted:", formattedTeachers);
         setTeachers(formattedTeachers);
-
       } catch (error) {
         console.error("❌ Fetch Teachers error:", error);
         toast.error("เกิดข้อผิดพลาดในการดึงข้อมูลอาจารย์");
@@ -95,7 +101,7 @@ const AdminTeachingschedule = () => {
     };
 
     fetchTeachers();
-  }, [])
+  }, []);
 
   // ✅ ฟังก์ชันเมื่อคลิกแถว
   const handleClick = (t) => {
@@ -106,13 +112,22 @@ const AdminTeachingschedule = () => {
 
   // ✅ ฟังก์ชันปิด modal
   const closeModal = () => setShowModal(false);
-  const majorsToShow = faculty.find((f) => f.faculty_id === selectedFacultyId)?.majors || [];
+  const majorsToShow =
+    faculty.find((f) => f.faculty_id === selectedFacultyId)?.majors || [];
 
   const onCreateTeacher = async (event) => {
     event.preventDefault();
     try {
-      
-      if (!email || !password || !teacherId || !fullname || !faculty || !selectedMajor) return toast.error("กรุณากรอกข้อมูลให้ครบ");
+      // ✅ แก้ไข: !faculty -> !selectedFacultyId
+      if (
+        !email ||
+        !password ||
+        !teacherId ||
+        !fullname ||
+        !selectedFacultyId ||
+        !selectedMajor
+      )
+        return toast.error("กรุณากรอกข้อมูลให้ครบ");
 
       const formData = new FormData();
 
@@ -121,50 +136,79 @@ const AdminTeachingschedule = () => {
       formData.append("teacher_id", teacherId);
       formData.append("fullname", fullname);
       formData.append("major", selectedMajor);
-      
+
       const response = await axios.post(`admin/create-teacher`, formData, {
-        headers: {"Content-Type": "multipart/form-data"}
+        headers: { "Content-Type": "multipart/form-data" },
       });
-      
+
       toast.success(response.data.detail || "เพิ่มข้อมูลอาจารย์เสร็จสิ้น ✅");
-      
+
       closeModal();
-      
-      // รีเฟรชข้อมูลอาจารย์
+
       const { data: teachersData, error: fetchError } = await supabase
-        .from('teachers')
-        .select(`
-          id,
-          teacher_id,
-          first_name,
-          last_name,
-          majors (
-            major_name,
-            faculty (
-              faculty_name
+        .from("teacher")
+        .select(
+          `
+            id,
+            teacher_id,
+            first_name,
+            last_name,
+            majors (
+              major_name,
+              faculty (
+                faculty_name
+              )
             )
-          )
-        `);
+          `
+        );
 
       if (!fetchError && teachersData) {
         const formattedTeachers = teachersData.map((teacher) => ({
           id: teacher.id,
           teacherId: teacher.teacher_id,
           fullname: `${teacher.first_name} ${teacher.last_name}`,
-          faculty: teacher.majors?.faculty?.faculty_name || '-',
-          major: teacher.majors?.major_name || '-',
+          faculty: teacher.majors?.faculty?.faculty_name || "-",
+          major: teacher.majors?.major_name || "-",
         }));
         setTeachers(formattedTeachers);
+        setCurrentPage(1); // กลับไปหน้าแรกหลังเพิ่มข้อมูล
       }
-      
     } catch (error) {
-
-      const message = error.response?.data?.detail || "เกิดข้อผิดพลาดในการเพิ่มข้อมูล ❌"
-      console.error("Error to create teacher", error)
+      const message =
+        error.response?.data?.detail || "เกิดข้อผิดพลาดในการเพิ่มข้อมูล ❌";
+      console.error("Error to create teacher", error);
       toast.error(message);
-      
     }
-  }
+  };
+
+  const filteredTeachers = teachers.filter((teacher) => {
+    // ถ้าไม่ได้ค้นหาอะไรเลย ให้แสดงทั้งหมด
+    if (!searchTerm) return true;
+
+    // ทำให้เป็นตัวพิมพ์เล็กทั้งคู่เพื่อง่ายต่อการเทียบ
+    const lowerSearchTerm = searchTerm.toLowerCase();
+
+    // ค้นหาจาก รหัสประจำตัว, ชื่อ-นามสกุล, คณะ, และ สาขา
+    return (
+      teacher.teacherId.toLowerCase().includes(lowerSearchTerm) ||
+      teacher.fullname.toLowerCase().includes(lowerSearchTerm) ||
+      teacher.faculty.toLowerCase().includes(lowerSearchTerm) ||
+      teacher.major.toLowerCase().includes(lowerSearchTerm)
+    );
+  });
+
+  const indexOfLastItem = currentPage * pageSize;
+  const indexOfFirstItem = indexOfLastItem - pageSize;
+  const currentTeachers = filteredTeachers.slice(
+    indexOfFirstItem,
+    indexOfLastItem
+  );
+
+  // ฟังก์ชันเมื่อเปลี่ยนหน้า หรือเปลี่ยนจำนวนรายการ
+  const handlePaginationChange = (page, size) => {
+    setCurrentPage(page);
+    setPageSize(size);
+  };
 
   return (
     <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4">
@@ -187,20 +231,24 @@ const AdminTeachingschedule = () => {
           <div className="bg-white mt-4 p-4 rounded-[20px] shadow-sm border border-[#e9e9e9]">
             <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
               <div className="flex items-center gap-3 flex-wrap">
-                <div className="p-2 font-bold text-gray-800">รายชื่ออาจารย์</div>
+                <div className="p-2 font-bold text-gray-800">
+                  รายชื่ออาจารย์
+                </div>
                 <input
                   type="text"
                   placeholder="🔍 ค้นหา"
                   className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-full 
-                            focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-[#F6F6F4] text-[#ACACAC]"
+                     focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-[#F6F6F4] text-[#ACACAC]"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)} 
                 />
               </div>
 
-              {/* ✅ ปุ่มอัพโหลด */}
+              
               <button
                 onClick={() => setShowModal(true)}
                 className="bg-[#3D42D3] hover:bg-[#2b28a0] text-white px-4 py-2 
-                            rounded-lg text-sm font-medium"
+                           rounded-lg text-sm font-medium"
               >
                 อัพโหลดรายชื่อ
               </button>
@@ -226,14 +274,20 @@ const AdminTeachingschedule = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {teachers.length === 0 ? (
+                  {currentTeachers.length === 0 ? ( 
                     <tr>
-                      <td colSpan="4" className="px-4 py-8 text-center text-gray-500">
-                        ไม่พบข้อมูลอาจารย์ในระบบ
+                      <td
+                        colSpan="4"
+                        className="px-4 py-8 text-center text-gray-500"
+                      >
+                        {searchTerm
+                          ? "ไม่พบข้อมูลที่ค้นหา"
+                          : "ไม่พบข้อมูลอาจารย์"}
                       </td>
                     </tr>
                   ) : (
-                    teachers.map((t) => (
+                    
+                    currentTeachers.map((t) => (
                       <tr
                         key={t.id}
                         onClick={() => handleClick(t)}
@@ -257,6 +311,18 @@ const AdminTeachingschedule = () => {
                 </tbody>
               </table>
             </div>
+            
+            <div className="flex justify-center mt-4 pb-2">
+              <Pagination
+                current={currentPage}
+                pageSize={pageSize}
+                total={filteredTeachers.length}
+                showSizeChanger 
+                pageSizeOptions={["5","10", "20", "50", "100"]} 
+                onChange={handlePaginationChange} 
+                showTotal={(total) => `ทั้งหมด ${total} รายการ`} // (Optional) แสดงจำนวนรวม
+              />
+            </div>
           </div>
         </div>
       </main>
@@ -265,66 +331,120 @@ const AdminTeachingschedule = () => {
       {showModal && (
         <div
           className="fixed inset-0 flex items-center justify-center z-50 
-                     bg-black/60 backdrop-blur-sm"
+                   bg-black/60 backdrop-blur-sm"
         >
           <div className="bg-[#f8f8f8] p-8 rounded-lg shadow-lg w-[90%] max-w-md border border-gray-300">
             <h2 className="text-2xl font-bold mb-6">อัพโหลดรายชื่อ</h2>
 
-            <form className="space-y-4" method="POST" onSubmit={onCreateTeacher}>
-              <input
-                type="text"
-                placeholder="อีเมล"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
-              />
-              <input
-                type="text"
-                placeholder="รหัสผ่าน"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
-              />
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="รหัสประจำตัว"
-                value={teacherId}
-                onChange={(e) => {
-                  setTeacherId(e.target.value.replace(/[^0-9]/g, ""));
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
-              />
+            <form
+              className="space-y-4"
+              method="POST"
+              onSubmit={onCreateTeacher}
+            >
+              {/* อีเมล */}
+              <div className="relative mt-2">
+                <input
+                  type="text"
+                  id="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent"
+                  placeholder="อีเมล"
+                />
+                <label
+                  htmlFor="email"
+                  className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all
+                   peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400
+                   peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+                >
+                  อีเมล <span className="text-red-500">*</span>
+                </label>
+              </div>
 
-              <input
-                type="text"
-                placeholder="ชื่อ - นามสกุล"
-                value={fullname}
-                onChange={(e) => setFullname(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
-              />
+              {/* ช่องรหัสผ่าน */}
+              <div className="relative mt-2">
+                <input
+                  type="text" 
+                  id="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent"
+                  placeholder="รหัสผ่าน"
+                />
+                <label
+                  htmlFor="password"
+                  className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all
+                   peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400
+                   peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+                >
+                  รหัสผ่าน <span className="text-red-500">*</span>
+                </label>
+              </div>
+
+              {/* ช่องรหัสประจำตัว */}
+              <div className="relative mt-2">
+                <input
+                  type="text"
+                  id="teacherId"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={teacherId}
+                  onChange={(e) => {
+                    setTeacherId(e.target.value.replace(/[^0-9]/g, ""));
+                  }}
+                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent"
+                  placeholder="รหัสประจำตัว"
+                />
+                <label
+                  htmlFor="teacherId"
+                  className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all
+                   peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400
+                   peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+                >
+                  รหัสประจำตัว <span className="text-red-500">*</span>
+                </label>
+              </div>
+
+              {/* ช่องชื่อ - นามสกุล */}
+              <div className="relative mt-2">
+                <input
+                  type="text"
+                  id="fullname"
+                  value={fullname}
+                  onChange={(e) => setFullname(e.target.value)}
+                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent"
+                  placeholder="ชื่อ - นามสกุล"
+                />
+                <label
+                  htmlFor="fullname"
+                  className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all
+                   peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400
+                   peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+                >
+                  ชื่อ - นามสกุล <span className="text-red-500">*</span>
+                </label>
+              </div>
 
               <select
                 type="text"
                 placeholder="คณะ"
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
                 value={selectedFacultyId}
-                onChange={(e) => setSelectedFacultyId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedFacultyId(e.target.value);
+                  setSelectedMajor(""); 
+                }}
               >
-
-                {/* 2. (แนะนำ) เพิ่มตัวเลือกเริ่มต้นที่เลือกไม่ได้ */}
-                <option value="" disabled selected>
+            
+                <option value="" disabled>
                   กรุณาเลือกคณะ
                 </option>
 
-                {/* 3. โค้ดของคุณที่แก้ไขแล้ว */}
                 {faculty.map((item) => (
                   <option key={item.faculty_id} value={item.faculty_id}>
                     {item.faculty_name}
                   </option>
                 ))}
-
               </select>
 
               <select
@@ -333,7 +453,7 @@ const AdminTeachingschedule = () => {
                 value={selectedMajor}
                 onChange={(e) => setSelectedMajor(e.target.value)}
               >
-                <option value="" disabled selected>
+                <option value="" disabled>
                   กรุณาเลือกสาขา
                 </option>
                 {majorsToShow.map((major) => (
@@ -358,7 +478,6 @@ const AdminTeachingschedule = () => {
                   ยืนยัน
                 </button>
               </div>
-
             </form>
           </div>
         </div>

@@ -12,7 +12,11 @@ async def create_teacher(
     major: str = Form()
     ):
     try:
-        
+        print("email", email)
+        print("password", password)
+        print("teacher_id", teacher_id)
+        print("fullname", fullname)
+        print("major", major)
         auth_response = supabase_client.auth.admin.create_user(
             attributes={
                 "email": email,

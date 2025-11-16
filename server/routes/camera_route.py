@@ -191,13 +191,6 @@ async def camera_loop(camera_id: str):
                             print(f"⚠️ กล้อง {int(camera_id) + 1}: LookingAway {cam_state['class_timer']['frame_count']} เฟรม ({cam_state['class_timer']['duration']:.1f} วิ) → เปลี่ยนเป็น Taking Notes")
                             cam_state['status']['frame_class_count']['LookingAway'] -= cam_state['class_timer']['frame_count']
                             cam_state['status']['frame_class_count']['Taking_notes'] += cam_state['class_timer']['frame_count']
-
-                            cam_state['class_timer'] = {
-                                "current_class": None,
-                                "duration": 0.0,
-                                "frame_count": 0,
-                                "last_time": time.time()
-                            }
                        
                     if cam_state["seconds"] >= 30:
                         class_result_json = {}

@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "../util/axios.js";
 import toast from "react-hot-toast";
 import HomePage from "./user/HomePage.jsx";
-import { FaEye, FaEyeSlash } from "react-icons/fa"; // <-- 1. Import ไอคอน
+import { FaEye, FaEyeSlash } from "react-icons/fa";
 
 const LoginPage = () => {
   const [values, setValues] = useState({

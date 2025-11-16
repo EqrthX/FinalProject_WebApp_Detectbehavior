@@ -12,12 +12,7 @@ async def create_teacher(
     major: str = Form()
     ):
     try:
-        print("email", email)
-        print("password", password)
-        print("teacher_id", teacher_id)
-        print("fullname", fullname)
-        print("major", major)
-    
+        
         auth_response = supabase_client.auth.admin.create_user(
             attributes={
                 "email": email,
@@ -31,7 +26,7 @@ async def create_teacher(
         
         name_part = fullname.split(" ")
         first_name = name_part[0]
-        last_name = name_part[1] if len(name_part) > 1 else ""
+        last_name = " ".join(name_part[1:]) if len(name_part) > 1 else ""
 
         profile_data = {
             "id": new_user.id,
@@ -48,4 +43,4 @@ async def create_teacher(
         else:
             raise HTTPException(status_code=400, detail=f"Insert failed: {result.error}")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"อีเมลนี้ถูกลงทะเบียนแล้ว")
+        raise HTTPException(status_code=400, detail=str(e))

@@ -238,7 +238,7 @@ const AdminTeachingschedule = () => {
                   type="text"
                   placeholder="🔍 ค้นหา"
                   className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-full 
-                     focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-[#F6F6F4] text-[#ACACAC]"
+                     focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-[#F6F6F4] text-black"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)} 
                 />

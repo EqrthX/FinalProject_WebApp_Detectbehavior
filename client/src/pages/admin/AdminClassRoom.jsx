@@ -2,7 +2,6 @@ import React from "react";
 import AdminNavbar from "../../components/AdminNavbar";
 import Classroom from '../../components/Classroom';
 
-
 const AdminClassRoom = () => {
   // ตัวอย่างข้อมูลจำลอง
   const teachers = Array.from({ length: 15 }).map((_, i) => ({
@@ -12,7 +11,7 @@ const AdminClassRoom = () => {
     faculty: "วิทยาศาสตร์และเทคโนโลยี",
     major: "เทคโนโลยีสารสนเทศและการสื่อสาร",
   }));
-
+ 
   return (
     <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4">
       {/* Sidebar */}

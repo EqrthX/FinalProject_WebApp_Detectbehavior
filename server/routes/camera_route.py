@@ -4,7 +4,7 @@ import time
 import base64
 import asyncio
 from datetime import datetime
-from utils.camera_helper import create_camera_state, define_LOW_CLASS, define_HIGH_CLASS
+from utils.camera_helper import create_camera_state, define_LOW_CLASS, define_HIGH_CLASS, calculate_1s, calculate_30s
 from utils.model_loader import get_model
 from utils.auth import verify_token
 from datetime import datetime
@@ -84,7 +84,7 @@ async def camera_loop(camera_id: str):
         if not cam_state:
             print(f"❌ camera_loop: {int(camera_id) + 1} ไม่เจอ")
             return
-    
+
         cap = cam_state.get("cap")
         if cap is None or not cap.isOpened():
             print(f"❌ camera_loop: cap invalid for {int(camera_id) + 1}")
@@ -99,6 +99,9 @@ async def camera_loop(camera_id: str):
                 "last_time": time.time()
             })
         
+        if "snapshot_frame" not in cam_state:
+            cam_state.setdefault("snapshot_frame", None)
+
         loop = asyncio.get_event_loop()
 
         print(f"🧠 start detect on camera {int(camera_id) + 1}")
@@ -166,52 +169,20 @@ async def camera_loop(camera_id: str):
                 if ok:
                     cam_state["last_frame"] = buf.tobytes()
 
-                print(f'วินาที่ที่ {cam_state['seconds']}')
+                print(f"วินาที่ที่ {cam_state['seconds']}")
                 
                 if now - last_check_time >= 1:
                     cam_state["seconds"] += 1
                     last_check_time = now
                     time_duration_max = cam_state['class_timer']['duration']
-                    att_sum = 0
-                    non_att_sum = 0
-                    other_sum = 0
-                    total_frames = sum(cam_state['status']['frame_class_count'].values())
-                    class_ratios_json = {}
-                    if total_frames > 0:
-
-                        class_ratios_json = {
-                            k: round(v / total_frames, 3)
-                            for k, v in cam_state['status']['frame_class_count'].items()
-                        }
-
-                        att_sum = sum(v for k, v in cam_state['status']['frame_class_count'].items() if k in ATTENDENCE) 
-                        non_att_sum = sum(v for k, v in cam_state['status']['frame_class_count'].items() if k in NON_ATTENDENCE) 
-                        other_sum = sum(v for k, v in cam_state['status']['frame_class_count'].items() if k not in ATTENDENCE and k not in NON_ATTENDENCE) 
-
-                        result_att = att_sum / total_frames
-                        result_non = non_att_sum / total_frames
-                        result_oth = other_sum / total_frames
-                        
-                        print(f"⏱ วินาทีที่ {cam_state['seconds']:>2} | 🟢 ตั้งใจ {result_att:.2f} | 🔴 ไม่ตั้งใจ {result_non:.2f} | ⚪ อื่นๆ {result_oth:.2f}")
-
-                        cam_state.setdefault("sec_buffer", []).append({
-                            "second": cam_state["seconds"],
-                            "att": result_att,
-                            "non": result_non,
-                            "oth": result_oth,
-                            "class_json": class_ratios_json
-                        })
-
-                    for k in cam_state['status']['frame_class_count']:
-                        cam_state['status']['frame_class_count'][k] = 0
-
+                    
                     if cam_state['class_timer']['current_class'] == 'LookingAway':
-
+                        print(f"ตอนนี้ LookingAway กี่ {cam_state['seconds']} วิ")
                         if time_duration_max >= 15.0:
                             print(f"⚠️ กล้อง {int(camera_id) + 1}: LookingAway {cam_state['class_timer']['frame_count']} เฟรม ({cam_state['class_timer']['duration']:.1f} วิ) → เปลี่ยนเป็น Look at the board")
                             cam_state['status']['frame_class_count']['LookingAway'] -= cam_state['class_timer']['frame_count']
                             cam_state['status']['frame_class_count']['Looking_at_the_board'] += cam_state['class_timer']['frame_count']
-
+                            
                             cam_state['class_timer'] = {
                                 "current_class": None,
                                 "duration": 0.0,
@@ -224,33 +195,51 @@ async def camera_loop(camera_id: str):
                             cam_state['status']['frame_class_count']['LookingAway'] -= cam_state['class_timer']['frame_count']
                             cam_state['status']['frame_class_count']['Taking_notes'] += cam_state['class_timer']['frame_count']
 
-                            cam_state['class_timer'] = {
-                                "current_class": None,
-                                "duration": 0.0,
-                                "frame_count": 0,
-                                "last_time": time.time()
-                            }
-                    
+                    total_frames = sum(cam_state['status']['frame_class_count'].values())
+                    result_att = result_non = result_oth = 0.0
+                    class_ratios_json = {}
+    
+                    result_att, result_non, result_oth, class_ratios_json = calculate_1s(
+                        total_frame=total_frames, 
+                        frame_dict=cam_state['status']['frame_class_count']
+                    )
+                        
+                    print(f"⏱ วินาทีที่ {cam_state['seconds']:>2} | 🟢 ตั้งใจ {result_att:.2f} | 🔴 ไม่ตั้งใจ {result_non:.2f} | ⚪ อื่นๆ {result_oth:.2f}")
+
+                    cam_state.setdefault("sec_buffer", []).append({
+                            "second": cam_state["seconds"],
+                            "att": result_att,
+                            "non": result_non,
+                            "oth": result_oth,
+                            "class_json": class_ratios_json
+                    })
+
+                    for k in cam_state['status']['frame_class_count']:
+                        cam_state['status']['frame_class_count'][k] = 0
+
+                    if len(cam_state['sec_buffer']) > 40:
+                        cam_state['sec_buffer'].pop(0)
+
                     if cam_state['seconds'] % 30 == 0:
                         sec_data = cam_state.get("sec_buffer", [])
                         if sec_data:
-                            avg_att = sum(x['att'] for x in sec_data) / len(sec_data)
-                            avg_non = sum(x['non'] for x in sec_data) / len(sec_data)
-                            avg_oth = sum(x['oth'] for x in sec_data) / len(sec_data)
-                            avg_class_json = {}
                             class_keys = cam_state['status']['frame_class_count'].keys()
+                            avg_att, avg_non, avg_oth, avg_class_json = calculate_30s(
+                                sec_data=sec_data, class_keys=class_keys
+                            )
 
-                            for cls in class_keys:
-                                avg_class_json[cls] = round(
-                                    sum(item["class_json"][cls] for item in sec_data) / len(sec_data), 
-                                    3
-                                )
-                            print(f"{'*'*3}|{'='*50}|{'*'*3}")
-                            print(f"📸 กล้อง {int(camera_id) + 1} ครบ {cam_state['seconds']} วิ (สรุป 30 วิ)")
-                            print(f"🟢 ตั้งใจเฉลี่ย {avg_att:.2f}")
-                            print(f"🔴 ไม่ตั้งใจเฉลี่ย {avg_non:.2f}")
-                            print(f"⚪ อื่นๆเฉลี่ย {avg_oth:.2f}")
-                            print(f"{'*'*3}|{'='*50}|{'*'*3}")
+                            cam_state["snapshot_frame"] = cam_state["last_frame"]
+
+                            summary_payload = {
+                                "CameraId": int(camera_id) + 1,
+                                "ID": cam_state["track_id"],
+                                "Time": datetime.now().strftime("%H:%M:%S"),
+                                "image": base64.b64encode(cam_state["snapshot_frame"]).decode("utf-8")
+
+                            }
+                            
+                            cam_state['show_class'] = summary_payload
+                            cam_state.get("summary_ready_event").set()
 
                             # บันทึกลง Supabase
                             supabase_client.table("camera_logs").insert({
@@ -264,8 +253,17 @@ async def camera_loop(camera_id: str):
                             }).execute()
 
                             cam_state["sec_buffer"] = []  # เคลียร์ buffer หลังบันทึก
+                            cam_state["snapshot_frame"] = None
+                            cam_state["seconds"] = 0
+                            
+                            print(f"{'*'*3}|{'='*50}|{'*'*3}")
+                            print(f"📸 กล้อง {int(camera_id) + 1} ครบ {cam_state['seconds']} วิ (สรุป 30 วิ)")
+                            print(f"🟢 ตั้งใจเฉลี่ย {avg_att:.2f}")
+                            print(f"🔴 ไม่ตั้งใจเฉลี่ย {avg_non:.2f}")
+                            print(f"⚪ อื่นๆเฉลี่ย {avg_oth:.2f}")
+                            print(f"{'*'*3}|{'='*50}|{'*'*3}")
                     
-                await asyncio.sleep(0.016) # ~60 fps
+                await asyncio.sleep(0.5)
 
             print(f"🛑 stop detect on camera {int(camera_id) + 1}")
             cam_state["detecting"] = False

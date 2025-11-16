@@ -12,7 +12,9 @@ const ResultsPage = () => {
   const [summary, setSummary] = useState({ att: 0, nonAtt: 0, other: 0 });
   const [dateToDetect, setDateToDetect] = useState(null);
   const [pieChartData, setPieChartData] = useState([]);
-
+  const today = new Date();
+  today.setHours(0, 0, 0, 0)
+  const startOfday = today.toISOString();
   useEffect(() => {
     const fetechResult = async () => {
       try {
@@ -20,6 +22,7 @@ const ResultsPage = () => {
           .from("camera_logs")
           .select("*")
           .limit(120)
+          .gte("created_at", startOfday)
           .eq("teacher_id", teacher_id)
           .order("created_at", { ascending: true })
 

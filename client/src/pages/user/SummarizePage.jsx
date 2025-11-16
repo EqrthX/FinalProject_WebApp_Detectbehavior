@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { BarChartOutlined } from '@ant-design/icons';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import { supabase } from "../../config/supabase.js"
-
+import { toast } from 'react-hot-toast'
 
 const SummarizePage = () => {
   const teacher_id = localStorage.getItem("teacher_id")
@@ -14,28 +14,41 @@ const SummarizePage = () => {
   const [summary, setSummary] = useState({ att: 0, nonAtt: 0, other: 0 });
   const [dateToDetect, setDateToDetect] = useState(null);
   const [pieChartData, setPieChartData] = useState([]);
-  
+  const [timeFilter, setTimeFilter] = useState('');
+  const date = new Date().getDate();
+  const monuth = new Date().getMonth() + 1;
+  const year = new Date().getFullYear();
+  const fullYear = `${year}-${monuth}-${date}`;
   useEffect(() => {
     const fetechResult = async () => {
       try {
-        const { data: response, error: errResponse } = await supabase
+        let query = supabase
           .from("camera_logs")
-          .select("*")
-          .limit(120)
+          .select("camera_id, track_id, Attention, Non_Attention, Other, created_at, class_json")
+          .gte("created_at", fullYear)
           .eq("teacher_id", teacher_id)
           .order("created_at", { ascending: true })
 
-        if (errResponse) {
-          console.error("ไม่เจอข้อมูลที่เก็บพฤติกรรม", errResponse)
-        }
+        const recordsPerMinute = 2;
 
+        if (timeFilter === '30m') query = query.limit(30 * recordsPerMinute);
+        else if (timeFilter === '60m') query = query.limit(60 * recordsPerMinute);
+        else if (timeFilter === '120m') query = query.limit(120 * recordsPerMinute);
+        else if (timeFilter === '180m') query = query.limit(180 * recordsPerMinute);
+
+        const { data: response, error: responseErr } = await query;
+
+        if (responseErr) {
+          toast.error("เกิดข้อผิดพลาดในการแสดงผลลัพธ์")
+          return;
+        }
         setResult(response || [])
       } catch (error) {
         console.error("เกิดข้อผิดพลาดไม่สามารถแสดงผลได้", error)
       }
     }
     fetechResult();
-  }, [teacher_id]);
+  }, [teacher_id, timeFilter]);
 
   useEffect(() => {
     if (result && result.length > 0) {
@@ -49,7 +62,7 @@ const SummarizePage = () => {
         Other: 0
       }
 
-      result.forEach(log => {        
+      result.forEach(log => {
         const ratios = log.class_json || {};
 
         totals.Focused += ratios.Focused || 0;
@@ -110,17 +123,23 @@ const SummarizePage = () => {
         { name: "Looking_at_the_board", value: totals.Looking_at_the_board / totalLogs },
         { name: "Taking_notes", value: totals.Taking_notes / totalLogs },
         { name: "LookingAway", value: totals.LookingAway / totalLogs },
+        { name: "Talking", value: totals.Talking / totalLogs },
         { name: "UsingPhone", value: totals.UsingPhone / totalLogs },
         { name: "Other", value: totals.Other / totalLogs },
       ]
       setPieChartData(dataForPie);
+    } else {
+      setLineChartData([]);
+      setSummary({ att: 0, nonAtt: 0, other: 0 });
+      setPieChartData([]);
+      setDateToDetect(null); 
     }
   }, [result])
 
 
   const RADIAN = Math.PI / 180;
   const COLORS = ['#0068c9', '#fe2b2b', '#780cdf', '#00B7EB', '#00FFCE', '#FF00FF', '#000'];
-
+  
   // เพิ่มฟังก์ชัน handleCourseClick
   const handleCourseClick = (courseId) => {
     console.log('Course clicked:', courseId);
@@ -154,19 +173,45 @@ const SummarizePage = () => {
                   <BarChartOutlined className="text-2xl text-blue-500" />
                   ผลรวมรายวัน {dateToDetect}
                 </h2>
+                <select
+                type="text"
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
+                value={timeFilter}
+                onChange={(e) => setTimeFilter(e.target.value)}
+                >
+                  <option value="" >
+                    กรุณาเลือกช่วงเวลา
+                  </option>
+
+                  <option value="30m" >
+                    30 นาที
+                  </option>
+
+                  <option value="60m" >
+                    60 นาที
+                  </option>
+
+                  <option value="120m" >
+                    120 นาที
+                  </option>
+
+                  <option value="180m" >
+                    180 นาที
+                  </option>
+                </select>
               </div>
               <div className="flex justify-center gap-50">
                 <div className="bg-white  p-6 flex flex-col items-center w-auto">
                   <span className="text-black ">ตั้งใจเรียน</span>
-                  <span className="text-4xl font-bold text-[#1D971D]">{(summary.att * 100).toFixed(0)}%</span>
+                  <span className="text-4xl font-bold text-[#1D971D]">{(summary.att * 100).toFixed(1)}%</span>
                 </div>
                 <div className="bg-white  p-6 flex flex-col items-center w-auto">
                   <span className="text-black">ไม่ตั้งใจเรียน</span>
-                  <span className="text-4xl font-bold text-[#FF3300]">{(summary.nonAtt * 100).toFixed(0)}%</span>
+                  <span className="text-4xl font-bold text-[#FF3300]">{(summary.nonAtt * 100).toFixed(1)}%</span>
                 </div>
                 <div className="bg-white  p-6 flex flex-col items-center w-auto">
                   <span className="text-black">อื่นๆ</span>
-                  <span className="text-4xl font-bold text-[#000000]">{(summary.other * 100).toFixed(0)}%</span>
+                  <span className="text-4xl font-bold text-[#000000]">{(summary.other * 100).toFixed(1)}%</span>
                 </div>
               </div>
 

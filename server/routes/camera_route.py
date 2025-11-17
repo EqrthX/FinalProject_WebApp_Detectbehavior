@@ -96,6 +96,7 @@ async def camera_loop(camera_id: str):
                 "current_class": None,
                 "duration": 0.0,
                 "frame_count": 0,
+                "miss": 0,
                 "last_time": time.time()
             })
         
@@ -148,11 +149,16 @@ async def camera_loop(camera_id: str):
                         if cam_state['class_timer']['current_class'] == label:
                             cam_state['class_timer']['duration'] += delta
                             cam_state['class_timer']['frame_count'] += 1
+                            cam_state['class_timer']['miss'] = 0
                         else:
-                            cam_state['class_timer']['current_class'] = label
-                            cam_state['class_timer']['duration'] = delta
-                            cam_state['class_timer']['frame_count'] = 1
-                            
+
+                            cam_state['class_timer']['miss'] += 1
+
+                            if cam_state['class_timer']['miss'] >= 3:
+                                cam_state['class_timer']['current_class'] = label
+                                cam_state['class_timer']['duration'] = delta
+                                cam_state['class_timer']['frame_count'] = 1
+                                cam_state['class_timer']['miss'] = 0                            
                         print(f"🔍 กล้องตัวที่ {int(camera_id) + 1} ID {track_id} Detect: {label} ({conf:.2f})")
                         print(f"{'-'*40}")
                         

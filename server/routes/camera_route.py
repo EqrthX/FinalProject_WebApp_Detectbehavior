@@ -234,7 +234,7 @@ async def camera_loop(camera_id: str):
                                 "CameraId": int(camera_id) + 1,
                                 "ID": cam_state["track_id"],
                                 "Time": datetime.now().strftime("%H:%M:%S"),
-                                "image": base64.b64encode(cam_state["snapshot_frame"]).decode("utf-8")
+                                "image": cam_state["snapshot_frame"]
 
                             }
                             
@@ -253,7 +253,6 @@ async def camera_loop(camera_id: str):
                             }).execute()
 
                             cam_state["sec_buffer"] = []  # เคลียร์ buffer หลังบันทึก
-                            cam_state["snapshot_frame"] = None
                             cam_state["seconds"] = 0
                             
                             print(f"{'*'*3}|{'='*50}|{'*'*3}")

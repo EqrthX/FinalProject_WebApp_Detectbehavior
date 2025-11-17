@@ -26,7 +26,7 @@ async def create_teacher(
         
         name_part = fullname.split(" ")
         first_name = name_part[0]
-        last_name = name_part[1] if len(name_part) > 1 else ""
+        last_name = " ".join(name_part[1:]) if len(name_part) > 1 else ""
 
         profile_data = {
             "id": new_user.id,

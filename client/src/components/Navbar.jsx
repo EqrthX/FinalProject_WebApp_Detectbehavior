@@ -76,7 +76,7 @@ const Navbar = () => {
         </button>
 
         {/* 🔹 Center: เมนูหลัก */}
-        <div className="hidden lg:flex bg-white border border-[#E9E9E9] rounded-full p-2 px-3 space-x-3 mx-auto">
+        <div className="hidden lg:flex bg-white border border-[#E9E9E9] rounded-full p-2 px-3 space-x-3 mx-auto ml-150">
           <NavLink
             to="/user/Homepage"
             className={({ isActive }) =>

@@ -96,7 +96,7 @@ async def camera_loop(camera_id: str):
                 "current_class": None,
                 "duration": 0.0,
                 "frame_count": 0,
-                "last_time": time.time()
+                "miss": 0,
             })
         
         loop = asyncio.get_event_loop()
@@ -122,10 +122,9 @@ async def camera_loop(camera_id: str):
 
                 now = time.time()
                 found_valid_detection = False
+                timer = cam_state['class_timer']
 
                 for box in results[0].boxes:  
-                    delta = now - cam_state['class_timer']['last_time']
-                    cam_state['class_timer']['last_time'] = now
 
                     cls = int(box.cls)
                     conf = float(box.conf.item())
@@ -134,7 +133,9 @@ async def camera_loop(camera_id: str):
                         
                         # เช็คว่า track id ตรงกับ state track_id ไหม
                     if track_id == cam_state["track_id"] and conf > 0.3:
+
                         found_valid_detection = True
+
                         if label in ATTENDENCE:
                             cam_state["status"]["frame_class_count"][label] += 1
                         elif label in NON_ATTENDENCE:
@@ -142,13 +143,18 @@ async def camera_loop(camera_id: str):
                         else:
                             cam_state["status"]["frame_class_count"]["Other"] += 1
 
-                        if cam_state['class_timer']['current_class'] == label:
-                            cam_state['class_timer']['duration'] += delta
-                            cam_state['class_timer']['frame_count'] += 1
+                        if timer['current_class'] == label:
+                            timer['frame_count'] += 1
+                            timer['miss'] = 0
                         else:
-                            cam_state['class_timer']['current_class'] = label
-                            cam_state['class_timer']['duration'] = delta
-                            cam_state['class_timer']['frame_count'] = 1
+
+                            timer['miss'] += 1
+
+                            if timer['miss'] >= 5:
+                                timer['current_class'] = label
+                                timer['frame_count'] = 1
+                                timer['miss'] = 0
+
                             
                         print(f"🔍 กล้องตัวที่ {int(camera_id) + 1} ID {track_id} Detect: {label} ({conf:.2f})")
                         print(f"{'-'*40}")
@@ -169,28 +175,43 @@ async def camera_loop(camera_id: str):
                 print(f'วินาที่ที่ {cam_state['seconds']}')
                 
                 if now - last_check_time >= 1:
-                    cam_state["seconds"] += 1
                     last_check_time = now
-                    time_duration_max = cam_state['class_timer']['duration']
+                    cam_state["seconds"] += 1
+
+                    if timer['current_class'] is not None and timer['miss'] == 0:
+                        timer['duration'] += 1
 
                     if cam_state['class_timer']['current_class'] == 'LookingAway':
 
-                        if time_duration_max >= 15.0:
+                        count = timer['frame_count']
+                        duration = timer['duration']
+                        if duration >= 15.0:
                             print(f"⚠️ กล้อง {int(camera_id) + 1}: LookingAway {cam_state['class_timer']['frame_count']} เฟรม ({cam_state['class_timer']['duration']:.1f} วิ) → เปลี่ยนเป็น Look at the board")
-                            cam_state['status']['frame_class_count']['LookingAway'] -= cam_state['class_timer']['frame_count']
-                            cam_state['status']['frame_class_count']['Looking_at_the_board'] += cam_state['class_timer']['frame_count']
+                            cam_state['status']['frame_class_count']['LookingAway'] = max(
+                                0,
+                                cam_state['status']['frame_class_count']['LookingAway'] - count
+                            )
+                            cam_state['status']['frame_class_count']['Looking_at_the_board'] += count
 
-                            cam_state['class_timer'] = {
-                                "current_class": None,
-                                "duration": 0.0,
-                                "frame_count": 0,
-                                "last_time": time.time()
-                            }
+                            timer["current_class"] = None
+                            timer["duration"] = 0.0
+                            timer["frame_count"] = 0
+                            timer["miss"] = 3     
                     
-                        elif 10.0 <= time_duration_max < 15.0 :
+                        elif 10.0 <= duration < 15.0 :
                             print(f"⚠️ กล้อง {int(camera_id) + 1}: LookingAway {cam_state['class_timer']['frame_count']} เฟรม ({cam_state['class_timer']['duration']:.1f} วิ) → เปลี่ยนเป็น Taking Notes")
-                            cam_state['status']['frame_class_count']['LookingAway'] -= cam_state['class_timer']['frame_count']
-                            cam_state['status']['frame_class_count']['Taking_notes'] += cam_state['class_timer']['frame_count']
+                            
+                            cam_state['status']['frame_class_count']['LookingAway'] = max(
+                                0,
+                                cam_state['status']['frame_class_count']['LookingAway'] - count
+                            )
+
+                            cam_state['status']['frame_class_count']['Taking_notes'] += count
+                            
+                            timer["current_class"] = None
+                            timer["duration"] = 0.0
+                            timer["frame_count"] = 0
+                            timer["miss"] = 3                        
                        
                     if cam_state["seconds"] >= 30:
                         class_result_json = {}
@@ -199,6 +220,7 @@ async def camera_loop(camera_id: str):
                             "non": [],
                             "oth": []
                         }
+                        
                         attendence_sum = 0
                         non_attendence_sum = 0
                         other_sum = 0

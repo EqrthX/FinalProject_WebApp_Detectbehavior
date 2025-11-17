@@ -8,7 +8,7 @@ import AdminLogout from "./AdminLogout.jsx";
 
 const AdminNavbar = () => {
   return (
-    <div className="flex min-h-screen bg-[#F6F6F4]">
+    
       <aside
         className="
           bg-white border border-[#e9e9e9] rounded-[20px] shadow-sm
@@ -124,7 +124,7 @@ const AdminNavbar = () => {
           </nav>
         </div>
       </aside>
-    </div>
+    
   );
 };
 

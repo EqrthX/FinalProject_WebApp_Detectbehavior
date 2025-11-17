@@ -126,6 +126,7 @@ async def camera_loop(camera_id: str):
 
                 now = time.time()
                 found_valid_detection = False
+                timer = cam_state['class_timer']
 
                 for box in results[0].boxes:  
                     delta = now - cam_state['class_timer']['last_time']
@@ -146,19 +147,19 @@ async def camera_loop(camera_id: str):
                         else:
                             cam_state["status"]["frame_class_count"]["Other"] += 1
 
-                        if cam_state['class_timer']['current_class'] == label:
-                            cam_state['class_timer']['duration'] += delta
-                            cam_state['class_timer']['frame_count'] += 1
-                            cam_state['class_timer']['miss'] = 0
+                        if timer['current_class'] == label:
+                            timer['duration'] += delta
+                            timer['frame_count'] += 1
+                            timer['miss'] = 0
                         else:
 
-                            cam_state['class_timer']['miss'] += 1
+                            timer['miss'] += 1
 
-                            if cam_state['class_timer']['miss'] >= 3:
-                                cam_state['class_timer']['current_class'] = label
-                                cam_state['class_timer']['duration'] = delta
-                                cam_state['class_timer']['frame_count'] = 1
-                                cam_state['class_timer']['miss'] = 0                            
+                            if timer['miss'] >= 3:
+                                timer['current_class'] = label
+                                timer['duration'] = delta
+                                timer['frame_count'] = 1
+                            
                         print(f"🔍 กล้องตัวที่ {int(camera_id) + 1} ID {track_id} Detect: {label} ({conf:.2f})")
                         print(f"{'-'*40}")
                         
@@ -183,23 +184,42 @@ async def camera_loop(camera_id: str):
                     time_duration_max = cam_state['class_timer']['duration']
                     
                     if cam_state['class_timer']['current_class'] == 'LookingAway':
-                        print(f"ตอนนี้ LookingAway กี่ {cam_state['seconds']} วิ")
+
+                        count = timer['frame_count']
+
                         if time_duration_max >= 15.0:
                             print(f"⚠️ กล้อง {int(camera_id) + 1}: LookingAway {cam_state['class_timer']['frame_count']} เฟรม ({cam_state['class_timer']['duration']:.1f} วิ) → เปลี่ยนเป็น Look at the board")
-                            cam_state['status']['frame_class_count']['LookingAway'] -= cam_state['class_timer']['frame_count']
-                            cam_state['status']['frame_class_count']['Looking_at_the_board'] += cam_state['class_timer']['frame_count']
                             
+                            cam_state['status']['frame_class_count']['LookingAway'] = max(
+                                0,
+                                cam_state['status']['frame_class_count']['LookingAway'] - count
+                            )
+
+                            cam_state['status']['frame_class_count']['Looking_at_the_board'] += count
+
                             cam_state['class_timer'] = {
                                 "current_class": None,
                                 "duration": 0.0,
                                 "frame_count": 0,
+                                "miss": 0,
                                 "last_time": time.time()
                             }
                     
                         elif 10.0 <= time_duration_max < 15.0 :
                             print(f"⚠️ กล้อง {int(camera_id) + 1}: LookingAway {cam_state['class_timer']['frame_count']} เฟรม ({cam_state['class_timer']['duration']:.1f} วิ) → เปลี่ยนเป็น Taking Notes")
-                            cam_state['status']['frame_class_count']['LookingAway'] -= cam_state['class_timer']['frame_count']
-                            cam_state['status']['frame_class_count']['Taking_notes'] += cam_state['class_timer']['frame_count']
+                            cam_state['status']['frame_class_count']['LookingAway'] = max(
+                                0,
+                                cam_state['status']['frame_class_count']['LookingAway'] - count
+                            )
+                            cam_state['status']['frame_class_count']['Taking_notes'] += count
+
+                            cam_state['class_timer'] = {
+                                "current_class": None,
+                                "duration": 0.0,
+                                "frame_count": 0,
+                                "miss": 0,
+                                "last_time": time.time()
+                            }
 
                     total_frames = sum(cam_state['status']['frame_class_count'].values())
                     result_att = result_non = result_oth = 0.0

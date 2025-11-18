@@ -1,9 +1,85 @@
-import React from "react";
+import React, { useState, useEffect } from "react"; 
 import AdminNavbar from "../../components/AdminNavbar";
 import Adminsubject from "../../components/Adminsubject";
 import AdminChart from "../../components/AdminChart";
+import { Select } from "antd";
+// 🔑 นำเข้า Supabase
+import { supabase } from "../../config/supabase.js"; 
 
 const AdminHomePage = () => {
+  // 🔑 State สำหรับเก็บหมวดหมู่ที่ถูกเลือกในการกรอง (คงไว้เผื่อใช้ใน Chart/Subject)
+  const [selectedCategory, setSelectedCategory] = useState("all"); 
+  
+  // 🎯 รายชื่อหมวดหมู่สำหรับการกรอง (คงไว้ แต่ไม่ได้ใช้ใน UI)
+  const categoryOptions = [
+    { value: "all", label: "ทั้งหมด" },
+    { value: "faculty", label: "คณะ" },
+    { value: "subject", label: "วิชา" },
+    { value: "teacher", label: "อาจารย์" },
+  ];
+  
+  // 🔑 State ใหม่สำหรับเก็บจำนวนรวมจาก DB
+  const [summaryCounts, setSummaryCounts] = useState({
+    totalFaculties: 0,
+    totalSubjects: 0,
+    totalTeachers: 0,
+    isLoading: true,
+  });
+
+  // ------------------------------------
+  // 🔥 ฟังก์ชันดึงจำนวนรวม (Summary Counts)
+  // ------------------------------------
+  const fetchSummaryCounts = async () => {
+    setSummaryCounts(prev => ({ ...prev, isLoading: true }));
+    
+    try {
+      // 1. นับจำนวนคณะ (Faculty)
+      const { count: facultyCount, error: facultyError } = await supabase
+        .from('faculty') 
+        .select('*', { count: 'exact', head: true });
+
+      // 2. นับจำนวนวิชา (Subjects)
+      const { count: subjectCount, error: subjectError } = await supabase
+        .from('subjects') 
+        .select('*', { count: 'exact', head: true });
+
+      // 3. นับจำนวนอาจารย์ (Teacher)
+      const { count: teacherCount, error: teacherError } = await supabase
+        .from('teacher') 
+        .select('*', { count: 'exact', head: true });
+        
+      if (facultyError || subjectError || teacherError) {
+        console.error("Error fetching summary counts:", facultyError || subjectError || teacherError);
+        // แสดง error ใน console เพื่อการ debug RLS
+      }
+
+      setSummaryCounts({
+        totalFaculties: facultyCount || 0,
+        totalSubjects: subjectCount || 0,
+        totalTeachers: teacherCount || 0,
+        isLoading: false,
+      });
+
+    } catch (e) {
+      console.error("General error during count fetch:", e);
+      setSummaryCounts(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // 🔑 เรียกใช้เมื่อ Component โหลดครั้งแรก
+  useEffect(() => {
+    fetchSummaryCounts();
+  }, []);
+
+  // ------------------------------------
+  // 🎯 รายการที่จะถูก Map เพื่อแสดงในกล่องสรุป
+  // ------------------------------------
+  const summaryItems = [
+    { title: "คณะทั้งหมด", value: summaryCounts.totalFaculties },
+    { title: "วิชาทั้งหมด", value: summaryCounts.totalSubjects },
+    { title: "อาจารย์ทั้งหมด", value: summaryCounts.totalTeachers },
+  ];
+
   return (
     <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4">
       {/* Sidebar */}
@@ -13,20 +89,15 @@ const AdminHomePage = () => {
 
       {/* Main */}
       <main
-        className="flex-1 transition-all
-                 lg:pl-[0rem]  md:pl-0  sm:pl-0"
+        className="flex-1 transition-all lg:pl-[0rem] md:pl-0 sm:pl-0 h-full overflow-y-auto"
       >
-        {" "}
-        {/* ขยับขวาให้พ้น sidebar เฉพาะจอใหญ่ */}
         <div className="max-w-screen-2xl mx-auto px-6 md:px-4">
-          {/* Top bar */}
+          {/* Top bar (Header เหมือนหน้า รายวิชา) */}
           <div
-            className="w-full bg-white rounded-[20px] border border-[#e9e9e9] shadow-sm
-                    h-20 md:h-16 px-6 md:px-4
-                    mt-2 md:mt-3 lg:mt-5 flex items-center"
+            className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm 
+                    h-20 md:h-16 px-6 flex items-center justify-start 
+                    sticky top-[20px] z-30" 
           >
-            {" "}
-            {/* ขยับลง: mt-2/3/4 ตามจอ */}
             <h1 className="text-[22px] md:text-[18px] font-semibold text-black ">
               Dashboard
             </h1>
@@ -36,46 +107,47 @@ const AdminHomePage = () => {
           <div
             className="
                 grid gap-10 
-                grid-cols-1 md:grid-cols-2   /* 👈 จอเล็ก 1 คอลัมน์, จอ md+ เป็น 2 */
+                grid-cols-1 md:grid-cols-2
                 items-start
-                max-w-screen-2xl mx-auto lg:mt-4
+                max-w-screen-2xl mx-auto mt-9
               "
           >
             <div>
-              <AdminChart />
+              <AdminChart selectedCategory={selectedCategory} />
             </div>
 
             <div>
-              <Adminsubject />
+              <Adminsubject selectedCategory={selectedCategory} />
             </div>
 
-            {/* กล่องคณะทั้งหมด */}
+            {/* กล่องสรุปจำนวน */}
             <div
-            className=" flex justify-between gap-11 w-full items-center ml-"
+            className="flex flex-wrap justify-start gap-10 w-full col-span-full md:col-span-2"
           >
-            {[
-              { title: "คณะทั้งหมด", value: 6 },
-              { title: "วิชาทั้งหมด", value: 124 },
-              // { title: "อาจารย์ทั้งหมด", value: 42 },
-            ].map((item, i) => (
-              <div
-                key={i}
-                className="
-                  flex-1 min-w-[350px] max-w-[600px]
-                  bg-white rounded-[20px] border border-[#e9e9e9]
-                  p-6 shadow-sm flex flex-col items-center justify-center
-                  transition-all
-                "
-                >
-                  <h2 className="text-lg font-medium text-gray-700 mb-2 text-center">
-                    {item.title}
-                  </h2>
-                  <p className="text-2xl font-bold text-[#38a738]">
-                    {item.value}
-                  </p>
+            {summaryCounts.isLoading ? (
+                <div className="flex w-full justify-center p-8 text-gray-500">
+                    กำลังโหลดข้อมูล...
                 </div>
-              )
-              )}
+            ) : (
+                summaryItems.map((item, i) => (
+                    <div
+                        key={i}
+                        className="
+                          min-w-[200px] flex-1 
+                          bg-white rounded-[20px] border border-[#e9e9e9]
+                          p-6 shadow-sm flex flex-col items-start 
+                          transition-all
+                        "
+                        >
+                        <h2 className="text-sm font-medium text-gray-700 mb-1">
+                            {item.title}
+                        </h2>
+                        <p className="text-3xl font-bold text-[#3D42D3]">
+                            {item.value}
+                        </p>
+                    </div>
+                ))
+            )}
             </div>
           </div>
         </div>

@@ -1,16 +1,19 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import "./index.css";
 import LoginPage from "./pages/LoginPage.jsx";
-import HomePage from "./pages/user/HomePage.jsx";
-import TeachingSchedule from "./pages/user/TeachingSchedule.jsx";
+// ----------------------------------------------------------
 import AdminHomePage from "./pages/admin/AdminHomePage.jsx";
 import AdminTeachingschedule from "./pages/admin/AdminTeachingschedule.jsx";
 import AdminTeachers from "./pages/admin/AdminTeachers.jsx";
 import AdminClassRoom from "./pages/admin/AdminClassRoom.jsx";
 
-import Record from "./pages/user/Record.jsx";
-import Summarize from "./pages/user/summarize.jsx";
+// -----------------------------------------------------------
+import HomePage from "./pages/user/HomePage.jsx";
+import TeachingSchedule from "./pages/user/TeachingSchedule.jsx";
+import Record from "./pages/user/RecordPage.jsx";
+import SummarizePage from "./pages/user/SummarizePage.jsx";
 import ResultsPage from "./pages/user/ResultsPage.jsx";
+
 import { Toaster } from "react-hot-toast";
 
 
@@ -25,7 +28,7 @@ function App() {
           <Route>
             <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
             <Route path="/user/Record" element={<Record />} />
-            <Route path="/user/summarize" element={<Summarize />} />
+            <Route path="/user/summarize" element={<SummarizePage />} />
           </Route>
           <Route path="/user/ResultsPage" element={<ResultsPage />} />
 

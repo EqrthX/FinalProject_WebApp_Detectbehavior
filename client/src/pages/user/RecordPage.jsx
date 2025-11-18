@@ -14,6 +14,9 @@ const Record = () => {
     const [frames, setFrames] = useState({});
     const wsRefs = useRef({});
     const summaryRefs = useRef({});
+    const didInit = useRef(false);
+    const retryInterval = useRef(null);
+    const scanningToastId = useRef(null);
 
     // ---------- Utility ----------
     const safeCloseWS = (id) => {
@@ -36,26 +39,25 @@ const Record = () => {
 
         summaryRefs.current[cameraId] = ws;
 
-        ws.onopen = () => console.log(`📊 Summary WS connected: camera ${cameraId}`);
+        ws.onopen = () => console.log(`📊 Summary WS connected: camera ${Number(cameraId + 1)}`);
         ws.onclose = () => {
-            console.log(`Summary WS closed: camera ${cameraId}`);
+            console.log(`Summary WS closed: camera ${Number(cameraId + 1)}`);
             delete summaryRefs.current[cameraId];
         };
         ws.onerror = (err) => console.error("Summary WS error:", err);
 
         ws.onmessage = (event) => {
-            console.log(event);
             try {
                 const data = JSON.parse(event.data);
                 // data = { time, avg, maybe class_behavior }
                 setDetections((prev) => [
                     {
-                        id: Date.now(),
-                        time: data.time || new Date().toLocaleTimeString(),
+                        cameraId: data.CameraId,
+                        id: data.ID,
+                        time: data.Time || new Date().toLocaleTimeString(),
                         image: frames[cameraId]
                             ? `data:image/jpeg;base64,${frames[cameraId]}`
                             : null,
-                        avg: data.avg,
                     },
                     ...prev,
                 ]);
@@ -76,19 +78,19 @@ const Record = () => {
 
         wsRefs.current[cameraId] = ws;
 
-        ws.onopen = () => console.log(`✅ WS connected: camera ${cameraId}`);
+        ws.onopen = () => console.log(`✅ WS connected: camera ${cameraId + 1}`);
         ws.onclose = () => {
-            console.log(`WS closed: camera ${cameraId}`);
+            console.log(`WS closed: camera ${cameraId + 1}`);
             delete wsRefs.current[cameraId];
         };
         ws.onerror = (e) => {
-            console.error(`WS error cam ${cameraId}`, e);
-            toast.error(`สตรีมกล้อง ${cameraId} มีปัญหา`);
+            console.error(`WS error cam ${cameraId + 1}`, e);
+            toast.error(`สตรีมกล้อง ${cameraId + 1} มีปัญหา`);
         };
         ws.onmessage = (event) => {
 
             if (typeof event.data === "string" && event.data.startsWith("error:")) {
-                console.error(`Camera ${cameraId}: ${event.data}`);
+                console.error(`Camera ${cameraId + 1}: ${event.data}`);
                 return;
             }
             setFrames((prev) => ({ ...prev, [cameraId]: event.data }));
@@ -97,9 +99,6 @@ const Record = () => {
 
     // ---------- เปิดกล้องทั้งหมด ----------
     useEffect(() => {
-        const retryRef = { current: null };
-        let scanningToastId = null;
-
         const initCameras = async () => {
             try {
                 const res = await axios.get("camera/list-camera", {
@@ -108,62 +107,68 @@ const Record = () => {
                 const list = res.data.cameras || [];
                 setCameras(list);
 
-                // ✅ ถ้ายังไม่เจอกล้อง → ให้ retry ทุก 3 วิ
+                // 🔹 ถ้ายังไม่มีกล้อง → retry ต่อ
                 if (list.length === 0) {
-                    if (!scanningToastId) {
-                        scanningToastId = toast.loading("กำลังสแกนกล้อง...");
+                    if (!scanningToastId.current) {
+                        scanningToastId.current = toast.loading("กำลังสแกนกล้อง...");
                     }
-                    if (!retryRef.current) {
-                        retryRef.current = setInterval(initCameras, 3000);
+                    if (!retryInterval.current) {
+                        retryInterval.current = setInterval(initCameras, 3000);
                     }
                     return;
                 }
 
-                // ✅ เจอกล้องแล้ว → ยกเลิกการ retry + ปิด toast ที่ค้าง
-                if (retryRef.current) {
-                    clearInterval(retryRef.current);
-                    retryRef.current = null;
+                // 🔹 ถ้ามีกล้องแล้ว → ยกเลิก retry + toast
+                if (retryInterval.current) {
+                    clearInterval(retryInterval.current);
+                    retryInterval.current = null;
                 }
-                toast.dismiss(); // ปิด toast ที่ค้างทั้งหมด
+                toast.dismiss(scanningToastId.current);
+                scanningToastId.current = null
 
-                await axios.get("camera/open-all", { timeout: 60000 });
-                toast.success(`เปิดกล้องทั้งหมด (${list.length}) แล้ว!`);
-
-                list.forEach((cam) => connectWebSocket(cam.id));
+                // 🔹 เปิดกล้องทั้งหมด (ทำแค่รอบแรกเท่านั้น)
+                if (!didInit.current) {
+                    didInit.current = true; // ✅ กันซ้ำเฉพาะเปิดกล้องรอบแรก
+                    await axios.get("camera/open-all", { timeout: 60000 });
+                    list.forEach((cam) => connectWebSocket(cam.id));
+                    toast.success("เปิดกล้องทั้งหมดแล้ว!");
+                }
 
             } catch (err) {
-                console.error(err);
+                console.error("❌ โหลดกล้องล้มเหลว:", err);
                 toast.error("เกิดข้อผิดพลาดขณะโหลดกล้อง");
             }
         };
 
+        // ✅ เริ่มต้นเรียกครั้งแรก
         initCameras();
 
-        // ✅ cleanup ตอนออกจากหน้า
+        // ✅ cleanup
         return () => {
-            if (retryRef.current) clearInterval(retryRef.current);
-            toast.dismiss();
+            if (retryInterval) clearInterval(retryInterval.current);
+            toast.dismiss(scanningToastId.current);
         };
     }, []);
-    
+
+
     // ---------- ออกจากหน้านี้ให้ปิดกล้องทั้งหมด ----------
     useEffect(() => {
         return () => {
             console.log("ปิดกล้องทั้งหมด");
 
-            Object.keys(wsRefs.current).forEach((id) => {
+            Object.keys(wsRefs.current).forEach((cameraId) => {
                 try {
-                    wsRefs.current[id].close();
-                    delete wsRefs.current[id];
+                    wsRefs.current[cameraId].close();
+                    delete wsRefs.current[cameraId];
                 } catch (error) {
                     console.error("Error closing WS", error)
                 }
             });
 
-            Object.keys(summaryRefs.current).forEach((id) => {
+            Object.keys(summaryRefs.current).forEach((cameraId) => {
                 try {
-                    summaryRefs.current[id].close();
-                    delete summaryRefs.current[id];
+                    summaryRefs.current[cameraId].close();
+                    delete summaryRefs.current[cameraId];
                 } catch (error) {
                     console.error("Error closing summary WS", error);
                 }
@@ -179,17 +184,17 @@ const Record = () => {
     }, [])
 
     // ---------- ปุ่ม ----------
-    const handleCloseCamera = async (id) => {
+    const handleCloseCamera = async (cameraId) => {
         setIsRecording(false)
         try {
-            await axios.get(`camera/close-camera/${id}`);
-            safeCloseWS(id);
+            await axios.get(`camera/close-camera/${cameraId}`);
+            safeCloseWS(cameraId);
             setFrames((prev) => {
                 const n = { ...prev };
-                delete n[id];
+                delete n[cameraId];
                 return n;
             });
-            toast.success(`ปิดกล้อง ${id} แล้ว`);
+            toast.success(`ปิดกล้อง ${cameraId + 1} แล้ว`);
         } catch (err) {
             toast.error("ปิดกล้องไม่สำเร็จ");
             console.error("ปิดกล้องไม่สำเร็จ :", err);
@@ -198,13 +203,13 @@ const Record = () => {
     };
 
     // เชื่อมต่อกล้องใหม่
-    const handleReconnect = async (id) => {
+    const handleReconnect = async (cameraId) => {
         try {
             await axios.get(`camera/open-all`);
-            connectWebSocket(id);
-            toast.success(`เชื่อมต่อใหม่ กล้อง ${id} แล้ว`);
+            connectWebSocket(cameraId);
+            toast.success(`เชื่อมต่อใหม่ กล้อง ${cameraId + 1} แล้ว`);
         } catch {
-            toast.error(`เชื่อมต่อใหม่กล้อง ${id} ไม่สำเร็จ`);
+            toast.error(`เชื่อมต่อใหม่กล้อง ${cameraId + 1} ไม่สำเร็จ`);
         }
     };
 
@@ -213,7 +218,7 @@ const Record = () => {
         setIsRecording(false)
         try {
             Object.keys(wsRefs.current).forEach((id) => safeCloseWS(id));
-            Object.key(summaryRefs.current).forEach((id) => {
+            Object.keys(summaryRefs.current).forEach((id) => {
                 try {
                     summaryRefs.current[id].close();
                     delete summaryRefs.current[id]
@@ -235,11 +240,10 @@ const Record = () => {
             const resStartDetect = await axios.get(`camera/start-all`)
             console.log(resStartDetect);
             const started_ids = resStartDetect.data.started || []
-            for(const id in started_ids) {
-
+            for (const id in started_ids) {
                 connectSummarySocket(id);
             }
-            toast.success(`เริ่มตรวจจับกล้อง ${cameraId}`);
+            toast.success(`เริ่มตรวจจับกล้อง ${Number(cameraId + 1)}`);
 
         } catch (error) {
             console.error("การตรวจจับเกิดข้อผิดพลาด", error)
@@ -369,9 +373,9 @@ const Record = () => {
                     </div>
 
                     {/* ✅ ฝั่งขวา (log ตรวจจับ) */}
-                    <div className="bg-white rounded-2xl shadow flex flex-col border border-gray-200 h-full">
-                        <h1 className="text-center py-4 text-lg font-bold border-b">
-                            ไม่ตั้งใจ
+                    <div className="bg-white rounded-2xl shadow flex flex-col border border-gray-200 h-[500px]">
+                        <h1 className="text-center py-4 text-lg font-bold border-b md:text-3xl">
+                            พฤติกรรม
                         </h1>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3">
                             {detections.length === 0 ? (
@@ -382,21 +386,25 @@ const Record = () => {
                                 detections.map((item) => (
                                     <div
                                         key={item.id}
-                                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100"
+                                        className="flex justify-between items-center gap-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 text-center overflow-y-auto"
                                     >
-                                        <div className="w-20 h-20 bg-gray-300 rounded-lg overflow-hidden flex-shrink-0">
+                                        <h1 className="text-lg font-medium text-gray-700">
+                                            กล้องตัวที่ {item.cameraId}
+                                        </h1>
+
+                                        <div className="w-24 h-24 bg-gray-300 rounded-lg overflow-hidden">
                                             <img
                                                 src={item.image}
                                                 alt={item.time}
                                                 className="w-full h-full object-cover"
                                             />
                                         </div>
-                                        <div className="flex-1">
-                                            <p className="text-sm font-medium text-gray-700">
-                                                เวลา {item.time}
-                                            </p>
-                                        </div>
+
+                                        <p className="text-sm font-medium text-gray-700">
+                                            เวลา {item.time}
+                                        </p>
                                     </div>
+
                                 ))
                             )}
                         </div>

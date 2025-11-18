@@ -31,43 +31,47 @@ const LoginPage = () => {
     }
 
     try {
-      const res = await axios.post("/auth/LoginPage", values, {
-        withCredentials: true,
+      const formData = new FormData();
+      formData.append("teacher_id", values.teacherId);
+      formData.append("password", values.password);
+
+      const res = await axios.post("/auth/login-by-id", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
       });
+      const data = res.data;
 
-      console.log("Response from server:", res.data); // ✅ Debug response
+      toast.success(`เข้าสู่ระบบสำเร็จ ✅`);
 
-      const getRole = res.data.user.user_role;
+      localStorage.setItem("token", data.access_token);
+      localStorage.setItem("role", data.role)
+      localStorage.setItem("teacher_id", data.teacher_id);
+      localStorage.setItem("fullname", data.fullname);
+      localStorage.setItem("major", data.major)
+      
+      if (data.role === "admin") navigate("/admin/AdminHomepage");
+      else if (data.role === "teacher") navigate("/user/Homepage");
+      else setErrorMessage("ไม่พบสิทธิ์ของผู้ใช้บัญชีนี้");
 
-      if (getRole === "admin") {
-        navigate("/admin/AdminHomepage");
-      } else if (getRole === "teacher") {
-        navigate("/user/Homepage");
-      } else {
-        setErrorMessage("ไม่พบสิทธิ์ของผู้ใช้บัญชีนี้");
-      }
-
-      toast.success("เข้าสู่ระบบ");
     } catch (error) {
-      if (error.response && error.response.status === 400) {
-        toast.error(error.response.data.message);
-      } else {
-        console.error("Sign Up Page error: ", error);
-        setErrorMessage(
-          error.response?.data?.message || "เกิดข้อผิดพลาด กรุณาลองใหม่"
-        );
-      }
+
+      console.error(error);
+      toast.error(error.response?.data?.detail || "เข้าสู่ระบบไม่สำเร็จ ❌");
+
     } finally {
+
       setIsLoading(false);
+
     }
   };
 
   return (
     <div
       className="w-full h-screen bg-cover bg-center flex items-center justify-end"
-      style={{ backgroundImage: `url(${BG})`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'top' }}
+      style={{
+        backgroundImage: `url(${BG})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'top'
+      }}
     >
 
       {/* Card ด้านขวา */}
@@ -112,8 +116,7 @@ const LoginPage = () => {
               {errorMessage}
             </p>
           )}
-          
-          <Link to = '/user/Homepage'>
+
           <button
             type="submit"
             disabled={isLoading}
@@ -121,7 +124,6 @@ const LoginPage = () => {
           >
             {isLoading ? "กำลังเข้าสู่ระบบ..." : "ยืนยัน"}
           </button>
-          </Link>
         </form>
       </div>
     </div>

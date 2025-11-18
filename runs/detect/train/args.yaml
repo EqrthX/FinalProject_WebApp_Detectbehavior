@@ -1,10 +1,10 @@
 task: detect
 mode: train
-model: yolo11n.pt
-data: C:\Users\User\Desktop\train\Project_Detection.v2-model-v2.yolov11\data.yaml
-epochs: 200
+model: runs/detect/train/weights/last.pt
+data: C:\Users\User\Desktop\train\Project_Detection.v4-model-v3.2.yolov11\data.yaml
+epochs: 100
 time: null
-patience: 100
+patience: 20
 batch: 16
 imgsz: 640
 save: true
@@ -12,9 +12,9 @@ save_period: -1
 cache: false
 device: null
 workers: 8
-project: null
+project: runs/detect
 name: train
-exist_ok: false
+exist_ok: true
 pretrained: true
 optimizer: auto
 verbose: true

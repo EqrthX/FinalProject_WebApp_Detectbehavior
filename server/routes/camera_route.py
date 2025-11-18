@@ -131,7 +131,7 @@ async def camera_loop(camera_id: str):
                     label = model.names[cls]
                     track_id = int(box.id) if box.id is not None else -1
                         
-                        # เช็คว่า track id ตรงกับ state track_id ไหม
+                        # เช็คว่า track id ตรงกับ state track_id ไหม #ถ้าต้องการเปลี่ยนใหห้จับความแม่นมากขึ้นให้ปรับ conf เป็น 0.5 หรือ 0.6
                     if track_id == cam_state["track_id"] and conf > 0.3:
 
                         found_valid_detection = True
@@ -172,7 +172,7 @@ async def camera_loop(camera_id: str):
                 if ok:
                     cam_state["last_frame"] = buf.tobytes()
 
-                print(f'วินาที่ที่ {cam_state['seconds']}')
+                print(f'วินาที่ที่ {cam_state["seconds"]}')
                 
                 if now - last_check_time >= 1:
                     last_check_time = now

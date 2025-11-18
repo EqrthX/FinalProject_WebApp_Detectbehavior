@@ -1,0 +1,52 @@
+{
+    "CameraID": "1",
+    "ID": null,
+    "Time": "20:27:01",
+    "Data Average": {
+        "Phone": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "LookingAway": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "Taking_notes": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "Talking": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "Book": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "Focused": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "UsingPhone": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "Ipad": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        },
+        "Looking_at_the_board": {
+            "avg_conf_detect": 0.0,
+            "avg_conf_frame": 0.0,
+            "ratio": 0.0
+        }
+    }
+}

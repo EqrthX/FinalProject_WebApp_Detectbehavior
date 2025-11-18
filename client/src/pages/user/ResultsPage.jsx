@@ -130,7 +130,7 @@ const ResultsPage = () => {
   ];
 
   const RADIAN = Math.PI / 180;
-  const COLORS = ['#0068c9', '#fe2b2b', '#780cdf', '#00B7EB', '#00FFCE', '#FF00FF', '#000'];
+  const COLORS = ['#0068c9','#fe2b2b', '#8622FF', '#739206ff', '#FE0056', '#00B7EB', '#FF8000', '#00FFCE', '#FFFF00'];
 
   // เพิ่มฟังก์ชัน handleCourseClick
   const handleCourseClick = (courseId) => {

@@ -230,14 +230,14 @@ const AdminTeachingschedule = () => {
                               <Breadcrumbs />
                          </div>
 
-                         <div className="w-full bg-white rounded-[20px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 md:px-4 flex items-center justify-between">
+          <div className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 flex items-center justify-between sticky top-[20px] z-30">
                               <h1 className="text-[22px] md:text-[18px] font-semibold text-black">
                                    อาจารย์
                               </h1>
                          </div>
 
                          <div className="bg-white mt-4 p-4 rounded-[20px] shadow-sm border border-[#e9e9e9]">
-                              <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+            <div className="flex justify-between items-center mb-4 flex-wrap gap-2 sticky top-[90px] z-20 bg-white pb-4 border-b border-gray-100 ml-3">
                                    <div className="flex items-center gap-3 flex-wrap">
                                         <div className="p-2 font-bold text-gray-800">
                                              รายชื่ออาจารย์

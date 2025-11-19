@@ -168,7 +168,7 @@ const Record = () => {
                 // 4. เปิดกล้องทั้งหมด (ทำแค่รอบแรกเท่านั้น)
                 if (!didInit.current) {
                     didInit.current = true; // ✅ กันซ้ำเฉพาะเปิดกล้องรอบแรก
-                    await axios.get("camera/open-all", { timeout: 60000 });
+                    await axios.get(`camera/open-all?subjectId=${subjectId}`, { timeout: 60000 });
                     list.forEach((cam) => connectWebSocket(cam.id));
                     toast.success("เปิดกล้องทั้งหมดแล้ว!");
                 }

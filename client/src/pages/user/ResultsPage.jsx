@@ -7,19 +7,47 @@ import { supabase } from "../../config/supabase";
 
 const ResultsPage = () => {
   const teacher_id = localStorage.getItem("teacher_id")
+
+  // 1. แยก State: result, กราฟต่างๆ
   const [result, setResult] = useState([])
   const [lineChartData, setLineChartData] = useState([]);
-  const [summary, setSummary] = useState({ att: 0, nonAtt: 0, other: 0 });
-  const [dateToDetect, setDateToDetect] = useState(null);
   const [pieChartData, setPieChartData] = useState([]);
+  const [summary, setSummary] = useState({ att: 0, nonAtt: 0, other: 0 });
 
+  // 2. แยก State วันที่: อันนึงไว้ Query (queryDate), อันนึงไว้โชว์ (displayDate)
+  const [queryDate, setQueryDate] = useState(null);
+  const [displayDate, setDisplayDate] = useState("");
+
+  // useEffect 1: ทำงานครั้งแรกเพื่อตั้งค่า "วันนี้"
+  useEffect(() => {
+    const now = new Date();
+
+    // ตั้งค่าวันที่สำหรับโชว์ (ภาษาไทย)
+    const thaiDate = now.toLocaleDateString('th-TH', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    setDisplayDate(thaiDate);
+
+    // ตั้งค่าวันที่สำหรับ Query (เริ่มที่ 00:00:00 ของวันนี้)
+    now.setHours(0, 0, 0, 0);
+    setQueryDate(now.toISOString());
+    
+  }, []);
+
+  // useEffect 2: ดึงข้อมูลเมื่อ queryDate หรือ teacher_id เปลี่ยน
   useEffect(() => {
     const fetechResult = async () => {
+      // ต้องรอให้ queryDate มีค่าก่อนค่อยดึง
+      if (!queryDate || !teacher_id) return;
+
       try {
         const { data: response, error: errResponse } = await supabase
           .from("camera_logs")
           .select("*")
-          .limit(120)
+          .limit(180)
+          .gte("created_at", queryDate) // ใช้ ISO Date ที่เตรียมไว้
           .eq("teacher_id", teacher_id)
           .order("created_at", { ascending: true })
 
@@ -33,10 +61,11 @@ const ResultsPage = () => {
       }
     }
     fetechResult();
-  }, [teacher_id]);
+  }, [teacher_id, queryDate]); // เพิ่ม queryDate ใน dependency
 
+  // useEffect 3: คำนวณกราฟเมื่อได้ result มาแล้ว
   useEffect(() => {
-    if (result && result.length > 0) {
+    if (result) { // เอา check length > 0 ออก เพื่อให้กราฟเคลียร์ค่าเป็น 0 ถ้าไม่มีข้อมูล
       const totals = {
         Focused: 0,
         Looking_at_the_board: 0,
@@ -49,7 +78,6 @@ const ResultsPage = () => {
 
       result.forEach(log => {
         const ratios = log.class_json || {};
-
         totals.Focused += ratios.Focused || 0;
         totals.Looking_at_the_board += ratios.Looking_at_the_board || 0;
         totals.Taking_notes += ratios.Taking_notes || 0;
@@ -59,18 +87,9 @@ const ResultsPage = () => {
         totals.Other += ratios.Other || 0;
       })
 
-      if (!dateToDetect) {
-        const firstLogDate = new Date(result[0].created_at);
-        setDateToDetect(firstLogDate.toLocaleDateString('th-TH', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        })); // ผลลัพธ์: "12 พฤศจิกายน 2568"
-      }
+      // กราฟเส้น
       const transformedLineDataAtt = result.map(log => {
-
         const date = new Date(log.created_at);
-
         const formattedTime = date.toLocaleTimeString('th-TH', {
           hour: '2-digit',
           minute: '2-digit',
@@ -86,17 +105,12 @@ const ResultsPage = () => {
       })
       setLineChartData(transformedLineDataAtt)
 
+      // สรุปผลรวม
       const totalLogs = result.length;
-
-      const totalAttention = result.reduce((acc, log) => acc + (log.Attention || 0), 0);
-
-      const totalNonAttention = result.reduce((acc, log) => acc + (log.Non_Attention || 0), 0);
-
-      const totalOther = result.reduce((acc, log) => acc + (log.Other || 0), 0);
-
-      const avgAttention = totalLogs > 0 ? (totalAttention / totalLogs) : 0;
-      const avgNonAttenion = totalLogs > 0 ? (totalNonAttention / totalLogs) : 0;
-      const avgOhther = totalLogs > 0 ? (totalOther / totalLogs) : 0;
+      // ป้องกันการหารด้วย 0
+      const avgAttention = totalLogs > 0 ? (result.reduce((acc, log) => acc + (log.Attention || 0), 0) / totalLogs) : 0;
+      const avgNonAttenion = totalLogs > 0 ? (result.reduce((acc, log) => acc + (log.Non_Attention || 0), 0) / totalLogs) : 0;
+      const avgOhther = totalLogs > 0 ? (result.reduce((acc, log) => acc + (log.Other || 0), 0) / totalLogs) : 0;
 
       setSummary({
         att: avgAttention,
@@ -104,34 +118,26 @@ const ResultsPage = () => {
         other: avgOhther
       })
 
-      const dataForPie = [
-        { name: "Focused", value: totals.Focused / totalLogs },
-        { name: "Looking_at_the_board", value: totals.Looking_at_the_board / totalLogs },
-        { name: "Taking_notes", value: totals.Taking_notes / totalLogs },
-        { name: "LookingAway", value: totals.LookingAway / totalLogs },
-        { name: "UsingPhone", value: totals.UsingPhone / totalLogs },
-        { name: "Other", value: totals.Other / totalLogs },
-      ]
-      setPieChartData(dataForPie);
-
+      // กราฟวงกลม
+      // เช็ค totalLogs > 0 ป้องกัน NaN ใน PieChart
+      if (totalLogs > 0) {
+        const dataForPie = [
+          { name: "Focused", value: totals.Focused / totalLogs },
+          { name: "Looking_at_the_board", value: totals.Looking_at_the_board / totalLogs },
+          { name: "Taking_notes", value: totals.Taking_notes / totalLogs },
+          { name: "LookingAway", value: totals.LookingAway / totalLogs },
+          { name: "UsingPhone", value: totals.UsingPhone / totalLogs },
+          { name: "Other", value: totals.Other / totalLogs },
+        ].filter(item => item.value > 0); // กรองค่าที่เป็น 0 ออกเพื่อให้กราฟสวยงาม
+        setPieChartData(dataForPie);
+      } else {
+        setPieChartData([]);
+      }
     }
   }, [result])
 
-  // กราฟวงกลม
-  const data = [
-    { name: 'Focused', value: 870 },
-    { name: 'Inactive', value: 130 },
-
-  ];
-
   const RADIAN = Math.PI / 180;
   const COLORS = ['#0068c9', '#fe2b2b', '#780cdf', '#00B7EB', '#00FFCE', '#FF00FF', '#000'];
-
-  // เพิ่มฟังก์ชัน handleCourseClick
-  const handleCourseClick = (courseId) => {
-    console.log('Course clicked:', courseId);
-    // เพิ่ม logic ที่ต้องการเมื่อคลิกที่วิชา
-  };
 
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -156,7 +162,8 @@ const ResultsPage = () => {
             <div className="mb-6 ">
               <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
                 <BarChartOutlined className="text-2xl text-blue-500" />
-                ผลรวมรายวัน {dateToDetect}
+                {/* แสดงวันที่จาก State displayDate */}
+                ผลรวมรายวัน {displayDate}
               </h2>
             </div>
             <div className="flex justify-center gap-50">
@@ -208,18 +215,11 @@ const ResultsPage = () => {
                     stroke="#FF3300"
                     strokeWidth={2}
                   />
-                  {/* <Line
-                    type="monotone"
-                    dataKey="อื่นๆ"
-                    stroke="#000"
-                    strokeWidth={2}
-                  /> */}
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
         </div>
-
 
         {/* กล่องฝั่งขวา */}
         <div className="flex flex-col space-y-4">
@@ -241,7 +241,7 @@ const ResultsPage = () => {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => `${(value*100).toFixed(1)}%`}/>
+                <Tooltip formatter={(value) => `${(value * 100).toFixed(1)}%`} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>

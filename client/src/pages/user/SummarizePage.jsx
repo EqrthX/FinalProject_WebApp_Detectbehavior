@@ -9,19 +9,40 @@ import { supabase } from "../../config/supabase.js"
 
 const SummarizePage = () => {
   const teacher_id = localStorage.getItem("teacher_id")
+
   const [result, setResult] = useState([])
   const [lineChartData, setLineChartData] = useState([]);
   const [summary, setSummary] = useState({ att: 0, nonAtt: 0, other: 0 });
   const [dateToDetect, setDateToDetect] = useState(null);
   const [pieChartData, setPieChartData] = useState([]);
-  
+
+  const [queryDate, setQueryDate] = useState(null);
+  const [displayDate, setDisplayDate] = useState("");
+
+  useEffect(() => {
+    const date = new Date()
+
+    const formattedDate = date.toLocaleDateString('th-TH', {
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    })
+
+    setDisplayDate(formattedDate)
+
+    date.setHours(0, 0, 0, 0)
+    setQueryDate(date.toISOString());
+
+  }, [])
+
   useEffect(() => {
     const fetechResult = async () => {
       try {
         const { data: response, error: errResponse } = await supabase
           .from("camera_logs")
           .select("*")
-          .limit(120)
+          .limit(180)
+          .gte("created_at", queryDate)
           .eq("teacher_id", teacher_id)
           .order("created_at", { ascending: true })
 
@@ -35,7 +56,7 @@ const SummarizePage = () => {
       }
     }
     fetechResult();
-  }, [teacher_id]);
+  }, [teacher_id, queryDate]);
 
   useEffect(() => {
     if (result && result.length > 0) {
@@ -49,7 +70,7 @@ const SummarizePage = () => {
         Other: 0
       }
 
-      result.forEach(log => {        
+      result.forEach(log => {
         const ratios = log.class_json || {};
 
         totals.Focused += ratios.Focused || 0;
@@ -152,7 +173,7 @@ const SummarizePage = () => {
               <div className="mb-6 ">
                 <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
                   <BarChartOutlined className="text-2xl text-blue-500" />
-                  ผลรวมรายวัน {dateToDetect}
+                  ผลรวมรายวัน {displayDate}
                 </h2>
               </div>
               <div className="flex justify-center gap-50">

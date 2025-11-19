@@ -1,7 +1,8 @@
 from utils.instance_class import new_status_dict
-from datetime import datetime
 from config.bn_supabase import supabase_client
 import asyncio
+import time
+
 def define_HIGH_CLASS():
     return ["Focused", "Looking_at_the_board", "Taking_notes"]
 
@@ -15,11 +16,28 @@ def create_camera_state(cap, teacher_id=None):
         "thread": None,               # Thread หรือ task ที่ใช้ detect
         "running": True,              # เปิดอยู่หรือไม่
         "detecting": False,           # กำลังตรวจจับอยู่ไหม
-        "seconds": 0,                 # นับเวลา
+        
+        # --- ระบบจับคลาสเป็นช่วงเวลา ---
+        "interval_seconds": 5,               # จับ snapshot ทุก 5 วิ
+        "last_interval_time": time.time(),   # เวลา snapshot ล่าสุด
+        "interval_count": 0,                 # นับไปแล้วกี่รอบ (แต่ละรอบ = 5 วิ)
+        "max_intervals": 12,                 # 12 รอบ = 1 นาที
+        "interval_results": [],              # เก็บคลาสของแต่ละรอบ (5 วิ / ครั้ง)
+
+        # --- YOLO detect state ---
         "last_frame": None,           # เฟรมล่าสุด
         "status": new_status_dict(),  # ✅ สถานะคลาสทั้งหมด
-        "teacher_id": teacher_id,
         "track_id": None,
+        "teacher_id": teacher_id,
+
+        # --- สำหรับแสดงผล 30 วิ หรือ summary ---
         "show_class": {},
-        "summary_ready_event": asyncio.Event()
-    }
+        "summary_ready_event": asyncio.Event(),
+
+        "class_timer": {
+            "current_class": None,
+            "duration": 0.0,
+            "frame_count": 0,
+            "miss": 0,
+        },
+}

@@ -9,7 +9,7 @@ def define_HIGH_CLASS():
 def define_LOW_CLASS():
     return ["LookingAway", "Talking", "UsingPhone"]
 
-def create_camera_state(cap, teacher_id=None):
+def create_camera_state(cap, teacher_id=None, subject_id=None):
     """คืนค่า state เริ่มต้นของแต่ละกล้อง"""
     return {
         "cap": cap,                   # กล้องที่เปิดอยู่
@@ -29,6 +29,7 @@ def create_camera_state(cap, teacher_id=None):
         "status": new_status_dict(),  # ✅ สถานะคลาสทั้งหมด
         "track_id": None,
         "teacher_id": teacher_id,
+        "subject_id": subject_id,
 
         # --- สำหรับแสดงผล 30 วิ หรือ summary ---
         "show_class": {},

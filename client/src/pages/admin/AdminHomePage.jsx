@@ -51,16 +51,16 @@ const AdminHomePage = () => {
 
             {/* กล่องคณะทั้งหมด */}
             <div
-              className=" flex justify-between gap-11 w-full items-center ml-"
-            >
-              {[
-                { title: "คณะทั้งหมด", value: 6 },
-                { title: "วิชาทั้งหมด", value: 124 },
-                { title: "อาจารย์ทั้งหมด", value: 42 },
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  className="
+            className=" flex justify-between gap-11 w-full items-center ml-"
+          >
+            {[
+              { title: "คณะทั้งหมด", value: 6 },
+              { title: "วิชาทั้งหมด", value: 124 },
+              // { title: "อาจารย์ทั้งหมด", value: 42 },
+            ].map((item, i) => (
+              <div
+                key={i}
+                className="
                   flex-1 min-w-[350px] max-w-[600px]
                   bg-white rounded-[20px] border border-[#e9e9e9]
                   p-6 shadow-sm flex flex-col items-center justify-center

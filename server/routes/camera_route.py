@@ -63,7 +63,7 @@ async def async_scan_cameras():
             is_scanning = False  # ✅ ปลดล็อกเสมอ
 
 # ✅ ฟังก์ชันเปิดกล้องเดี่ยว (ใช้ภายใน)
-def open_camera_instance(camera_id: str, teacher_id = None):
+def open_camera_instance(camera_id: str, teacher_id = None, subject_id = None):
     source = int(camera_id)
     backend = cv2.CAP_ANY
     for cam in available_cameras:
@@ -75,8 +75,8 @@ def open_camera_instance(camera_id: str, teacher_id = None):
         raise HTTPException(status_code=500, detail=f"ไม่สามารถเปิดกล้อง {int(camera_id) + 1}")
 
     # สร้าง dict cameras ที่เก็บ key value สำหรับการควบคุมกล้อง ใช้ id เพื่อเช็คตามกล้อง
-    cameras[camera_id] = create_camera_state(cap, teacher_id=teacher_id)
-    print(f"✅ Camera {int(camera_id) + 1} เปิด รหัสอาจารย์ {teacher_id}")
+    cameras[camera_id] = create_camera_state(cap, teacher_id=teacher_id, subject_id=subject_id)
+    print(f"✅ Camera {int(camera_id) + 1} เปิด รหัสอาจารย์ {teacher_id} จับวิชา {subject_id}")
 
 # ใช้กับ endpoint start-detect เมื่อเวลาเรียก api เส้นนี้จะทำการตรวจจับจาก webcam แล้วก็ให้มีการคำนวน
 async def camera_loop(camera_id: str):
@@ -253,6 +253,7 @@ async def camera_loop(camera_id: str):
                             )
                        
                     if cam_state["interval_count"] >= cam_state["max_intervals"]:
+                        subject_id = cam_state.get("subject_id")
                         interval_count = {}
                         for cls_label in cam_state['interval_results']:
                             key = cls_label if cls_label is not None else "Other"
@@ -294,7 +295,8 @@ async def camera_loop(camera_id: str):
                             "Attention":round(result_attendence, 3),
                             "Non_Attention":round(result_non_attendence, 3),
                             "Other":round(result_other, 3),
-                            "class_json": class_result_json
+                            "class_json": class_result_json,
+                            "subject_id": subject_id
                         }
                             
 
@@ -341,7 +343,7 @@ async def camera_loop(camera_id: str):
     
 # ✅ เปิดกล้องทั้งหมดพร้อมกัน
 @camera_router.get("/open-all")
-async def open_all_cameras(user=Depends(verify_token)):
+async def open_all_cameras(subjectId:str, user=Depends(verify_token)):
 
     teacher = (
         supabase_client
@@ -364,7 +366,7 @@ async def open_all_cameras(user=Depends(verify_token)):
         camera_id = str(cam["id"])
         if camera_id not in cameras:
             try:
-                open_camera_instance(camera_id, teacher_id=teacher_id) # ถ้าเจอกล้องแล้วจะให้เปิดกล้องและทำการใช้ state ที่สร้างขึ้นใน func นี้
+                open_camera_instance(camera_id, teacher_id=teacher_id, subject_id=subjectId) # ถ้าเจอกล้องแล้วจะให้เปิดกล้องและทำการใช้ state ที่สร้างขึ้นใน func นี้
             except Exception as e:
                 print(f"❌ ข้อผิดพลาดเปิดกล้องตัวที่ {int(camera_id) + 1}: {e}")
     return {"message": f"{len(available_cameras)} cameras opened", "teacher_id": teacher}
@@ -497,6 +499,7 @@ async def check_list_camera(user=Depends(verify_token)):
         await async_scan_cameras()
         return {"status": "scanning", "cameras": []}
     return {"status": "done", "cameras": available_cameras}
+
 
 # ------------- WebSocket -------------
 

@@ -16,7 +16,7 @@ def create_camera_state(cap, teacher_id=None, subject_id=None):
         "thread": None,               # Thread หรือ task ที่ใช้ detect
         "running": True,              # เปิดอยู่หรือไม่
         "detecting": False,           # กำลังตรวจจับอยู่ไหม
-        
+        "lock": asyncio.Lock(),
         # --- ระบบจับคลาสเป็นช่วงเวลา ---
         "interval_seconds": 5,               # จับ snapshot ทุก 5 วิ
         "last_interval_time": time.time(),   # เวลา snapshot ล่าสุด

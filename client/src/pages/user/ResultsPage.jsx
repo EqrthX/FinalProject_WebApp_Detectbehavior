@@ -46,7 +46,8 @@ const ResultsPage = () => {
         const { data: response, error: errResponse } = await supabase
           .from("camera_logs")
           .select("*")
-          .limit(120)
+          .limit(180)
+          .gte("created_at", queryDate) // ใช้ ISO Date ที่เตรียมไว้
           .eq("teacher_id", teacher_id)
           .order("created_at", { ascending: true })
 

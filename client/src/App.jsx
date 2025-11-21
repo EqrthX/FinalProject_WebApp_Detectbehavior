@@ -20,22 +20,25 @@ import { Toaster } from "react-hot-toast";
 function App() {
   return (
     <>
-      <Toaster/>
-        <Routes>
-          <Route path="/" element={<LoginPage />} />
-          {/* User */}
-          <Route path="/user/Homepage" element={<HomePage />} />
-          <Route>
-            <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
-            <Route path="/user/Record" element={<Record />} />
-            <Route path="/user/summarize" element={<SummarizePage />} />
-          </Route>
-          <Route path="/user/ResultsPage" element={<ResultsPage />} />
+      <Toaster />
+      <Routes>
+        <Route path="/" element={<LoginPage />} />
+        {/* User */}
+        <Route path="/user/Homepage" element={<HomePage />} />
+        <Route>
+          <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
+          <Route path="/user/Record/:subjectId" element={<Record />} />
+          <Route path="/user/summarize" element={<SummarizePage />} />
+        </Route>
+        <Route path="/user/ResultsPage" element={<ResultsPage />} />
 
         <Route path="/admin/AdminHomePage" element={<AdminHomePage />} />
         <Route path="/admin/AdminTeachingschedule" element={<AdminTeachingschedule />} />
-        <Route path="/admin/AdminTeachers" element={<AdminTeachers />} />
-        <Route path="/admin/AdminClassRoom/:id" element={<AdminClassRoom />} />
+        <Route>
+          <Route path="/admin/AdminTeachers" element={<AdminTeachers />} />
+          <Route path="/admin/AdminClassRoom/:id" element={<AdminClassRoom />} />
+        </Route>
+
 
 
       </Routes>

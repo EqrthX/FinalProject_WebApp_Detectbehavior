@@ -5,50 +5,66 @@ import { Link } from 'react-router-dom';
 import { BarChartOutlined } from '@ant-design/icons';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import { supabase } from "../../config/supabase.js"
-import { toast } from 'react-hot-toast'
+import axios from '../../util/axios.js';
+
 
 const SummarizePage = () => {
   const teacher_id = localStorage.getItem("teacher_id")
+  const [groupCameras, setGroupCameras] = useState([]);
+
   const [result, setResult] = useState([])
   const [lineChartData, setLineChartData] = useState([]);
   const [summary, setSummary] = useState({ att: 0, nonAtt: 0, other: 0 });
   const [dateToDetect, setDateToDetect] = useState(null);
   const [pieChartData, setPieChartData] = useState([]);
-  const [timeFilter, setTimeFilter] = useState('');
-  const date = new Date().getDate();
-  const monuth = new Date().getMonth() + 1;
-  const year = new Date().getFullYear();
-  const fullYear = `${year}-${monuth}-${date}`;
+
+  const [queryDate, setQueryDate] = useState(null);
+  const [displayDate, setDisplayDate] = useState("");
+
+  useEffect(() => {
+    const date = new Date()
+
+    const formattedDate = date.toLocaleDateString('th-TH', {
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    })
+
+    setDisplayDate(formattedDate)
+
+    date.setHours(0, 0, 0, 0)
+    setQueryDate(date.toISOString());
+
+  }, [])
+
   useEffect(() => {
     const fetechResult = async () => {
       try {
         let query = supabase
           .from("camera_logs")
-          .select("camera_id, track_id, Attention, Non_Attention, Other, created_at, class_json")
-          .gte("created_at", fullYear)
+          .select("*")
+          .limit(180)
+          .gte("created_at", queryDate)
           .eq("teacher_id", teacher_id)
           .order("created_at", { ascending: true })
 
-        const recordsPerMinute = 2;
+        const groupedByCamera = response.reduce((acc, row) => {
+          if (!acc[row.camera_id]) acc[row.camera_id] = [];
+          acc[row.camera_id].push(row);
+          return acc;
+        }, {})
 
-        if (timeFilter === '30m') query = query.limit(30 * recordsPerMinute);
-        else if (timeFilter === '60m') query = query.limit(60 * recordsPerMinute);
-        else if (timeFilter === '120m') query = query.limit(120 * recordsPerMinute);
-        else if (timeFilter === '180m') query = query.limit(180 * recordsPerMinute);
-
-        const { data: response, error: responseErr } = await query;
-
-        if (responseErr) {
-          toast.error("เกิดข้อผิดพลาดในการแสดงผลลัพธ์")
-          return;
+        if (errResponse) {
+          console.error("ไม่เจอข้อมูลที่เก็บพฤติกรรม", errResponse)
         }
+        setGroupCameras(groupedByCamera)
         setResult(response || [])
       } catch (error) {
         console.error("เกิดข้อผิดพลาดไม่สามารถแสดงผลได้", error)
       }
     }
     fetechResult();
-  }, [teacher_id, timeFilter]);
+  }, [teacher_id, queryDate]);
 
   useEffect(() => {
     if (result && result.length > 0) {
@@ -171,7 +187,7 @@ const SummarizePage = () => {
               <div className="mb-6 ">
                 <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
                   <BarChartOutlined className="text-2xl text-blue-500" />
-                  ผลรวมรายวัน {dateToDetect}
+                  ผลรวมรายวัน {displayDate}
                 </h2>
                 <select
                 type="text"
@@ -200,7 +216,7 @@ const SummarizePage = () => {
                   </option>
                 </select>
               </div>
-              <div className="flex justify-center gap-50">
+              {/* <div className="flex justify-center gap-50">
                 <div className="bg-white  p-6 flex flex-col items-center w-auto">
                   <span className="text-black ">ตั้งใจเรียน</span>
                   <span className="text-4xl font-bold text-[#1D971D]">{(summary.att * 100).toFixed(1)}%</span>
@@ -213,11 +229,39 @@ const SummarizePage = () => {
                   <span className="text-black">อื่นๆ</span>
                   <span className="text-4xl font-bold text-[#000000]">{(summary.other * 100).toFixed(1)}%</span>
                 </div>
-              </div>
+              </div> */}
 
-              {/* กราฟเส้น */}
               <div className="w-full rounded-lg p-6 ">
-                <ResponsiveContainer width="100%" height={300}>
+              {/* กราฟเส้น */}
+              {Object.entries(groupCameras).map(([camId, logs]) => (
+                <div key={camId} className="bg-white p-4 rounded-xl shadow mb-6 border">
+                  <h3 className="text-lg font-semibold mb-3">กล้องตัวที่ {camId}</h3>
+
+                  <p className="text-gray-600 mb-2">
+                    จำนวน Log: {logs.length}
+                  </p>
+
+                  {/* แสดงข้อมูล Attention แบบล่าสุด */}
+                  <p>ATT: {(logs[logs.length - 1]?.Attention * 100).toFixed(1)}%</p>
+                  <p>NON: {(logs[logs.length - 1]?.Non_Attention * 100).toFixed(1)}%</p>
+                  <p>OTHER: {(logs[logs.length - 1]?.Other * 100).toFixed(1)}%</p>
+
+                  {/* mini chart ของกล้องนี้ */}
+                  <ResponsiveContainer width="100%" height={150}>
+                    <LineChart data={logs.map(l => ({
+                      time: new Date(l.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+                      att: (l.Attention * 100).toFixed(2),
+                      non: (l.Non_Attention * 100).toFixed(2),
+                    }))}>
+                      <XAxis dataKey="time" />
+                      <YAxis domain={[0, 100]} />
+                      <Line type="monotone" dataKey="att" stroke="#82ca9d" />
+                      <Line type="monotone" dataKey="non" stroke="#FF3300" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ))}
+                {/* <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={lineChartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
                     <XAxis
@@ -250,15 +294,10 @@ const SummarizePage = () => {
                       stroke="#FF3300"
                       strokeWidth={2}
                     />
-                    {/* <Line
-                      type="monotone"
-                      dataKey="อื่นๆ"
-                      stroke="#000"
-                      strokeWidth={2}
-                    /> */}
+                    
                   </LineChart>
 
-                </ResponsiveContainer>
+                </ResponsiveContainer> */}
               </div>
             </div>
           </div>

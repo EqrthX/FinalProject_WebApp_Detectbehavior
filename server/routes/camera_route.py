@@ -316,7 +316,7 @@ async def camera_loop(camera_id: str):
                         .execute()
                     )
 
-                await asyncio.sleep(0.1)  # ~60 fps
+                await asyncio.sleep(0.25)  # ~60 fps
 
             print(f"🛑 stop detect on camera {int(camera_id) + 1}")
             cam_state = cameras.get(camera_id)
@@ -536,28 +536,21 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
                 await websocket.send_text("error: cannot read frame")
                 break
 
-            results = model.track(source=frame, conf=0.2, device="cpu", verbose=False, tracker="bytetrack.yaml")
+            results = model.predict(source=frame, conf=0.2, device="cuda", verbose=False)
             annotated = results[0].plot()
 
             cam_state = cameras.get(camera_id)
             if not cam_state:
                 break
 
-            async with cam_state["lock"]:
-                for box in results[0].boxes:
-                    track_id = int(box.id) if box.id is not None else -1
-                    # เพิ่มการตรวจสอบว่าถ้าไม่มีใครในกล้องให้ track id คนนั้นเป็นคนแรก
-                    if "track_id" not in cam_state or cam_state["track_id"] is None:
-                        cam_state["track_id"] = track_id
+            ok, buffer = cv2.imencode(".jpg", annotated)
+            if ok:
+                cam_state["last_frame"] = buffer.tobytes()
 
-                ok, buffer = cv2.imencode(".jpg", annotated)
-                if ok:
-                    cam_state["last_frame"] = buffer.tobytes()
-
-            jpg_as_text = base64.b64encode(buffer).decode("utf-8")
+            jpg_as_text = base64.b64encode(cam_state["last_frame"]).decode("utf-8")
             await websocket.send_text(jpg_as_text)
 
-            await asyncio.sleep(0.12)  # ~30 fps
+            await asyncio.sleep(0.05)  # ~30 fps
 
     except WebSocketDisconnect:
         print(f"❌ WS หยุดการเชื่อมต่อกล้อง {int(camera_id) + 1}")

@@ -9,7 +9,7 @@ from utils.model_loader import get_model
 from utils.auth import verify_token
 from datetime import datetime
 from config.bn_supabase import supabase_client
-
+from utils.json_buffer import save_buffer, load_buffer, clear_buffer, get_buffer_file
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 model = get_model()
@@ -75,6 +75,8 @@ def open_camera_instance(camera_id: str, teacher_id=None, subject_id=None):
 
     # สร้าง dict cameras ที่เก็บ key value สำหรับการควบคุมกล้อง ใช้ id เพื่อเช็คตามกล้อง
     cameras[camera_id] = create_camera_state(cap, teacher_id=teacher_id, subject_id=subject_id)
+
+    load_buffer(camera_id=camera_id)
     print(f"✅ Camera {int(camera_id) + 1} เปิด รหัสอาจารย์ {teacher_id} จับวิชา {subject_id}")
 
 # ใช้กับ endpoint start-detect เมื่อเวลาเรียก api เส้นนี้จะทำการตรวจจับจาก webcam แล้วก็ให้มีการคำนวน
@@ -92,8 +94,6 @@ async def camera_loop(camera_id: str):
             async with cam_state["lock"]:
                 cam_state["detecting"] = False
             return
-
-        print(f"🧠 start detect on camera {int(camera_id) + 1}")
 
         try:
             # เงื่อนต้องเปิดกล้อง และ กำลังตรวจจับ
@@ -126,7 +126,7 @@ async def camera_loop(camera_id: str):
                     lambda: model.track(
                         source=frame,
                         conf=0.4,
-                        device="cuda", #เปลี่ยนเป็น cpu
+                        device="cpu", #เปลี่ยนเป็น cpu
                         verbose=False,
                         tracker="bytetrack.yaml"
                     )
@@ -152,13 +152,17 @@ async def camera_loop(camera_id: str):
                     label = model.names[cls]
                     track_id = int(box.id) if box.id is not None else -1
 
+                    if cam_state["track_id"] is None and track_id != -1:
+                        cam_state["track_id"] = track_id
+                        timer["current_class"] = label
+                        timer["miss"] = 0
+
                     # เช็คว่า track id ตรงกับ state track_id ไหม
                     if track_id == target_track_id:
                         found_valid_detection = True
 
                         async with cam_state["lock"]:
                             timer = cam_state["class_timer"]
-                            status = cam_state["status"]
 
                             if timer["current_class"] is None:
                                 timer["current_class"] = label
@@ -175,13 +179,6 @@ async def camera_loop(camera_id: str):
                                         timer["current_class"] = label
                                         timer["frame_count"] = 1
                                         timer["miss"] = 0
-
-                            if label in ATTENDENCE:
-                                status["frame_class_count"][label] += 1
-                            elif label in NON_ATTENDENCE:
-                                status["frame_class_count"][label] += 1
-                            else:
-                                status["frame_class_count"]["Other"] += 1
 
                         break
                     # ถ้าคนเดินผ่านละไม่ใช่ id ที่ track ไว้ตามกล้อง กล้องจะไม่สนใจ id นั้น
@@ -210,8 +207,6 @@ async def camera_loop(camera_id: str):
                         async with cam_state["lock"]:
                             cam_state["last_frame"] = buf.tobytes()
 
-                insert_payload = None
-
                 cam_state = cameras.get(camera_id)
                 if not cam_state:
                     break
@@ -239,24 +234,34 @@ async def camera_loop(camera_id: str):
                             else:
                                 mapped_class = "Taking_notes"
 
-                        cam_state["interval_results"].append(
-                            mapped_class if mapped_class is not None else "Other"
-                        )
+                        if mapped_class in ATTENDENCE or mapped_class in NON_ATTENDENCE:
+                            cam_state["interval_results"].append(mapped_class)
 
                         print(
                             f"⏱️ กล้อง {int(camera_id) + 1} รอบที่ {cam_state['interval_count']} : "
                             f"{current_interval_class} -> ใช้จริง: {mapped_class} (duration={timer.get('duration', 0)}s)"
                         )
 
+                        snapshot = {
+                            "interval_results": cam_state["interval_results"][:],
+                            "interval_count": cam_state["interval_count"],
+                            "track_id": cam_state["track_id"],
+                            "class_timer": {
+                                "current_class": timer["current_class"],
+                                "duration": timer["duration"],
+                                "frame_count": timer["frame_count"],
+                                "miss": timer["miss"]
+                            }
+                        }
                     if cam_state["interval_count"] >= cam_state["max_intervals"]:
                         subject_id = cam_state.get("subject_id")
                         interval_count = {}
-                        for cls_label in cam_state["interval_results"]:
-                            key = cls_label if cls_label is not None else "Other"
-                            interval_count[key] = interval_count.get(key, 0) + 1
 
+                        for cls_label in cam_state["interval_results"]:
+                            interval_count[cls_label] = interval_count.get(cls_label, 0) + 1
+                        
                         print(f"cam_state['interval_results'] {cam_state['interval_results']}")
-                        total_intervals = len(cam_state["interval_results"]) or 1
+                        valid_total = len(cam_state["interval_results"]) or 1
 
                         att_sum = sum(
                             c for label, c in interval_count.items()
@@ -268,53 +273,27 @@ async def camera_loop(camera_id: str):
                             if label in NON_ATTENDENCE
                         )
 
-                        other_sum = total_intervals - att_sum - non_sum
-
-                        result_attendence = att_sum / total_intervals
-                        result_non_attendence = non_sum / total_intervals
-                        result_other = other_sum / total_intervals
+                        result_attendence = att_sum / valid_total
+                        result_non_attendence = non_sum / valid_total
 
                         print(f"ตั้งใจ {result_attendence:.2f}")
                         print(f"ไม่ตั้งใจ {result_non_attendence:.2f}")
-                        print(f"อื่นๆ {result_other:.2f}")
                         print(f"จำนวนที่เจอใน {cam_state['max_intervals']}")
-                        print(interval_count)
 
                         class_result_json = {
-                            label: round(count / total_intervals, 3)
+                            label: round(count / valid_total, 3)
                             for label, count in interval_count.items()
                         }
 
-                        insert_payload = {
-                            "camera_id": int(camera_id) + 1,
-                            "track_id": cam_state["track_id"],
-                            "teacher_id": cam_state["teacher_id"],
-                            "Attention": round(result_attendence, 3),
-                            "Non_Attention": round(result_non_attendence, 3),
-                            "Other": round(result_other, 3),
-                            "class_json": class_result_json,
-                            "subject_id": subject_id,
-                        }
+                        save_buffer(camera_id=camera_id, cam_state=cam_state, ATT=result_attendence, NON=result_non_attendence, class_json=class_result_json, subject_id=subject_id)
 
                         # reset state สำหรับรอบถัดไป
                         cam_state["interval_count"] = 0
                         cam_state["interval_results"] = []
 
-                        for k in cam_state["status"]["frame_class_count"]:
-                            cam_state["status"]["frame_class_count"][k] = 0
-
                         timer["frame_count"] = 0
                         timer["duration"] = 0.0
                         timer["miss"] = 0
-
-                if insert_payload is not None:
-                    await loop.run_in_executor(
-                        None,
-                        lambda: supabase_client
-                        .table("camera_logs")
-                        .insert(insert_payload)
-                        .execute()
-                    )
 
                 await asyncio.sleep(0.25)  # ~60 fps
 
@@ -338,7 +317,53 @@ async def camera_loop(camera_id: str):
 
     except asyncio.CancelledError:
         print(f"⚠️ ฟังก์ชั่น [camera_loop] มีปัญหา")
-        return
+
+# suumary to supabase
+@camera_router.get("/summary-to-supabase")
+async def summary_to_supabase():
+    all_summary_data = []
+    try:
+        for cam_id in list(cameras.keys()):
+            summary = load_buffer(str(cam_id))
+            if summary:
+                all_summary_data.append(summary)
+                clear_buffer(str(cam_id))
+                
+        if not all_summary_data:
+            return {"message": "ไม่มีข้อมูลใน buffer"}
+        
+        insert_payload = []
+
+        for summary in all_summary_data:
+            camera_id = summary["camera_id"]
+            track_id = summary["track_id"]
+            teacher_id = summary["teacher_id"]
+            subject_id = summary["subject_id"]
+
+            for record in summary["records"]:
+                insert_payload.append({
+                    "camera_id": camera_id,
+                    "track_id": track_id,
+                    "teacher_id": teacher_id,
+                    "subject_id": subject_id,
+                    "Attention": record["Attention"],
+                    "Non_Attention": record["Non_Attention"],
+                    "class_json": record["class_json"],
+                    "created_at": record["created_at"]
+                })
+        
+        if insert_payload is not None:
+            supabase_client.table("camera_logs").insert(insert_payload).execute()
+
+        await asyncio.sleep(5)
+
+        return {
+        "message": "บันทึกข้อมูลเสร็จสิ้น",
+        "inserted": len(insert_payload)
+        }
+    except Exception as e:
+        print("Error summary", str(e))
+        return {"error": str(e)}
 
 # ✅ เปิดกล้องทั้งหมดพร้อมกัน
 @camera_router.get("/open-all")
@@ -536,7 +561,7 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
                 await websocket.send_text("error: cannot read frame")
                 break
 
-            results = model.predict(source=frame, conf=0.2, device="cuda", verbose=False)
+            results = model.predict(source=frame, conf=0.2, device="cpu", verbose=False)
             annotated = results[0].plot()
 
             cam_state = cameras.get(camera_id)

@@ -12,12 +12,8 @@ def new_status_dict():
         labels = list(model.names.values())
 
         # 🔹 ตัด class ที่ไม่ต้องการ
-        remove_classes = {"Book", "Ipad", "Phone"}
+        remove_classes = {"Phone"}
         labels = [cls for cls in labels if cls not in remove_classes]
-
-        # 🔹 เพิ่ม class "Other"
-        if "Other" not in labels:
-            labels.append("Other")
 
     except Exception as e:
         print(f"⚠️ [new_status_dict] Warning: cannot load model names ({e})")
@@ -29,7 +25,6 @@ def new_status_dict():
             "Taking_notes",
             "Talking",
             "UsingPhone",
-            "Other"
         ]
 
     return {

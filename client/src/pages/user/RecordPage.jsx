@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 // 1. นำเข้า useParams
-import { useParams, Link } from "react-router-dom"; 
+import { useParams, Link, useNavigate } from "react-router-dom"; 
 import Navbar from "../../components/Navbar";
 import MyBreadcrumb from "../../components/MyBreadcrumb";
 import axios from "../../util/axios";
@@ -8,7 +8,8 @@ import toast from "react-hot-toast";
 
 const Record = () => {
     const { subjectId } = useParams();
-    
+    const navigate = useNavigate();
+
     // ** States **
     const [isRecording, setIsRecording] = useState(false);
     const [timer, setTimer] = useState(0);
@@ -285,7 +286,9 @@ const Record = () => {
     }
 
     // หยุดการตรวจจับ (จบการบันทึก)
-    const handleStopDetect = async () => {
+    const handleStopDetect = async (e) => {
+        e.preventDefault();
+        
         if (!isRecording) return;
         
         setIsRecording(false);
@@ -295,11 +298,19 @@ const Record = () => {
             // 1. หยุด detection บน backend
             await axios.get(`camera/stop-all`);
             
-            // 2. ปิด Summary WebSockets ทั้งหมด
+            const summaryRes = await axios.get(`camera/summary-to-supabase`)
+            // 2. แสดงข้อมูลหลังจากบันทึลง supabasee
+            console.log("Summary Done:", summaryRes.data);
+            
+            // 3. หน่วงเวลา รอให้หลังบ้าน cleans up (0.5 - 1s)
+            await new Promise(resolve => setTimeout(resolve, 800));
+
+            // 4. ปิด Summary WebSockets ทั้งหมด
             Object.keys(summaryRefs.current).forEach((id) => safeCloseSummaryWS(id));
             
             toast.success(`หยุดการตรวจจับทุกกล้อง`);
 
+            navigate("/user/summarize/")
         } catch (error) {
             console.error("การหยุดตรวจจับเกิดข้อผิดพลาด", error);
             toast.error("หยุดการตรวจจับไม่สำเร็จ");
@@ -475,7 +486,6 @@ const Record = () => {
                             </button>
                             <Link 
                                 // to={`/user/summarize/${subjectId}`} 
-                                to={`/user/summarize/`} 
                                 onClick={handleStopDetect} // 📌 เรียก API หยุดการตรวจจับก่อนนำทาง
                             >
                                 <button

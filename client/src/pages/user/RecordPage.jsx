@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 // 1. นำเข้า useParams
-import { useParams, Link, useNavigate } from "react-router-dom"; 
+import { useParams, Link, useNavigate } from "react-router-dom";
 import Navbar from "../../components/Navbar";
 import MyBreadcrumb from "../../components/MyBreadcrumb";
 import axios from "../../util/axios";
@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 
 const Record = () => {
     const { subjectId } = useParams();
+    const teacher_id = localStorage.getItem("teacher_id")
     const navigate = useNavigate();
 
     // ** States **
@@ -17,13 +18,15 @@ const Record = () => {
     const [cameras, setCameras] = useState([]);
     const [loading, setLoading] = useState(false); // สถานะโหลดกล้อง
     const [frames, setFrames] = useState({});
-    
+
     // ** Refs **
     const wsRefs = useRef({});
     const summaryRefs = useRef({});
     const didInit = useRef(false);
     const retryInterval = useRef(null);
     const scanningToastId = useRef(null);
+    const canvasRef = useRef({});
+    const imgRef = useRef({});
 
     // ** ข้อมูล Mock เพื่อแสดงใน Info bar **
     const mockSubjectDetails = {
@@ -32,9 +35,9 @@ const Record = () => {
     };
 
     const details = mockSubjectDetails[subjectId] || { group: 'N/A', room: 'N/A', time: 'N/A' };
-    
+
     // ---------- Utility ----------
-    
+
     /** หาชื่อกล้องจาก ID ที่ได้รับจาก WebSocket */
     const getCameraName = (id) => {
         const cam = cameras.find(c => c.id.toString() === id.toString());
@@ -50,7 +53,7 @@ const Record = () => {
             }
         } catch (_) { /* ignore */ }
     };
-    
+
     /** ปิด Summary WebSocket อย่างปลอดภัย */
     const safeCloseSummaryWS = (id) => {
         try {
@@ -84,12 +87,12 @@ const Record = () => {
         ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                
+
                 // data = { CameraId, ID, Time, avg, maybe class_behavior }
                 setDetections((prev) => [
                     {
                         // ใช้ CameraId จาก Backend ซึ่งควรตรงกับ cameraId ใน frames
-                        cameraId: data.CameraId, 
+                        cameraId: data.CameraId,
                         id: data.ID,
                         time: data.Time || new Date().toLocaleTimeString(),
                         image: frames[cameraId]
@@ -111,7 +114,8 @@ const Record = () => {
         const base = import.meta.env.VITE_API_BASE;
         const wsProtocol = base.startsWith("https") ? "wss" : "ws";
         const wsBase = base.replace(/^https?:\/\//, "");
-        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/${cameraId}`;
+        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/${cameraId}`
+            + `?teacher_id=${teacher_id}&subject_id=${subjectId}`;
         const ws = new WebSocket(wsUrl);
         const camName = getCameraName(cameraId);
 
@@ -132,10 +136,48 @@ const Record = () => {
                 console.error(`Camera ${camName}: ${event.data}`);
                 return;
             }
+            if (!imgRef.current[cameraId]) {
+                imgRef.current[cameraId] = new Image();
+            }
+
+            const imageSrc = "data:image/jpeg;base64," + event.data;
+            imgRef.current[cameraId].src = imageSrc
+
+            imgRef.current[cameraId].onload = () => {
+                const canvas = canvasRef.current[cameraId];
+                if (!canvas) return;
+
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(imgRef.current[cameraId], 0, 0, canvas.width, canvas.height);
+            }
+
             setFrames((prev) => ({ ...prev, [cameraId]: event.data }));
         };
     };
 
+    // เชื่อมต่อ WebSocket สำหรับ รับภาพที่ boundingbox 
+
+    const connectDetectSocket = (cameraId) => {
+
+        const base = import.meta.env.VITE_API_BASE;
+        const wsProtocol = base.startsWith("https") ? "wss" : "ws";
+        const wsBase = base.replace(/^https?:\/\//, "");
+        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/detect/${cameraId}`;
+
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => console.log("กำลังตรวจจับ Socket ของกล้อง", Number(cameraId) + 1);
+        ws.onerror = (err) => console.error("[connectDetectSocket] มีปัญหา", err);
+        ws.onclose = () => console.log("ปิดการตรวจจับ");
+
+        ws.onmessage = (event) => {
+            const imageSrc = "data:image/jpeg;base64" + event.data
+            imgRef.current[cameraId].src = imageSrc;
+        }
+
+        wsRefs.current[`detect_${cameraId}`] = ws;
+
+    }
     // ---------- เปิดกล้องทั้งหมด (เมื่อเข้าหน้าครั้งแรก) ----------
     useEffect(() => {
         const initCameras = async () => {
@@ -169,7 +211,6 @@ const Record = () => {
                 // 4. เปิดกล้องทั้งหมด (ทำแค่รอบแรกเท่านั้น)
                 if (!didInit.current) {
                     didInit.current = true; // ✅ กันซ้ำเฉพาะเปิดกล้องรอบแรก
-                    await axios.get(`camera/open-all?subjectId=${subjectId}`, { timeout: 60000 });
                     list.forEach((cam) => connectWebSocket(cam.id));
                     toast.success("เปิดกล้องทั้งหมดแล้ว!");
                 }
@@ -201,11 +242,14 @@ const Record = () => {
 
             // ปิด Summary Streams (WS)
             Object.keys(summaryRefs.current).forEach((cameraId) => safeCloseSummaryWS(cameraId));
-
+            
+            Object.values(wsRefs.current).forEach(ws => {
+                try {ws.close()} catch (e) {}
+            })
             // ปิดกล้องที่ Backend 
             try {
                 // ไม่จำเป็นต้อง await ใน cleanup แต่เรียกให้ทำงานแบบ fire-and-forget
-                axios.get("camera/close-all"); 
+                axios.get("camera/close-all");
                 console.log("Cleanup: เรียก API ปิดกล้องทั้งหมด");
             } catch (error) {
                 console.error("ปิดกล้องทั้งหมดก่อนออกจาก Record นี้ไม่สำเร็จ", error)
@@ -219,7 +263,7 @@ const Record = () => {
     const handleReconnect = async (cameraId) => {
         try {
             // เรียก open-all เพื่อให้แน่ใจว่า API เปิดอยู่
-            await axios.get(`camera/open-all`); 
+            await axios.get(`camera/open-all`);
             connectWebSocket(cameraId);
             toast.success(`เชื่อมต่อใหม่ กล้อง ${getCameraName(cameraId)} แล้ว`);
         } catch {
@@ -264,7 +308,7 @@ const Record = () => {
     };
 
     // เริ่มต้นตรวจจับ
-    const handleStartDetect = async () => { 
+    const handleStartDetect = async () => {
         if (isRecording) return;
 
         setIsRecording(true);
@@ -272,9 +316,12 @@ const Record = () => {
             const resStartDetect = await axios.get(`camera/start-all`)
             console.log(resStartDetect);
             const started_ids = resStartDetect.data.started || []
-            
+
             // เชื่อมต่อ Summary Socket สำหรับกล้องที่เริ่มตรวจจับแล้ว
-            started_ids.forEach(id => connectSummarySocket(id));
+            started_ids.forEach(id => {
+                connectSummarySocket(id);
+                connectDetectSocket(id);
+            });
 
             toast.success(`เริ่มตรวจจับทุกกล้อง`);
 
@@ -288,26 +335,26 @@ const Record = () => {
     // หยุดการตรวจจับ (จบการบันทึก)
     const handleStopDetect = async (e) => {
         e.preventDefault();
-        
+
         if (!isRecording) return;
-        
+
         setIsRecording(false);
-        setTimer(0); 
+        setTimer(0);
 
         try {
             // 1. หยุด detection บน backend
             await axios.get(`camera/stop-all`);
-            
+
             const summaryRes = await axios.get(`camera/summary-to-supabase`)
             // 2. แสดงข้อมูลหลังจากบันทึลง supabasee
             console.log("Summary Done:", summaryRes.data);
-            
+
             // 3. หน่วงเวลา รอให้หลังบ้าน cleans up (0.5 - 1s)
             await new Promise(resolve => setTimeout(resolve, 800));
 
             // 4. ปิด Summary WebSockets ทั้งหมด
             Object.keys(summaryRefs.current).forEach((id) => safeCloseSummaryWS(id));
-            
+
             toast.success(`หยุดการตรวจจับทุกกล้อง`);
 
             navigate("/user/summarize/")
@@ -355,8 +402,8 @@ const Record = () => {
                                 >
                                     <div
                                         className={`w-3.5 h-3.5 rounded-full ${isRecording
-                                                ? "bg-red-500 animate-pulse"
-                                                : "bg-green-500"
+                                            ? "bg-red-500 animate-pulse"
+                                            : "bg-green-500"
                                             }`}
                                     />
                                 </div>
@@ -398,17 +445,13 @@ const Record = () => {
                                     >
                                         <h3 className="font-semibold text-lg mb-2">{cam.name}</h3>
                                         <div className="w-full aspect-video bg-black rounded-lg flex items-center justify-center">
-                                            {frames[cam.id] ? (
-                                                <img
-                                                    src={`data:image/jpeg;base64,${frames[cam.id]}`}
-                                                    alt={`Camera ${cam.id}`}
-                                                    className="w-full h-full object-contain rounded-lg"
-                                                />
-                                            ) : (
-                                                <p className="text-white text-sm opacity-70">
-                                                    กำลังเชื่อมต่อ...
-                                                </p>
-                                            )}
+                                            <canvas
+                                                ref={(el) => {
+                                                    if (el) canvasRef.current[cam.id] = el
+                                                }}
+                                                width={320}
+                                                height={240}
+                                            />
                                         </div>
 
                                         <div className="flex gap-2 mt-3">
@@ -452,7 +495,7 @@ const Record = () => {
                                         className="flex justify-between items-center gap-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 text-center overflow-y-auto"
                                     >
                                         <h1 className="text-lg font-medium text-gray-700">
-                                            {getCameraName(item.cameraId)} 
+                                            {getCameraName(item.cameraId)}
                                         </h1>
 
                                         <div className="w-24 h-24 bg-gray-300 rounded-lg overflow-hidden">
@@ -475,24 +518,24 @@ const Record = () => {
                         {/* ปุ่ม */}
                         <div className="flex flex-wrap justify-center gap-3 py-4 border-t">
                             <button
-                                onClick={handleStartDetect} 
+                                onClick={handleStartDetect}
                                 disabled={isRecording}
                                 className={`px-5 py-3 rounded-lg font-semibold text-sm sm:text-base ${isRecording
-                                        ? "bg-gray-400 text-white cursor-not-allowed"
-                                        : "bg-blue-900 text-white hover:bg-[#38A738]"
+                                    ? "bg-gray-400 text-white cursor-not-allowed"
+                                    : "bg-blue-900 text-white hover:bg-[#38A738]"
                                     }`}
                             >
                                 เริ่มต้นบันทึก
                             </button>
-                            <Link 
+                            <Link
                                 // to={`/user/summarize/${subjectId}`} 
                                 onClick={handleStopDetect} // 📌 เรียก API หยุดการตรวจจับก่อนนำทาง
                             >
                                 <button
                                     disabled={!isRecording}
                                     className={`px-5 py-3 rounded-lg font-semibold text-sm sm:text-base ${!isRecording
-                                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                            : "bg-[#FDEEED] text-[#74393C] hover:bg-red-600 hover:text-white"
+                                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                        : "bg-[#FDEEED] text-[#74393C] hover:bg-red-600 hover:text-white"
                                         }`}
                                 >
                                     จบการบันทึก

@@ -24,22 +24,27 @@ const SummarizePage = () => {
   const [displayDate, setDisplayDate] = useState("");
 
   useEffect(() => {
-    const date = new Date()
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
 
-    const formattedDate = date.toLocaleDateString('th-TH', {
+    const utc = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+      .toISOString();
+
+    setQueryDate(utc);
+
+    const formattedDate = date.toLocaleDateString("th-TH", {
       year: "numeric",
       month: "long",
-      day: "numeric"
-    })
-
-    setDisplayDate(formattedDate)
-
-    date.setHours(0, 0, 0, 0)
-    setQueryDate(date.toISOString());
-
-  }, [])
+      day: "numeric",
+    });
+    setDisplayDate(formattedDate);
+  }, []);
 
   useEffect(() => {
+    if (!queryDate) {
+      console.warn("⏳ queryDate ยังไม่พร้อม ไม่ควรเขียน Supabase request");
+      return;
+    }
     const fetechResult = async () => {
       try {
 
@@ -54,22 +59,27 @@ const SummarizePage = () => {
           .order("created_at", { ascending: true })
 
         if (errResponse) {
-          console.error("Supabase error:", errResponse)
+          console.error("Supabase error:", {
+            message: errResponse.message,
+            code: errResponse.code,
+            details: errResponse.details,
+            hint: errResponse.hint
+          })
           setGroupCameras({})
           setResult([])
           setLoading(false)
           return
         }
-        
+
 
         if (!response || response.length === 0) {
-            console.warn("ไม่มีข้อมูลใน camera_logs")
-            setGroupCameras({})
-            setResult([])
-            setLoading(false)
-            return
+          console.warn("ไม่มีข้อมูลใน camera_logs")
+          setGroupCameras({})
+          setResult([])
+          setLoading(false)
+          return
         }
-        
+
         const groupedByCamera = response.reduce((acc, row) => {
           if (!acc[row.camera_id]) acc[row.camera_id] = [];
           acc[row.camera_id].push(row);
@@ -242,15 +252,20 @@ const SummarizePage = () => {
                       <p>ไม่ตั้งเรียน: {(avg.non * 100).toFixed(1)}%</p>
 
                       {/* mini chart ของกล้องนี้ */}
-                      <ResponsiveContainer width="100%" height={150}>
+                      <ResponsiveContainer width="100%" height={200}>
                         <LineChart data={logs.map(l => ({
                           time: new Date(l.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
                           ตั้งใจ: (l.Attention * 100).toFixed(2),
                           ไม่ตั้งใจ: (l.Non_Attention * 100).toFixed(2),
                         }))}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                          <XAxis dataKey="time" />
-                          <YAxis domain={[0, 100]} />
+                          <XAxis
+                            dataKey="time"
+                            interval={0}
+                          />
+                          <YAxis
+                            domain={[0, 100]}
+                          />
                           <Tooltip
                             contentStyle={{
                               backgroundColor: '#fff',
@@ -261,50 +276,23 @@ const SummarizePage = () => {
                           <Legend
                             wrapperStyle={{ paddingTop: '20px' }}
                           />
-                          <Line type="monotone" dataKey="ตั้งใจ" stroke="#82ca9d" strokeWidth={2} />
-                          <Line type="monotone" dataKey="ไม่ตั้งใจ" stroke="#FF3300" strokeWidth={2} />
+                          <Line
+                            type="monotone"
+                            dataKey="ตั้งใจ"
+                            stroke="#82ca9d"
+                            strokeWidth={2}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="ไม่ตั้งใจ"
+                            stroke="#FF3300"
+                            strokeWidth={2}
+                          />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
                   )
                 })}
-                {/* <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={lineChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                    <XAxis
-                      dataKey="name"
-                      padding={{ left: 30, right: 30 }}
-                      tick={{ fill: '#666' }}
-                      interval={9}
-                    />
-                    <YAxis tick={{ fill: '#666' }} domain={[0, 100]} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#fff',
-                        border: '1px solid #e0e0e0',
-                        borderRadius: '8px'
-                      }}
-                    />
-                    <Legend
-                      wrapperStyle={{ paddingTop: '20px' }}
-                    />
-
-                    <Line
-                      type="monotone"
-                      dataKey="ความตั้งใจ"
-                      stroke="#82ca9d"
-                      strokeWidth={2}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="ความไม่ตั้งใจ"
-                      stroke="#FF3300"
-                      strokeWidth={2}
-                    />
-                    
-                  </LineChart>
-
-                </ResponsiveContainer> */}
               </div>
             </div>
           </div>

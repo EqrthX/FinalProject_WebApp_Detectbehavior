@@ -20,7 +20,6 @@ def save_buffer(camera_id: str, cam_state, ATT, NON, class_json, subject_id: str
 
         data = {
             "camera_id": int(camera_id) + 1,
-            "track_id": cam_state["track_id"],
             "teacher_id": cam_state["teacher_id"],
             "subject_id": subject_id,
             "records": []   

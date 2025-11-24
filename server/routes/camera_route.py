@@ -4,7 +4,12 @@ import time
 import base64
 import asyncio
 from datetime import datetime
-from utils.camera_helper import create_camera_state, define_LOW_CLASS, define_HIGH_CLASS
+
+from utils.camera_helper import (
+    create_camera_state,
+    define_LOW_CLASS,
+    define_HIGH_CLASS,
+)
 from utils.model_loader import get_model
 from utils.auth import verify_token
 from config.bn_supabase import supabase_client
@@ -14,31 +19,63 @@ camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 model = get_model()
 
-# เก็บกล้องที่เปิดอยู่ทั้งหมด
-cameras: dict[str, dict] = {}
-available_cameras = []
-last_scan_time = 0
+# -------------------- Global States --------------------
+cameras: dict[str, dict] = {}          # state ต่อกล้อง
+available_cameras: list[dict] = []     # list กล้องที่ scan เจอ
+last_scan_time: float = 0
 backends_cameras = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
 is_scanning = False
-scan_lock = asyncio.Lock()  # lock กัน async call ซ้ำเวลา scan กล้อง
+scan_lock = asyncio.Lock()             # lock กัน scan ซ้อน
 
 ATTENDENCE = define_HIGH_CLASS()
 NON_ATTENDENCE = define_LOW_CLASS()
 
 
-# ----------------------------------------
-# ✅ ฟังก์ชันสแกนกล้องในเครื่อง
+# -------------------- Helper: เปิดกล้องด้วย backend ที่ใช้ได้ --------------------
+def open_camera_with_backends(index: int):
+    """
+    พยายามเปิดกล้องตาม backend ที่เคย scan เจอ
+    ถ้าเปิดไม่ได้ให้ลอง fallback ด้วย backends_cameras
+    """
+    # 1) ถ้าเคยสแกนเจอ backend ที่ใช้ได้ → ใช้ตัวนั้นก่อน
+    for cam in available_cameras:
+        if cam["id"] == index:
+            backend = cam.get("backend_camera", cv2.CAP_ANY)
+            cap = cv2.VideoCapture(index, backend)
+            if cap.isOpened():
+                print(f"🎥 เปิดกล้อง {index} ด้วย backend จาก scan = {backend}")
+                return cap
+            cap.release()
+            print(f"⚠️ backend จาก scan ใช้ไม่ได้ index={index}, backend={backend}")
+            break
+
+    # 2) fallback ลองทุก backend
+    for backend in backends_cameras:
+        cap = cv2.VideoCapture(index, backend)
+        if cap.isOpened():
+            print(f"🎥 เปิดกล้อง {index} ด้วย backend fallback = {backend}")
+            return cap
+        cap.release()
+
+    print(f"❌ open_camera_with_backends: เปิดกล้อง index={index} ไม่ได้ทุก backend")
+    return None
+
+
+# -------------------- Scan กล้อง --------------------
 async def async_scan_cameras():
     global available_cameras, is_scanning, last_scan_time
+
     async with scan_lock:
         if is_scanning:
             print("⏳ Scan already running, skip this call")
             return
+
         is_scanning = True
         print("🔍 Start scanning cameras...")
 
-        found = []
+        found: list[dict] = []
         try:
+            # ลอง 0-9
             for i in range(10):
                 await asyncio.sleep(0)
                 for backend in backends_cameras:
@@ -63,19 +100,13 @@ async def async_scan_cameras():
             is_scanning = False
 
 
-# ✅ ฟังก์ชันเปิดกล้องเดี่ยว (ใช้ภายใน ถ้าอยากเปิดผ่าน HTTP)
+# -------------------- เปิดกล้องเดี่ยว (ถ้าอยากใช้ผ่าน HTTP) --------------------
 def open_camera_instance(camera_id: str, teacher_id=None, subject_id=None):
     source = int(camera_id)
-    backend = cv2.CAP_ANY
-    for cam in available_cameras:
-        if cam["id"] == source:
-            backend = cam.get("backend_camera", cv2.CAP_ANY)
-            break
-
-    cap = cv2.VideoCapture(source, backend)
-    if not cap.isOpened():
+    cap = open_camera_with_backends(source)
+    if cap is None:
         raise HTTPException(
-            status_code=500, detail=f"ไม่สามารถเปิดกล้อง {int(camera_id) + 1}"
+            status_code=500, detail=f"ไม่สามารถเปิดกล้อง {source + 1}"
         )
 
     cameras[camera_id] = create_camera_state(
@@ -83,12 +114,11 @@ def open_camera_instance(camera_id: str, teacher_id=None, subject_id=None):
     )
     load_buffer(camera_id=camera_id)
     print(
-        f"✅ Camera {int(camera_id) + 1} เปิด รหัสอาจารย์ {teacher_id} จับวิชา {subject_id}"
+        f"✅ Camera {source + 1} เปิด รหัสอาจารย์ {teacher_id} จับวิชา {subject_id}"
     )
 
 
-# ---------------------------------------------------------
-# ✅ Loop ตรวจจับ YOLO (start-all / start-detect เรียก)
+# -------------------- Loop YOLO ต่อกล้อง --------------------
 async def camera_loop(camera_id: str):
     loop = asyncio.get_event_loop()
     try:
@@ -106,7 +136,6 @@ async def camera_loop(camera_id: str):
 
         try:
             while True:
-                # อ่าน state ปัจจุบัน
                 cam_state = cameras.get(camera_id)
                 if not cam_state:
                     print(f"❌ camera_loop: state ของกล้อง {int(camera_id)+1} หาย")
@@ -146,26 +175,36 @@ async def camera_loop(camera_id: str):
                 annotated = results[0].plot()
                 now = time.time()
 
+                # เก็บ annotated frame ไว้ให้ WS ใช้
+                ok, buf = cv2.imencode(".jpg", annotated)
+                if ok:
+                    cam_state = cameras.get(camera_id)
+                    if cam_state:
+                        async with cam_state["lock"]:
+                            cam_state["last_frame"] = buf.tobytes()
+
                 cam_state = cameras.get(camera_id)
                 if not cam_state:
                     break
 
                 target_track_id = cam_state.get("track_id")
                 timer = cam_state["class_timer"]
-
                 found_valid_detection = False
 
+                # ---------- ประมวลผลผลลัพธ์ YOLO ----------
                 for box in results[0].boxes:
                     cls = int(box.cls)
                     conf = float(box.conf.item())
                     label = model.names[cls]
                     track_id = int(box.id) if box.id is not None else -1
 
+                    # ถ้ายังไม่มี track_id ให้เลือกตัวแรกที่เจอ
                     if cam_state["track_id"] is None and track_id != -1:
                         cam_state["track_id"] = track_id
                         timer["current_class"] = label
                         timer["miss"] = 0
 
+                    # ใช้เฉพาะ track_id ที่กล้องนี้กำลังสนใจ
                     if track_id == target_track_id:
                         found_valid_detection = True
                         async with cam_state["lock"]:
@@ -193,6 +232,7 @@ async def camera_loop(camera_id: str):
                             f"🚫 กล้อง {int(camera_id) + 1} ไม่สนใจ ID {track_id} (กำลังจับ ID {target_track_id})"
                         )
 
+                # ถ้าไม่เจอ object ตาม track_id เลย
                 if not found_valid_detection:
                     print(f"😶 กล้อง {int(camera_id)+1}: ไม่เจอ object ")
                     cam_state = cameras.get(camera_id)
@@ -204,14 +244,6 @@ async def camera_loop(camera_id: str):
                                 timer["current_class"] = None
                                 timer["frame_count"] = 0
                                 timer["duration"] = 0
-
-                # 🔹 เก็บเฟรมล่าสุดแบบ annotated เอาไว้ส่งไป WS detect
-                ok, buf = cv2.imencode(".jpg", annotated)
-                if ok:
-                    cam_state = cameras.get(camera_id)
-                    if cam_state:
-                        async with cam_state["lock"]:
-                            cam_state["last_frame"] = buf.tobytes()
 
                 # ---------- จัดการ interval (5 วิ / 1 นาที) ----------
                 cam_state = cameras.get(camera_id)
@@ -265,7 +297,9 @@ async def camera_loop(camera_id: str):
                         valid_total = len(cam_state["interval_results"]) or 1
 
                         att_sum = sum(
-                            c for label, c in interval_count.items() if label in ATTENDENCE
+                            c
+                            for label, c in interval_count.items()
+                            if label in ATTENDENCE
                         )
                         non_sum = sum(
                             c
@@ -333,8 +367,7 @@ async def camera_loop(camera_id: str):
         print(f"⚠️ ฟังก์ชั่น [camera_loop] มีปัญหา")
 
 
-# ---------------------------------------------------------
-# ✅ summary → Supabase
+# -------------------- summary buffer → Supabase --------------------
 @camera_router.get("/summary-to-supabase")
 async def summary_to_supabase():
     all_summary_data = []
@@ -377,8 +410,7 @@ async def summary_to_supabase():
         return {"error": str(e)}
 
 
-# ---------------------------------------------------------
-# ✅ เริ่มตรวจจับ YOLO ทีละกล้อง
+# -------------------- Start / Stop detect --------------------
 @camera_router.get("/start-detect/{camera_id}")
 async def start_detect(camera_id: str):
     cam_state = cameras.get(camera_id)
@@ -398,13 +430,12 @@ async def start_detect(camera_id: str):
     return {"message": f"Async detection started on camera {int(camera_id) + 1}"}
 
 
-# ✅ เริ่มตรวจจับทุกกล้องที่เปิดอยู่
 @camera_router.get("/start-all")
 async def start_all_detections(user=Depends(verify_token)):
     if not cameras:
         return {"message": "ยังไม่มีกล้องที่เปิดอยู่", "started": []}
 
-    started = []
+    started: list[str] = []
 
     teacher_result = (
         supabase_client.table("teacher")
@@ -412,7 +443,6 @@ async def start_all_detections(user=Depends(verify_token)):
         .eq("id", user["id"])
         .execute()
     )
-    teacher_id = None
     if teacher_result.data:
         teacher_id = teacher_result.data[0]["teacher_id"]
         print(f"[/start-all] รหัสอาจารย์ {teacher_id}")
@@ -434,7 +464,6 @@ async def start_all_detections(user=Depends(verify_token)):
     return {"message": f"เริ่มตรวจจับ {len(started)} กล้อง", "started": started}
 
 
-# endpoint ที่หยุดการทำงาน
 @camera_router.get("/stop-all")
 async def stop_all_detections():
     stopped = []
@@ -448,7 +477,7 @@ async def stop_all_detections():
     return {"message": f"Stopped {len(stopped)} cameras", "stopped": stopped}
 
 
-# ✅ ปิดกล้องเฉพาะตัว
+# -------------------- ปิดกล้อง --------------------
 @camera_router.get("/close-camera/{camera_id}")
 async def camera_close(camera_id: str):
     cam_state = cameras.get(camera_id)
@@ -473,7 +502,6 @@ async def camera_close(camera_id: str):
     return {"message": f"กล้องตัวที่ {int(camera_id) + 1} ปิด"}
 
 
-# ✅ ปิดกล้องทั้งหมด
 @camera_router.get("/close-all")
 async def close_all_cameras():
     tasks_to_cancel = []
@@ -502,7 +530,7 @@ async def close_all_cameras():
     return {"message": "ปิดกล้องทั้งหมด"}
 
 
-# ✅ แสดงรายการกล้อง
+# -------------------- list-camera --------------------
 @camera_router.get("/list-camera")
 async def check_list_camera(user=Depends(verify_token)):
     global available_cameras, last_scan_time
@@ -515,7 +543,6 @@ async def check_list_camera(user=Depends(verify_token)):
         .execute()
     )
 
-    teacher_id = None
     if teacher_result.data and len(teacher_result.data) > 0:
         teacher_id = teacher_result.data[0]["teacher_id"]
         print(f"รหัสอาจารย์ {teacher_id}")
@@ -535,8 +562,7 @@ async def check_list_camera(user=Depends(verify_token)):
     return {"status": "done", "cameras": available_cameras}
 
 
-# ------------- WebSocket -------------
-# ✅ WebSocket สำหรับ stream แต่ละกล้อง (ภาพสด / raw)
+# -------------------- WebSockets --------------------
 @camera_router.websocket("/ws/camera/{camera_id}")
 async def camera_ws(websocket: WebSocket, camera_id: str):
     await websocket.accept()
@@ -552,10 +578,10 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
     if cam_state and cam_state.get("cap"):
         cap = cam_state["cap"]
 
-    # ถ้ายังไม่มี ให้เปิดกล้องใหม่
+    # ถ้าไม่มี state → เปิดกล้องใหม่
     if cap is None:
-        cap = cv2.VideoCapture(int(camera_id), cv2.CAP_MSMF)
-        if not cap.isOpened():
+        cap = open_camera_with_backends(int(camera_id))
+        if cap is None:
             await websocket.send_text("error: cannot open camera")
             await websocket.close()
             print(f"❌ ไม่สามารถเปิดกล้อง {int(camera_id)+1}")
@@ -582,19 +608,20 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
             if not cam_state:
                 break
 
-            # ถ้ากำลัง detect และมี last_frame → อาจใช้ last_frame แทนได้
-            frame_bytes = None
+            # ถ้า detect อยู่ และมี last_frame → ส่ง annotated
             async with cam_state["lock"]:
-                if cam_state.get("detecting") and cam_state.get("last_frame"):
-                    frame_bytes = cam_state["last_frame"]
-                else:
-                    ok, buf = cv2.imencode(".jpg", frame)
-                    if not ok:
-                        continue
-                    frame_bytes = buf.tobytes()
+                detecting = cam_state.get("detecting", False)
+                last_frame = cam_state.get("last_frame")
+
+            if detecting and last_frame:
+                frame_bytes = last_frame
+            else:
+                ok, buf = cv2.imencode(".jpg", frame)
+                if not ok:
+                    continue
+                frame_bytes = buf.tobytes()
 
             await websocket.send_text(base64.b64encode(frame_bytes).decode("utf-8"))
-
             await asyncio.sleep(0.03)  # ~30fps
 
     except WebSocketDisconnect:
@@ -608,9 +635,13 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
         print(f"🧹 WS stream for camera {int(camera_id) + 1} ended")
 
 
-# ✅ WebSocket สำหรับส่งภาพ Bounding box (ถ้าอยากแยก stream)
 @camera_router.websocket("/ws/camera/detect/{camera_id}")
 async def camera_detect_ws(websocket: WebSocket, camera_id: str):
+    """
+    ถ้าอยากแยก stream bounding box ออกต่างหาก
+    ตอนนี้ใช้ last_frame เช่นเดียวกับ camera_ws
+    (ฝั่งหน้าเว็บไฟล์นี้เราไม่ได้เรียกใช้ก็ได้)
+    """
     await websocket.accept()
     print(f"📡 Detect WS connected for camera {int(camera_id)+1}")
     try:
@@ -637,7 +668,6 @@ async def camera_detect_ws(websocket: WebSocket, camera_id: str):
         print(f"🧹 Detect WS closed cam {int(camera_id)+1}")
 
 
-# ✅ WebSocket ส่ง Summary JSON ราย 30 วิ
 @camera_router.websocket("/ws/camera/summary/{camera_id}")
 async def camera_summary(websocket: WebSocket, camera_id: str):
     await websocket.accept()
@@ -667,7 +697,6 @@ async def camera_summary(websocket: WebSocket, camera_id: str):
                 await asyncio.sleep(0.5)
                 continue
 
-            # รอ event จาก camera_loop (ถ้ามี logic set)
             await summary_event.wait()
 
             cam_state = cameras.get(camera_id)

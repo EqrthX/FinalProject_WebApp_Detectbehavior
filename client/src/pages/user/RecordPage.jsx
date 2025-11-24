@@ -1,195 +1,203 @@
-import React, { useState, useEffect, useRef } from "react";
-// 1. นำเข้า useParams
-import { useParams, Link, useNavigate } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
 import Navbar from "../../components/Navbar";
 import MyBreadcrumb from "../../components/MyBreadcrumb";
 import axios from "../../util/axios";
 import toast from "react-hot-toast";
+import { useNavigate, useParams } from "react-router-dom";
 
-const Record = () => {
-    const { subjectId } = useParams();
-    const teacher_id = localStorage.getItem("teacher_id")
+const RecordPage = () => {
     const navigate = useNavigate();
-
-    // ** States **
+    const { subjectId } = useParams();
+    const teacherId = localStorage.getItem("teacher_id")
+    const [cameras, setCameras] = useState([]);
+    const [frames, setFrames] = useState({});
     const [isRecording, setIsRecording] = useState(false);
     const [timer, setTimer] = useState(0);
-    const [detections, setDetections] = useState([]);
-    const [cameras, setCameras] = useState([]);
-    const [loading, setLoading] = useState(false); // สถานะโหลดกล้อง
-    const [frames, setFrames] = useState({});
+    const [loading, setLoading] = useState(false);
 
-    // ** Refs **
     const wsRefs = useRef({});
     const summaryRefs = useRef({});
-    const didInit = useRef(false);
-    const retryInterval = useRef(null);
-    const scanningToastId = useRef(null);
-    const canvasRef = useRef({});
     const imgRef = useRef({});
+    const canvasRef = useRef({});
+    const scanningToastId = useRef(null);
+    const retryInterval = useRef(null);
+    const didInit = useRef(false);
 
-    // ** ข้อมูล Mock เพื่อแสดงใน Info bar **
-    const mockSubjectDetails = {
-        'SI235-1': { group: '1', room: '7501', time: '12:20 - 16:10' },
-        'SI230-1': { group: '1', room: '5401', time: '08:30 - 11:00' },
+    // ---------------------- Utils ----------------------
+    const getCameraName = (id) => `กล้องตัวที่ ${Number(id) + 1}`;
+
+    const formatTime = (seconds) => {
+        const hrs = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(
+            2,
+            "0"
+        )}:${String(secs).padStart(2, "0")}`;
     };
 
-    const details = mockSubjectDetails[subjectId] || { group: 'N/A', room: 'N/A', time: 'N/A' };
-
-    // ---------- Utility ----------
-
-    /** หาชื่อกล้องจาก ID ที่ได้รับจาก WebSocket */
-    const getCameraName = (id) => {
-        const cam = cameras.find(c => c.id.toString() === id.toString());
-        return cam ? cam.name : `กล้อง ID: ${id}`;
-    };
-
-    /** ปิด WebSocket อย่างปลอดภัย */
     const safeCloseWS = (id) => {
         try {
             if (wsRefs.current[id]) {
                 wsRefs.current[id].close();
                 delete wsRefs.current[id];
             }
-        } catch (_) { /* ignore */ }
+        } catch (e) {
+            console.error("safeCloseWS error:", e);
+        }
     };
 
-    /** ปิด Summary WebSocket อย่างปลอดภัย */
     const safeCloseSummaryWS = (id) => {
         try {
             if (summaryRefs.current[id]) {
                 summaryRefs.current[id].close();
                 delete summaryRefs.current[id];
             }
-        } catch (_) { /* ignore */ }
+        } catch (e) {
+            console.error("safeCloseSummaryWS error:", e);
+        }
     };
 
-    /** เชื่อมต่อ WebSocket สำหรับรับ Summary (Log การตรวจจับ) */
-    const connectSummarySocket = (cameraId) => {
-        if (summaryRefs.current[cameraId]) return;
+    // ---------------------- WebSocket: RAW/annotated stream ----------------------
+
+    const connectDetectSocket = (cameraId) => {
+        if (wsRefs.current[cameraId]) return;
 
         const base = import.meta.env.VITE_API_BASE;
         const wsProtocol = base.startsWith("https") ? "wss" : "ws";
         const wsBase = base.replace(/^https?:\/\//, "");
-        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/summary/${cameraId}`;
+        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/${cameraId}?teacher_id=${teacher_id}&subject_id=${subjectId}`;
+
+        console.log("🔌 connecting detect WS:", wsUrl);
+
         const ws = new WebSocket(wsUrl);
+        wsRefs.current[cameraId] = ws;
 
-        summaryRefs.current[cameraId] = ws;
-        const camName = getCameraName(cameraId);
-
-        ws.onopen = () => console.log(`📊 Summary WS connected: ${camName}`);
+        ws.onopen = () => console.log(`📡 Detect WS opened cam ${cameraId}`);
         ws.onclose = () => {
-            console.log(`Summary WS closed: ${camName}`);
-            delete summaryRefs.current[cameraId];
+            console.log(`Detect WS closed cam ${cameraId}`);
+            delete wsRefs.current[cameraId];
         };
-        ws.onerror = (err) => console.error("Summary WS error:", err);
+
+        ws.onerror = (err) => console.error("Detect WS error", err);
 
         ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
+            const base64Image = event.data;
+            const canvas = canvasRef.current[cameraId];
+            if (!canvas) return;
 
-                // data = { CameraId, ID, Time, avg, maybe class_behavior }
-                setDetections((prev) => [
-                    {
-                        // ใช้ CameraId จาก Backend ซึ่งควรตรงกับ cameraId ใน frames
-                        cameraId: data.CameraId,
-                        id: data.ID,
-                        time: data.Time || new Date().toLocaleTimeString(),
-                        image: frames[cameraId]
-                            ? `data:image/jpeg;base64,${frames[cameraId]}`
-                            : null,
-                    },
-                    ...prev,
-                ]);
-            } catch (err) {
-                console.error("⚠️ summary parse error:", err);
-            }
+            const ctx = canvas.getContext("2d");
+            const img = new Image();
+            img.src = "data:image/jpeg;base64," + base64Image;
+
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+            };
         };
     };
 
-    /** เชื่อมต่อ WebSocket สำหรับรับ Frame (ภาพวิดีโอ) ปรับ*/
     const connectWebSocket = (cameraId) => {
-        if (wsRefs.current[cameraId]) return;
-
         const base = import.meta.env.VITE_API_BASE;
         const wsProtocol = base.startsWith("https") ? "wss" : "ws"; // ซ้ำ 
         const wsBase = base.replace(/^https?:\/\//, "");
         const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/${cameraId}`
-            + `?teacher_id=${teacher_id}&subject_id=${subjectId}`;
+            + `?teacher_id=${teacherId}&subject_id=${subjectId}`;
+
+        console.log("[connectWebSocket] connecting", wsUrl);
+
         const ws = new WebSocket(wsUrl);
-        const camName = getCameraName(cameraId);
 
-        wsRefs.current[cameraId] = ws;
+        ws.onopen = () => {
+            console.log("✅ WS เปิดสำหรับกล้อง", Number(cameraId) + 1);
+        };
 
-        ws.onopen = () => console.log(`✅ WS connected: ${camName}`);
+        ws.onerror = (err) => {
+            console.error("[connectWebSocket] error", err);
+        };
+
         ws.onclose = () => {
-            console.log(`WS closed: ${camName}`);
-            delete wsRefs.current[cameraId];
+            console.log("🔌 WS ปิดสำหรับกล้อง", Number(cameraId) + 1);
         };
-        ws.onerror = (e) => {
-            console.error(`WS error cam ${camName}`, e);
-            toast.error(`สตรีมกล้อง ${camName} มีปัญหา`);
-        };
-        ws.onmessage = (event) => {
 
+        ws.onmessage = (event) => {
             if (typeof event.data === "string" && event.data.startsWith("error:")) {
-                console.error(`Camera ${camName}: ${event.data}`);
+                console.error(`Camera ${getCameraName(cameraId)} error:`, event.data);
                 return;
             }
+
             if (!imgRef.current[cameraId]) {
                 imgRef.current[cameraId] = new Image();
             }
 
             const imageSrc = "data:image/jpeg;base64," + event.data;
-            imgRef.current[cameraId].src = imageSrc
+            const img = imgRef.current[cameraId];
 
-            imgRef.current[cameraId].onload = () => {
+            img.onload = () => {
                 const canvas = canvasRef.current[cameraId];
                 if (!canvas) return;
 
                 const ctx = canvas.getContext("2d");
-                ctx.drawImage(imgRef.current[cameraId], 0, 0, canvas.width, canvas.height);
-            }
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            };
+
+            img.src = imageSrc;
 
             setFrames((prev) => ({ ...prev, [cameraId]: event.data }));
         };
+
+        wsRefs.current[cameraId] = ws;
     };
 
-    // เชื่อมต่อ WebSocket สำหรับ รับภาพที่ boundingbox 
-
-    const connectDetectSocket = (cameraId) => {
-
+    // ---------------------- WebSocket: Summary ----------------------
+    const connectSummarySocket = (cameraId) => {
         const base = import.meta.env.VITE_API_BASE;
         const wsProtocol = base.startsWith("https") ? "wss" : "ws";
         const wsBase = base.replace(/^https?:\/\//, "");
-        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/detect/${cameraId}`;
+        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/summary/${cameraId}`;
+
+        console.log("[connectSummarySocket] connecting", wsUrl);
 
         const ws = new WebSocket(wsUrl);
 
-        ws.onopen = () => console.log("กำลังตรวจจับ Socket ของกล้อง", Number(cameraId) + 1);
-        ws.onerror = (err) => console.error("[connectDetectSocket] มีปัญหา", err);
-        ws.onclose = () => console.log("ปิดการตรวจจับ");
+        ws.onopen = () => {
+            console.log("✅ Summary WS open for camera", Number(cameraId) + 1);
+        };
+        ws.onerror = (err) => {
+            console.error("[Summary WS] error", err);
+        };
+        ws.onclose = () => {
+            console.log("🔌 Summary WS closed for camera", Number(cameraId) + 1);
+        };
 
         ws.onmessage = (event) => {
-            const imageSrc = "data:image/jpeg;base64," + event.data;
-            imgRef.current[cameraId].src = imageSrc;
-        }
+            try {
+                const data = JSON.parse(event.data);
+                console.log("📊 Summary from camera", Number(cameraId) + 1, data);
+                // ถ้าอยากแสดงผลแบบ real-time หน้าเว็บ สามารถ setState เพิ่มตรงนี้
+            } catch (e) {
+                console.error("Summary parse error:", e, event.data);
+            }
+        };
 
-        wsRefs.current[`detect_${cameraId}`] = ws;
+        summaryRefs.current[cameraId] = ws;
+    };
 
-    }
-    // ---------- เปิดกล้องทั้งหมด (เมื่อเข้าหน้าครั้งแรก) ----------
+    // ---------------------- โหลด list-camera ----------------------
     useEffect(() => {
         const initCameras = async () => {
             try {
-                // 1. ดึงรายการกล้อง
+                setLoading(true);
                 const res = await axios.get("camera/list-camera", {
                     headers: { "Cache-Control": "no-cache" },
                 });
+
                 const list = res.data.cameras || [];
                 setCameras(list);
+                setLoading(false);
 
-                // 2. จัดการ Retry หากไม่พบกล้อง
                 if (list.length === 0) {
                     if (!scanningToastId.current) {
                         scanningToastId.current = toast.loading("กำลังสแกนกล้อง...");
@@ -200,70 +208,70 @@ const Record = () => {
                     return;
                 }
 
-                // 3. ถ้าพบกล้องแล้ว ยกเลิก Retry และ Toast
+                // ถ้ามีกล้องแล้ว
                 if (retryInterval.current) {
                     clearInterval(retryInterval.current);
                     retryInterval.current = null;
                 }
-                toast.dismiss(scanningToastId.current);
-                scanningToastId.current = null
-
-                // 4. เปิดกล้องทั้งหมด (ทำแค่รอบแรกเท่านั้น)
-                if (!didInit.current) {
-                    didInit.current = true; // ✅ กันซ้ำเฉพาะเปิดกล้องรอบแรก
-                    list.forEach((cam) => connectWebSocket(cam.id));
-                    toast.success("เปิดกล้องทั้งหมดแล้ว!");
+                if (scanningToastId.current) {
+                    toast.dismiss(scanningToastId.current);
+                    scanningToastId.current = null;
                 }
 
+                if (!didInit.current) {
+                    didInit.current = true;
+                }
             } catch (err) {
+                setLoading(false);
                 console.error("❌ โหลดกล้องล้มเหลว:", err);
                 toast.error("เกิดข้อผิดพลาดขณะโหลดกล้อง");
             }
         };
 
-        // ✅ เริ่มต้นเรียกครั้งแรก
         initCameras();
 
-        // ✅ cleanup (ยกเลิกการ retry เมื่อ unmount)
         return () => {
             if (retryInterval.current) clearInterval(retryInterval.current);
-            toast.dismiss(scanningToastId.current);
+            if (scanningToastId.current) toast.dismiss(scanningToastId.current);
         };
     }, []);
 
+    // เมื่อ cameras ถูกเซ็ตครั้งแรก → เปิด stream สำหรับทุกกล้อง
+    // เมื่อ cameras ถูกเซ็ต → เปิด WS สำหรับทุกกล้องทันที
+    useEffect(() => {
+        if (!cameras || cameras.length === 0) return;
 
-    // ---------- ออกจากหน้านี้ให้ปิดกล้องทั้งหมด (Unmount cleanup) ----------
+        cameras.forEach(cam => {
+            connectWebSocket(cam.id);      // stream raw
+            connectDetectSocket(cam.id);  // stream bounding box
+        });
+
+        toast.success("เปิดกล้องทั้งหมดแล้ว!");
+    }, [cameras]);
+
+
+    // cleanup ตอนออกจากหน้า
     useEffect(() => {
         return () => {
             console.log("Cleanup: ปิด WS ทั้งหมด");
-
-            // ปิด Video Streams (WS)
             Object.keys(wsRefs.current).forEach((cameraId) => safeCloseWS(cameraId));
+            Object.keys(summaryRefs.current).forEach((cameraId) =>
+                safeCloseSummaryWS(cameraId)
+            );
 
-            // ปิด Summary Streams (WS)
-            Object.keys(summaryRefs.current).forEach((cameraId) => safeCloseSummaryWS(cameraId));
-
-            Object.values(wsRefs.current).forEach(ws => {
-                try { ws.close() } catch (e) { }
-            })
-            // ปิดกล้องที่ Backend 
             try {
-                // ไม่จำเป็นต้อง await ใน cleanup แต่เรียกให้ทำงานแบบ fire-and-forget
                 axios.get("camera/close-all");
                 console.log("Cleanup: เรียก API ปิดกล้องทั้งหมด");
             } catch (error) {
-                console.error("ปิดกล้องทั้งหมดก่อนออกจาก Record นี้ไม่สำเร็จ", error)
+                console.error("ปิดกล้องทั้งหมดก่อนออกจาก Record ไม่สำเร็จ", error);
             }
-        }
-    }, [])
+        };
+    }, []);
 
-    // ---------- ปุ่ม Actions ----------
-
-    // เชื่อมต่อกล้องใหม่
+    // ---------------------- ปุ่มต่าง ๆ ----------------------
     const handleReconnect = async (cameraId) => {
         try {
-            // เรียก open-all เพื่อให้แน่ใจว่า API เปิดอยู่
-            await axios.get(`camera/open-all`);
+            await axios.get("camera/open-all"); // ถ้ามี endpoint นี้ในหลังบ้าน
             connectWebSocket(cameraId);
             toast.success(`เชื่อมต่อใหม่ กล้อง ${getCameraName(cameraId)} แล้ว`);
         } catch {
@@ -271,13 +279,11 @@ const Record = () => {
         }
     };
 
-    // ปิดกล้องเฉพาะตัว
     const handleCloseCamera = async (cameraId) => {
-        // ไม่ต้อง setIsRecording(false) ที่นี่ เพราะการปิดตัวเดียวไม่ใช่การจบการบันทึก
         try {
             await axios.get(`camera/close-camera/${cameraId}`);
             safeCloseWS(cameraId);
-            safeCloseSummaryWS(cameraId); // ปิด summary ของกล้องนี้ด้วย
+            safeCloseSummaryWS(cameraId);
             setFrames((prev) => {
                 const n = { ...prev };
                 delete n[cameraId];
@@ -290,12 +296,10 @@ const Record = () => {
         }
     };
 
-    // ปิดกล้องทั้งหมด (ปุ่มปิดทั้งหมด)
     const handleCloseAll = async () => {
-        setIsRecording(false); // หยุดสถานะการบันทึก
-        setTimer(0); // รีเซ็ต Timer 
+        setIsRecording(false);
+        setTimer(0);
         try {
-            // ปิด WS และ Summary WS ทั้งหมด
             Object.keys(wsRefs.current).forEach((id) => safeCloseWS(id));
             Object.keys(summaryRefs.current).forEach((id) => safeCloseSummaryWS(id));
 
@@ -307,32 +311,30 @@ const Record = () => {
         }
     };
 
-    // เริ่มต้นตรวจจับ
+    // เริ่ม detect ทุกกล้อง
     const handleStartDetect = async () => {
         if (isRecording) return;
 
         setIsRecording(true);
         try {
-            const resStartDetect = await axios.get(`camera/start-all`)
-            console.log(resStartDetect);
-            const started_ids = resStartDetect.data.started || []
+            const resStartDetect = await axios.get(`camera/start-all`);
+            const started_ids = resStartDetect.data.started || [];
 
-            // เชื่อมต่อ Summary Socket สำหรับกล้องที่เริ่มตรวจจับแล้ว
-            started_ids.forEach(id => {
+            started_ids.forEach((id) => {
                 connectSummarySocket(id);
                 connectDetectSocket(id);
+                // ไม่ใช้ detect socket แยกแล้ว เพราะ camera_ws ส่ง annotated อยู่แล้ว
             });
 
             toast.success(`เริ่มตรวจจับทุกกล้อง`);
-
         } catch (error) {
-            setIsRecording(false); // ถ้า Start ไม่สำเร็จ ให้ตั้งค่ากลับ
-            console.error("การตรวจจับเกิดข้อผิดพลาด", error)
+            setIsRecording(false);
+            console.error("การตรวจจับเกิดข้อผิดพลาด", error);
             toast.error("เริ่มต้นตรวจจับไม่สำเร็จ");
         }
-    }
+    };
 
-    // หยุดการตรวจจับ (จบการบันทึก)
+    // หยุด detect
     const handleStopDetect = async (e) => {
         e.preventDefault();
 
@@ -342,29 +344,25 @@ const Record = () => {
         setTimer(0);
 
         try {
-            // 1. หยุด detection บน backend
             await axios.get(`camera/stop-all`);
-
-            const summaryRes = await axios.get(`camera/summary-to-supabase`)
-            // 2. แสดงข้อมูลหลังจากบันทึลง supabasee
+            const summaryRes = await axios.get(`camera/summary-to-supabase`);
             console.log("Summary Done:", summaryRes.data);
 
-            // 3. หน่วงเวลา รอให้หลังบ้าน cleans up (0.5 - 1s)
-            await new Promise(resolve => setTimeout(resolve, 800));
+            await new Promise((resolve) => setTimeout(resolve, 800));
 
-            // 4. ปิด Summary WebSockets ทั้งหมด
-            Object.keys(summaryRefs.current).forEach((id) => safeCloseSummaryWS(id));
+            Object.keys(summaryRefs.current).forEach((id) =>
+                safeCloseSummaryWS(id)
+            );
 
             toast.success(`หยุดการตรวจจับทุกกล้อง`);
-
-            navigate("/user/summarize/")
+            navigate("/user/summarize/");
         } catch (error) {
             console.error("การหยุดตรวจจับเกิดข้อผิดพลาด", error);
             toast.error("หยุดการตรวจจับไม่สำเร็จ");
         }
     };
 
-    // ---------- จับเวลา ----------
+    // ---------------------- Timer ----------------------
     useEffect(() => {
         let intervalId;
         if (isRecording) {
@@ -373,17 +371,7 @@ const Record = () => {
         return () => intervalId && clearInterval(intervalId);
     }, [isRecording]);
 
-    const formatTime = (seconds) => {
-        const hrs = Math.floor(seconds / 3600);
-        const mins = Math.floor((seconds % 3600) / 60);
-        const secs = seconds % 60;
-        return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(
-            2,
-            "0"
-        )}:${String(secs).padStart(2, "0")}`;
-    };
-
-    // ---------- UI ----------
+    // ---------------------- UI ----------------------
     return (
         <>
             <Navbar />
@@ -391,7 +379,7 @@ const Record = () => {
                 <MyBreadcrumb />
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* ✅ กล่องซ้าย */}
+                    {/* กล่องซ้าย */}
                     <div className="lg:col-span-2 bg-white rounded-2xl shadow p-4 sm:p-6 border border-gray-200">
                         {/* Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
@@ -407,141 +395,108 @@ const Record = () => {
                                             }`}
                                     />
                                 </div>
-                                <h2 className="text-lg font-semibold">
-                                    ตรวจจับพฤติกรรม
-                                    {/* 📌 แสดงรหัสวิชาที่รับมา */}
-                                    <span className="ml-3 text-blue-700 font-bold text-xl">
-                                        {subjectId}
-                                    </span>
-                                </h2>
+                                <div>
+                                    <div className="text-sm text-gray-500">สถานะการตรวจจับ</div>
+                                    <div className="font-semibold text-gray-800">
+                                        {isRecording ? "กำลังตรวจจับ" : "พร้อมเริ่มต้น"}
+                                    </div>
+                                </div>
                             </div>
 
+                            <div className="text-right">
+                                <div className="text-sm text-gray-500">ระยะเวลาบันทึก</div>
+                                <div className="text-2xl font-mono font-bold">
+                                    {formatTime(timer)}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* ปุ่มควบคุม */}
+                        <div className="flex flex-wrap gap-3 mb-4">
                             <button
-                                onClick={handleCloseAll}
-                                className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 text-sm sm:text-base"
-                                disabled={loading}
+                                className={`px-4 py-2 rounded-lg text-white font-semibold ${isRecording ? "bg-gray-400 cursor-not-allowed" : "bg-green-500"
+                                    }`}
+                                disabled={isRecording}
+                                onClick={handleStartDetect}
                             >
-                                ปิดทั้งหมด
+                                เริ่มต้นตรวจจับทุกกล้อง
+                            </button>
+
+                            <button
+                                className={`px-4 py-2 rounded-lg text-white font-semibold ${!isRecording ? "bg-gray-400 cursor-not-allowed" : "bg-red-500"
+                                    }`}
+                                disabled={!isRecording}
+                                onClick={handleStopDetect}
+                            >
+                                จบการตรวจจับ
+                            </button>
+
+                            <button
+                                className="px-4 py-2 rounded-lg font-semibold border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                onClick={handleCloseAll}
+                            >
+                                ปิดกล้องทั้งหมด
                             </button>
                         </div>
 
-                        {/* Info bar */}
-                        <div className="flex flex-wrap justify-center gap-4 text-gray-700 text-sm sm:text-base mb-6">
-                            <span className="font-medium">🕒 {formatTime(timer)}</span>
-                            {/* 📌 แสดงรหัสวิชาและรายละเอียดที่รับมา */}
-                            <span className="font-bold">รหัสวิชา: {subjectId}</span>
-                            <span>กลุ่ม: {details.group}</span>
-                            <span>ห้อง: {details.room}</span>
-                            <span>เวลา: {details.time}</span>
-                        </div>
-
-                        {/* ✅ กลุ่มกล้อง */}
-                        {cameras.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                                {cameras.map((cam) => (
-                                    <div
-                                        key={cam.id}
-                                        className="border rounded-2xl p-4 shadow-sm bg-white flex flex-col items-center transition hover:shadow-md"
-                                    >
-                                        <h3 className="font-semibold text-lg mb-2">{cam.name}</h3>
-                                        <div className="w-full aspect-video bg-black rounded-lg flex items-center justify-center">
-                                            <canvas
-                                                ref={(el) => {
-                                                    if (el) canvasRef.current[cam.id] = el
-                                                }}
-                                                width={320}
-                                                height={240}
-                                            />
-                                        </div>
-
-                                        <div className="flex gap-2 mt-3">
-                                            <button
-                                                onClick={() => handleReconnect(cam.id)}
-                                                className="px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                                            >
-                                                เชื่อมต่อใหม่
-                                            </button>
-                                            <button
-                                                onClick={() => handleCloseCamera(cam.id)}
-                                                className="px-3 py-2 text-sm rounded-lg bg-rose-600 text-white hover:bg-rose-700"
-                                            >
-                                                ปิดตัวนี้
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
+                        {/* Grid แสดงกล้อง */}
+                        {loading && (
+                            <div className="text-center text-gray-500 my-6">
+                                กำลังโหลดรายการกล้อง...
                             </div>
-                        ) : (
-                            <p className="text-center text-gray-500 py-8">
-                                {loading ? "กำลังค้นหากล้อง..." : "ไม่มีกล้องที่เชื่อมต่อ"}
-                            </p>
                         )}
+
+                        {!loading && cameras.length === 0 && (
+                            <div className="text-center text-gray-500 my-6">
+                                ไม่พบกล้องในระบบ กำลังสแกน...
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {cameras.map((cam) => (
+                                <div
+                                    key={cam.id}
+                                    className="border border-gray-300 rounded-2xl p-3 flex flex-col items-center bg-white shadow-sm"
+                                >
+                                    <h3 className="font-semibold text-lg mb-2 text-center">
+                                        {cam.name || getCameraName(cam.id)}
+                                    </h3>
+                                    <div className="w-full aspect-video bg-black rounded-xl overflow-hidden mb-3 flex items-center justify-center">
+                                        <canvas
+                                            ref={(el) => (canvasRef.current[cam.id] = el)}
+                                            width={640}
+                                            height={360}
+                                            className="w-full h-full object-contain"
+                                        />
+                                    </div>
+                                    <div className="flex gap-2 w-full">
+                                        <button
+                                            className="flex-1 py-2 rounded-lg bg-blue-500 text-white font-semibold hover:bg-blue-600 text-sm"
+                                            onClick={() => handleReconnect(cam.id)}
+                                        >
+                                            เชื่อมต่อใหม่
+                                        </button>
+                                        <button
+                                            className="flex-1 py-2 rounded-lg bg-red-500 text-white font-semibold hover:bg-red-600 text-sm"
+                                            onClick={() => handleCloseCamera(cam.id)}
+                                        >
+                                            ปิดตัวนี้
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
 
-                    {/* ✅ ฝั่งขวา (log ตรวจจับ) */}
-                    <div className="bg-white rounded-2xl shadow flex flex-col border border-gray-200 h-[500px]">
-                        <h1 className="text-center py-4 text-lg font-bold border-b md:text-3xl">
-                            พฤติกรรม
-                        </h1>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                            {detections.length === 0 ? (
-                                <div className="text-center text-gray-400 mt-6">
-                                    <p>ยังไม่มีการตรวจจับ</p>
-                                </div>
-                            ) : (
-                                detections.map((item) => (
-                                    <div
-                                        key={item.id}
-                                        className="flex justify-between items-center gap-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 text-center overflow-y-auto"
-                                    >
-                                        <h1 className="text-lg font-medium text-gray-700">
-                                            {getCameraName(item.cameraId)}
-                                        </h1>
-
-                                        <div className="w-24 h-24 bg-gray-300 rounded-lg overflow-hidden">
-                                            <img
-                                                src={item.image}
-                                                alt={item.time}
-                                                className="w-full h-full object-cover"
-                                            />
-                                        </div>
-
-                                        <p className="text-sm font-medium text-gray-700">
-                                            เวลา {item.time}
-                                        </p>
-                                    </div>
-
-                                ))
-                            )}
-                        </div>
-
-                        {/* ปุ่ม */}
-                        <div className="flex flex-wrap justify-center gap-3 py-4 border-t">
-                            <button
-                                onClick={handleStartDetect}
-                                disabled={isRecording}
-                                className={`px-5 py-3 rounded-lg font-semibold text-sm sm:text-base ${isRecording
-                                    ? "bg-gray-400 text-white cursor-not-allowed"
-                                    : "bg-blue-900 text-white hover:bg-[#38A738]"
-                                    }`}
-                            >
-                                เริ่มต้นบันทึก
-                            </button>
-                            <Link
-                                // to={`/user/summarize/${subjectId}`} 
-                                onClick={handleStopDetect} // 📌 เรียก API หยุดการตรวจจับก่อนนำทาง
-                            >
-                                <button
-                                    disabled={!isRecording}
-                                    className={`px-5 py-3 rounded-lg font-semibold text-sm sm:text-base ${!isRecording
-                                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                        : "bg-[#FDEEED] text-[#74393C] hover:bg-red-600 hover:text-white"
-                                        }`}
-                                >
-                                    จบการบันทึก
-                                </button>
-                            </Link>
-                        </div>
+                    {/* กล่องขวา (จะใช้แสดง summary, log, ฯลฯ ได้ภายหลัง) */}
+                    <div className="bg-white rounded-2xl shadow p-4 sm:p-6 border border-gray-200">
+                        <h2 className="text-lg font-semibold mb-3">ข้อมูลสรุประหว่างสอน</h2>
+                        <p className="text-sm text-gray-500">
+                            ตอนนี้ยังแสดงเฉพาะ log ใน console (Summary WS). ถ้าต้องการให้ดึงค่า
+                            Attention / Non-Attention มาแสดงเป็นกราฟ realtime
+                            สามารถเพิ่มการจัดเก็บ state ในฟังก์ชัน <code>connectSummarySocket</code>{" "}
+                            ได้เลย
+                        </p>
                     </div>
                 </div>
             </div>
@@ -549,4 +504,4 @@ const Record = () => {
     );
 };
 
-export default Record;
+export default RecordPage;

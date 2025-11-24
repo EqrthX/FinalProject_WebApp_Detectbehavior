@@ -301,27 +301,32 @@ const SummarizePage = () => {
           {/* กล่องฝั่งขวา */}
           <div className="flex flex-col space-y-4">
             <div className="bg-white rounded-2xl shadow flex flex-col h-140 border border-gray-300">
-              <h2 className="flex justify-start ml-15 p-9 text-lg font-bold">ผลรวมของพฤติกรรมของนักศึกษา</h2>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={pieChartData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={renderCustomizedLabel}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {pieChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => `${(value * 100).toFixed(1)}%`} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              {Object.entries(groupCameras).map(([camId, logs]) => {
+                <>
+                  <h2 className="flex justify-start ml-15 p-9 text-lg font-bold">ผลรวมของพฤติกรรมของนักศึกษา</h2>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <PieChart>
+                      <Pie
+                        data={pieChartData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={renderCustomizedLabel}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {pieChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => `${(value * 100).toFixed(1)}%`} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </>
+              })}
+
             </div>
             {/* ปุ่ม */}
             <div className="p- pt-4">

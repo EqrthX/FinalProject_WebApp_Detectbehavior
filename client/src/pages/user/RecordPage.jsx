@@ -465,7 +465,7 @@ const RecordPage = () => {
                                         <canvas
                                             ref={(el) => (canvasRef.current[cam.id] = el)}
                                             width={640}
-                                            height={360}
+                                            height={460}
                                             className="w-full h-full object-contain"
                                         />
                                     </div>

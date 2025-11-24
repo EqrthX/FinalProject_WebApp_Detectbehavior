@@ -107,12 +107,12 @@ const Record = () => {
         };
     };
 
-    /** เชื่อมต่อ WebSocket สำหรับรับ Frame (ภาพวิดีโอ) */
+    /** เชื่อมต่อ WebSocket สำหรับรับ Frame (ภาพวิดีโอ) ปรับ*/
     const connectWebSocket = (cameraId) => {
         if (wsRefs.current[cameraId]) return;
 
         const base = import.meta.env.VITE_API_BASE;
-        const wsProtocol = base.startsWith("https") ? "wss" : "ws";
+        const wsProtocol = base.startsWith("https") ? "wss" : "ws"; // ซ้ำ 
         const wsBase = base.replace(/^https?:\/\//, "");
         const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/${cameraId}`
             + `?teacher_id=${teacher_id}&subject_id=${subjectId}`;
@@ -162,7 +162,7 @@ const Record = () => {
         const base = import.meta.env.VITE_API_BASE;
         const wsProtocol = base.startsWith("https") ? "wss" : "ws";
         const wsBase = base.replace(/^https?:\/\//, "");
-        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/detect/${cameraId}`;
+        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/detect/${cameraId}`;
 
         const ws = new WebSocket(wsUrl);
 
@@ -171,7 +171,7 @@ const Record = () => {
         ws.onclose = () => console.log("ปิดการตรวจจับ");
 
         ws.onmessage = (event) => {
-            const imageSrc = "data:image/jpeg;base64" + event.data
+            const imageSrc = "data:image/jpeg;base64," + event.data;
             imgRef.current[cameraId].src = imageSrc;
         }
 
@@ -242,9 +242,9 @@ const Record = () => {
 
             // ปิด Summary Streams (WS)
             Object.keys(summaryRefs.current).forEach((cameraId) => safeCloseSummaryWS(cameraId));
-            
+
             Object.values(wsRefs.current).forEach(ws => {
-                try {ws.close()} catch (e) {}
+                try { ws.close() } catch (e) { }
             })
             // ปิดกล้องที่ Backend 
             try {

@@ -251,7 +251,10 @@ async def camera_loop(camera_id: str):
                         print(
                             f"🚫 กล้อง {int(camera_id) + 1} ไม่สนใจ ID {track_id} (กำลังจับ ID {target_track_id})"
                         )
-
+                if found_valid_detection: # 
+                    json_class = timer["current_class"]
+                else:
+                    json_class = None
                 # ถ้าไม่เจอ object ตาม track_id เลย
                 if not found_valid_detection:
                     print(f"😶 กล้อง {int(camera_id)+1}: ไม่เจอ object ")
@@ -295,6 +298,7 @@ async def camera_loop(camera_id: str):
                             else:
                                 mapped_class = "Taking_notes"
 
+                        cam_state["hour_results"].append(json_class)
                         if mapped_class in ATTENDENCE or mapped_class in NON_ATTENDENCE:
                             cam_state["interval_results"].append(mapped_class)
                             cam_state["hour_results"].append(mapped_class)
@@ -389,7 +393,7 @@ async def camera_loop(camera_id: str):
                     interval_acc = result["interval_accuracy"]
                     final_acc = result["final_hour_accuracy"]
 
-                    test_logs(camera_id=camera_id, interval_accuracy=interval_acc, final_hour_accuracy=final_acc)
+                    test_logs(camera_id=camera_id, interval_accuracy=interval_acc, final_hour_accuracy=final_acc, class_json=json_class)
                     cam_state["hour_results"] = []
             print(f"🛑 stop detect on camera {int(camera_id) + 1}")
             cam_state = cameras.get(camera_id)

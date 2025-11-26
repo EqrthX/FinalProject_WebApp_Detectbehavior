@@ -261,7 +261,6 @@ const SummarizePage = () => {
                           <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
                           <XAxis
                             dataKey="time"
-                            interval={0}
                           />
                           <YAxis
                             domain={[0, 100]}

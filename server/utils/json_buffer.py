@@ -46,8 +46,34 @@ def load_buffer(camera_id: str):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-
+# ใช้สำหรับลบไฟล์ json เมื่อหลังจาก input ข้อมูลลง supabase เสร็จ
 def clear_buffer(camera_id):
     path = get_buffer_file(camera_id)
     if os.path.exists(path):
         os.remove(path) 
+
+
+def test_logs(camera_id, interval_accuracy, final_hour_accuracy):
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    server_dir = os.path.dirname(base_dir)
+    buffer_dir = os.path.join(server_dir, "jsonlogs")
+    os.makedirs(buffer_dir, exist_ok=True)
+    
+    path = os.path.join(buffer_dir, f"test_15fps_camera_{int(camera_id) + 1}.json")
+
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    else:
+        data = {
+            "camera_id": int(camera_id) + 1,
+            "result_test": []
+        }
+
+    data["test"].append({
+        "timestamp": datetime.now().astimezone().isoformat(),
+        "interval_accuracy": round(interval_accuracy, 4),
+        "final_hour_accuracy": round(final_hour_accuracy, 4)
+    })
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)

@@ -188,9 +188,10 @@ async def camera_loop(camera_id: str):
 
                 annotated = results[0].plot()
                 now = time.time()
+                draw_frame = annotated if 'annotated' in locals() else frame
 
                 # เก็บ annotated frame ไว้ให้ WS ใช้
-                ok, buf = cv2.imencode(".jpg", annotated)
+                ok, buf = cv2.imencode(".jpg", draw_frame)
                 if ok:
                     cam_state = cameras.get(camera_id)
                     if cam_state:
@@ -251,10 +252,7 @@ async def camera_loop(camera_id: str):
                         print(
                             f"🚫 กล้อง {int(camera_id) + 1} ไม่สนใจ ID {track_id} (กำลังจับ ID {target_track_id})"
                         )
-                if found_valid_detection: # 
-                    json_class = timer["current_class"]
-                else:
-                    json_class = None
+
                 # ถ้าไม่เจอ object ตาม track_id เลย
                 if not found_valid_detection:
                     print(f"😶 กล้อง {int(camera_id)+1}: ไม่เจอ object ")
@@ -298,10 +296,8 @@ async def camera_loop(camera_id: str):
                             else:
                                 mapped_class = "Taking_notes"
 
-                        cam_state["hour_results"].append(json_class)
                         if mapped_class in ATTENDENCE or mapped_class in NON_ATTENDENCE:
                             cam_state["interval_results"].append(mapped_class)
-                            cam_state["hour_results"].append(mapped_class)
 
                         if len(cam_state["interval_results"]) > cam_state["max_intervals"]:
                             cam_state["interval_results"] = cam_state["interval_results"][:cam_state["max_intervals"]]
@@ -388,13 +384,6 @@ async def camera_loop(camera_id: str):
                     await asyncio.sleep(remain)
                 last_time = time.perf_counter()
 
-                if len(cam_state["hour_results"]) >= 720:
-                    result = final_hour_accuracy(cam_state["hour_results"])
-                    interval_acc = result["interval_accuracy"]
-                    final_acc = result["final_hour_accuracy"]
-
-                    test_logs(camera_id=camera_id, interval_accuracy=interval_acc, final_hour_accuracy=final_acc, class_json=json_class)
-                    cam_state["hour_results"] = []
             print(f"🛑 stop detect on camera {int(camera_id) + 1}")
             cam_state = cameras.get(camera_id)
             if cam_state:
@@ -503,7 +492,8 @@ async def start_all_detections(user=Depends(verify_token)):
         async with cam_state["lock"]:
             if not cam_state.get("running", True):
                 continue
-
+            if cam_state.get("task") and not cam_state["task"].done():
+                continue
             if not cam_state.get("detecting", False):
                 cam_state["detecting"] = True
                 task = asyncio.create_task(camera_loop(cam_id))
@@ -699,12 +689,17 @@ async def camera_detect_ws(websocket: WebSocket, camera_id: str):
             cam_state = cameras.get(camera_id)
             if not cam_state:
                 break
+            
+            async with cam_state["lock"]:
+                frame_bytes = cam_state.get("last_frame")
+            
+            if not frame_bytes:
+                await asyncio.sleep(0.03)
+                continue
 
-            frame_bytes = cam_state.get("last_frame")
-            if frame_bytes:
-                await websocket.send_text(
-                    base64.b64encode(frame_bytes).decode("utf-8")
-                )
+            await websocket.send_text(
+                base64.b64encode(frame_bytes).decode("utf-8")
+            )
 
             await asyncio.sleep(0.1)
     except WebSocketDisconnect:

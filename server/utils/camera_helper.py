@@ -53,5 +53,4 @@ def create_camera_state(cap, teacher_id=None, subject_id=None):
         },
         "last_best_class": None,
         "last_best_conf": 0.0,
-        "hour_results": []
 }

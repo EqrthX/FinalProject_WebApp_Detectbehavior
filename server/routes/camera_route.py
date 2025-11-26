@@ -14,7 +14,6 @@ from utils.camera_helper import (
     create_camera_state,
     define_LOW_CLASS,
     define_HIGH_CLASS,
-    final_hour_accuracy,
 )
 from utils.model_loader import get_model
 from utils.auth import verify_token
@@ -23,7 +22,6 @@ from utils.json_buffer import (
     save_buffer,
     load_buffer,
     clear_buffer,
-    test_logs,
 )
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
@@ -42,6 +40,27 @@ ATTENDENCE = define_HIGH_CLASS()
 NON_ATTENDENCE = define_LOW_CLASS()
 
 
+# -------------------- Helper Functions (Run in Executor) --------------------
+def read_frame_sync(cap):
+    """อ่านภาพจากกล้องแบบ Blocking (รันใน Thread)"""
+    return cap.read()
+
+def process_plot_and_encode(result_object):
+    """วาด Bounding Box และแปลงเป็น JPG (รันใน Thread)"""
+    annotated = result_object.plot()
+    ok, buf = cv2.imencode(".jpg", annotated)
+    if ok:
+        return buf.tobytes()
+    return None
+
+def encode_frame_sync(frame):
+    """แปลงภาพ Raw เป็น JPG (รันใน Thread)"""
+    ok, buf = cv2.imencode(".jpg", frame)
+    if ok:
+        return buf.tobytes()
+    return None
+
+
 # -------------------- Helper: เปิดกล้องด้วย backend ที่ใช้ได้ --------------------
 def open_camera_with_backends(index: int):
     """
@@ -54,6 +73,10 @@ def open_camera_with_backends(index: int):
             backend = cam.get("backend_camera", cv2.CAP_ANY)
             cap = cv2.VideoCapture(index, backend)
             if cap.isOpened():
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                cap.set(cv2.CAP_PROP_FPS, 60) # บังคับที่กล้องเลย
                 print(f"🎥 เปิดกล้อง {index} ด้วย backend จาก scan = {backend}")
                 return cap
             cap.release()
@@ -139,14 +162,13 @@ def open_camera_instance(camera_id: str, teacher_id=None, subject_id=None):
 # -------------------- Loop YOLO ต่อกล้อง --------------------
 async def camera_loop(camera_id: str):
     """
-    loop นี้เป็นตัวเดียวที่อ่านกล้อง (cap.read) ต่อกล้อง 1 ตัว
-    - ถ้า detecting=False → อ่านเฟรมอย่างเดียว, อัปเดต last_frame (raw)
-    - ถ้า detecting=True  → รัน YOLO + วาด bb + คำนวน interval, อัปเดต last_frame (annotated)
-    WebSocket ทุกตัวจะอ่านแค่ last_frame เท่านั้น
+    Loop หลักสำหรับอ่านกล้องและประมวลผล
+    - เป็น Producer เดียวที่อ่านภาพจากกล้อง (cap.read)
+    - ใช้ Thread Executor เพื่อไม่ให้ Block Main Loop (แก้ปัญหากล้องค้าง)
     """
-    FRAME_INTERVAL = 1 / 30  # target ~30 fps ต่อกล้อง
-    last_time = time.perf_counter()
     loop = asyncio.get_event_loop()
+    FRAME_INTERVAL = 1 / 60  # target ~30 fps ต่อกล้อง
+    last_time = time.perf_counter()
 
     try:
         while True:
@@ -170,8 +192,9 @@ async def camera_loop(camera_id: str):
                     cam_state["detecting"] = False
                 break
 
-            # อ่านเฟรมจากกล้อง
-            ret, frame = cap.read()
+            # --- [Fix] อ่านเฟรมจากกล้องผ่าน Thread Executor ---
+            ret, frame = await loop.run_in_executor(None, read_frame_sync, cap)
+            
             if not ret:
                 print(f"⚠️ อ่านเฟรมไม่สำเร็จ → หยุดกล้อง {int(camera_id)+1}")
                 async with cam_state["lock"]:
@@ -179,8 +202,8 @@ async def camera_loop(camera_id: str):
                     cam_state["running"] = False
                 break
 
-            draw_frame = frame
             now = time.time()
+            jpg_bytes = None
 
             # -------------------- YOLO + logic เฉพาะตอน detecting=True --------------------
             if detecting:
@@ -190,14 +213,18 @@ async def camera_loop(camera_id: str):
                     lambda: model.track(
                         source=frame,
                         conf=0.4,
-                        device="cpu",
+                        device="cpu", # หรือ 'cuda' ถ้ามี GPU
                         verbose=False,
                         tracker="bytetrack.yaml",
                     ),
                 )
 
-                annotated = results[0].plot()
-                draw_frame = annotated
+                # --- [Fix] Plot & Encode ใน Thread Executor ---
+                jpg_bytes = await loop.run_in_executor(
+                    None, 
+                    process_plot_and_encode, 
+                    results[0]
+                )
 
                 cam_state = cameras.get(camera_id)
                 if not cam_state:
@@ -253,13 +280,12 @@ async def camera_loop(camera_id: str):
                         break
 
                     elif track_id != -1 and track_id != target_track_id:
-                        print(
-                            f"🚫 กล้อง {int(camera_id) + 1} ไม่สนใจ ID {track_id} (กำลังจับ ID {target_track_id})"
-                        )
+                        # Log warning (optional)
+                        pass
 
                 # ถ้าไม่เจอ object ตาม track_id เลย
                 if not found_valid_detection:
-                    print(f"😶 กล้อง {int(camera_id)+1}: ไม่เจอ object ")
+                    # print(f"😶 กล้อง {int(camera_id)+1}: ไม่เจอ object ")
                     cam_state = cameras.get(camera_id)
                     if cam_state:
                         async with cam_state["lock"]:
@@ -382,14 +408,17 @@ async def camera_loop(camera_id: str):
                         timer["frame_count"] = 0
                         timer["duration"] = 0.0
                         timer["miss"] = 0
+            
+            else:
+                # --- [Fix] กรณีไม่ Detect ก็ต้อง Encode ผ่าน Thread เหมือนกัน ---
+                jpg_bytes = await loop.run_in_executor(None, encode_frame_sync, frame)
 
-            # -------------------- update last_frame ทุกเฟรม --------------------
-            ok, buf = cv2.imencode(".jpg", draw_frame)
-            if ok:
+            # -------------------- update last_frame --------------------
+            if jpg_bytes:
                 cam_state = cameras.get(camera_id)
                 if cam_state:
                     async with cam_state["lock"]:
-                        cam_state["last_frame"] = buf.tobytes()
+                        cam_state["last_frame"] = jpg_bytes
 
             # === FPS Control ===
             end_time = time.perf_counter()
@@ -616,6 +645,10 @@ async def check_list_camera(user=Depends(verify_token)):
 # -------------------- WebSockets --------------------
 @camera_router.websocket("/ws/camera/{camera_id}")
 async def camera_ws(websocket: WebSocket, camera_id: str):
+    """
+    WebSocket นี้จะไม่แย่งอ่าน Cap จาก camera_loop
+    แต่จะทำหน้าที่แค่ส่ง last_frame ที่ camera_loop ผลิตไว้ให้เท่านั้น
+    """
     await websocket.accept()
     print(f"📡 Client connected for camera {int(camera_id) + 1}")
 
@@ -643,6 +676,7 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
         )
         cameras[camera_id] = cam_state
 
+    # ตรวจสอบและเริ่ม loop ถ้ายังไม่เริ่ม
     async with cam_state["lock"]:
         cam_state["running"] = True
         task = cam_state.get("task")
@@ -656,6 +690,7 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
             if not cam_state:
                 break
 
+            # --- [Fix] อ่านแค่ last_frame (ไม่แตะ cap.read เอง) ---
             async with cam_state["lock"]:
                 frame_bytes = cam_state.get("last_frame")
 
@@ -680,7 +715,7 @@ async def camera_ws(websocket: WebSocket, camera_id: str):
 @camera_router.websocket("/ws/camera/detect/{camera_id}")
 async def camera_detect_ws(websocket: WebSocket, camera_id: str):
     """
-    stream เฉพาะภาพที่ camera_loop สร้างไว้ใน last_frame (มี bounding box ถ้า detecting=True)
+    stream เฉพาะภาพที่ camera_loop สร้างไว้ใน last_frame
     """
     await websocket.accept()
     print(f"📡 Detect WS connected for camera {int(camera_id)+1}")

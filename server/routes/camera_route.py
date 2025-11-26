@@ -1,19 +1,30 @@
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
+from fastapi import (
+    APIRouter, 
+    HTTPException, 
+    WebSocket, 
+    WebSocketDisconnect, 
+    Depends
+)
 import cv2
 import time
 import base64
 import asyncio
 from datetime import datetime
-
 from utils.camera_helper import (
     create_camera_state,
     define_LOW_CLASS,
     define_HIGH_CLASS,
+    final_hour_accuracy
 )
 from utils.model_loader import get_model
 from utils.auth import verify_token
 from config.bn_supabase import supabase_client
-from utils.json_buffer import save_buffer, load_buffer, clear_buffer
+from utils.json_buffer import (
+    save_buffer, 
+    load_buffer, 
+    clear_buffer,
+    test_logs
+)
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
@@ -29,7 +40,6 @@ scan_lock = asyncio.Lock()             # lock กัน scan ซ้อน
 
 ATTENDENCE = define_HIGH_CLASS()
 NON_ATTENDENCE = define_LOW_CLASS()
-
 
 # -------------------- Helper: เปิดกล้องด้วย backend ที่ใช้ได้ --------------------
 def open_camera_with_backends(index: int):
@@ -121,6 +131,9 @@ def open_camera_instance(camera_id: str, teacher_id=None, subject_id=None):
 # -------------------- Loop YOLO ต่อกล้อง --------------------
 async def camera_loop(camera_id: str):
     loop = asyncio.get_event_loop()
+    FRAME_INTERVAL = 1/30
+    last_time = time.perf_counter()
+
     try:
         cam_state = cameras.get(camera_id)
         if not cam_state:
@@ -133,7 +146,8 @@ async def camera_loop(camera_id: str):
             async with cam_state["lock"]:
                 cam_state["detecting"] = False
             return
-
+        last_best_class = cam_state.get("last_best_class", None)
+        last_best_conf = cam_state.get("last_best_conf", 0.0)
         try:
             while True:
                 cam_state = cameras.get(camera_id)
@@ -190,13 +204,19 @@ async def camera_loop(camera_id: str):
                 target_track_id = cam_state.get("track_id")
                 timer = cam_state["class_timer"]
                 found_valid_detection = False
-
+                
                 # ---------- ประมวลผลผลลัพธ์ YOLO ----------
                 for box in results[0].boxes:
                     cls = int(box.cls)
                     conf = float(box.conf.item())
                     label = model.names[cls]
                     track_id = int(box.id) if box.id is not None else -1
+
+                    async with cam_state["lock"]:
+                        if conf > last_best_conf:
+                            cam_state["last_best_class"] = label
+                            cam_state["last_best_conf"] = conf
+                            last_best_conf = conf
 
                     # ถ้ายังไม่มี track_id ให้เลือกตัวแรกที่เจอ
                     if cam_state["track_id"] is None and track_id != -1:
@@ -238,12 +258,17 @@ async def camera_loop(camera_id: str):
                     cam_state = cameras.get(camera_id)
                     if cam_state:
                         async with cam_state["lock"]:
-                            timer = cam_state["class_timer"]
-                            timer["miss"] += 1
-                            if timer["miss"] >= 3:
-                                timer["current_class"] = None
-                                timer["frame_count"] = 0
-                                timer["duration"] = 0
+                            last_best_class = cam_state.get("last_best_class")
+                            last_best_conf = cam_state.get("last_best_conf", 0.0)
+
+                            if last_best_conf > 0.65:
+                                timer["current_class"] = last_best_class
+                            else:
+                                timer["miss"] += 1
+                                if timer["miss"] >= 3:
+                                    timer["current_class"] = None
+                                    timer["frame_count"] = 0
+                                    timer["duration"] = 0
 
                 # ---------- จัดการ interval (5 วิ / 1 นาที) ----------
                 cam_state = cameras.get(camera_id)
@@ -256,8 +281,6 @@ async def camera_loop(camera_id: str):
 
                     if now - cam_state["last_interval_time"] >= interval_seconds:
                         cam_state["last_interval_time"] = now
-                        cam_state["interval_count"] += 1
-
                         current_interval_class = timer["current_class"]
                         if timer["current_class"] is not None and timer["miss"] == 0:
                             timer["duration"] += interval_seconds
@@ -274,6 +297,12 @@ async def camera_loop(camera_id: str):
 
                         if mapped_class in ATTENDENCE or mapped_class in NON_ATTENDENCE:
                             cam_state["interval_results"].append(mapped_class)
+                            cam_state["hour_results"].append(mapped_class)
+
+                        if len(cam_state["interval_results"]) > cam_state["max_intervals"]:
+                            cam_state["interval_results"] = cam_state["interval_results"][:cam_state["max_intervals"]]
+
+                        cam_state["interval_count"] = len(cam_state["interval_results"])
 
                         print(
                             f"⏱️ กล้อง {int(camera_id) + 1} รอบที่ {cam_state['interval_count']} : "
@@ -282,6 +311,7 @@ async def camera_loop(camera_id: str):
 
                     # ครบ 1 นาที (12 interval)
                     if cam_state["interval_count"] >= cam_state["max_intervals"]:
+
                         subject_id = cam_state.get("subject_id")
                         teacher_id = cam_state.get("teacher_id")
                         interval_count = {}
@@ -292,7 +322,7 @@ async def camera_loop(camera_id: str):
                             )
 
                         print(
-                            f"cam_state['interval_results'] {cam_state['interval_results']}"
+                            f"cam_state['interval_results']{camera_id} {cam_state['interval_results']}"
                         )
                         valid_total = len(cam_state["interval_results"]) or 1
 
@@ -337,14 +367,30 @@ async def camera_loop(camera_id: str):
                             print(f"❌ save_buffer error cam {camera_id}: {e}")
 
                         # reset สำหรับรอบถัดไป
+                        cam_state["last_best_class"] = None
+                        cam_state["last_best_conf"] = 0.0
                         cam_state["interval_count"] = 0
                         cam_state["interval_results"] = []
+                        cam_state["last_interval_time"] = now  
                         timer["frame_count"] = 0
                         timer["duration"] = 0.0
                         timer["miss"] = 0
 
-                await asyncio.sleep(0.25)
+                # === FPS Control ===
+                end_time = time.perf_counter()
+                elapsed = end_time - last_time
+                remain = FRAME_INTERVAL - elapsed
+                if remain > 0:
+                    await asyncio.sleep(remain)
+                last_time = time.perf_counter()
 
+                if len(cam_state["hour_results"]) >= 720:
+                    result = final_hour_accuracy(cam_state["hour_results"])
+                    interval_acc = result["interval_accuracy"]
+                    final_acc = result["final_hour_accuracy"]
+
+                    test_logs(camera_id=camera_id, interval_accuracy=interval_acc, final_hour_accuracy=final_acc)
+                    cam_state["hour_results"] = []
             print(f"🛑 stop detect on camera {int(camera_id) + 1}")
             cam_state = cameras.get(camera_id)
             if cam_state:

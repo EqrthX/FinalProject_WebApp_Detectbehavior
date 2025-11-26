@@ -53,7 +53,7 @@ def clear_buffer(camera_id):
         os.remove(path) 
 
 
-def test_logs(camera_id, interval_accuracy, final_hour_accuracy):
+def test_logs(camera_id, interval_accuracy, final_hour_accuracy, class_json):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     server_dir = os.path.dirname(base_dir)
     buffer_dir = os.path.join(server_dir, "jsonlogs")
@@ -65,15 +65,12 @@ def test_logs(camera_id, interval_accuracy, final_hour_accuracy):
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
     else:
-        data = {
-            "camera_id": int(camera_id) + 1,
-            "result_test": []
-        }
+        data = {}
 
-    data["test"].append({
-        "timestamp": datetime.now().astimezone().isoformat(),
-        "interval_accuracy": round(interval_accuracy, 4),
-        "final_hour_accuracy": round(final_hour_accuracy, 4)
-    })
+    data["camera_id"] = int(camera_id) + 1
+    data["interval_accuracy"] = round(interval_accuracy, 4)
+    data["final_hour_accuracy"] = round(final_hour_accuracy, 4)
+    data["current_class"] = class_json
     with open(path, "w", encoding="utf-8") as f:
+
         json.dump(data, f, ensure_ascii=False, indent=2)

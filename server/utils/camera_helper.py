@@ -62,9 +62,6 @@ def create_camera_state(cap, teacher_id=None, subject_id=None):
         # ------------------ YOLO detect state ------------------
         "last_frame": None,           # เก็บเฟรมล่าสุดที่อ่านได้ (เอาไว้ส่งให้ frontend หรือเอาไปวาดกรอบ)
         
-        # สถานะของคลาสทั้งหมด เช่น นับจำนวนเฟรมของแต่ละ class, เก็บสัดส่วน ฯลฯ
-        # new_status_dict() จะสร้าง dict ว่างโครงพร้อมใช้ เช่น {"Focused": {...}, "Talking": {...}, ...}
-        "status": new_status_dict(),
 
         "track_id": None,             # ใช้ผูก "กล้องนี้" กับ "นักศึกษาคนใดคนหนึ่ง" ผ่าน track_id จาก YOLO/Tracker
 

@@ -23,6 +23,7 @@ from utils.json_buffer import (
     load_buffer,
     clear_buffer,
 )
+from collections import defaultdict
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
@@ -276,6 +277,7 @@ async def camera_loop(camera_id: str):
                                     if timer["miss"] >= 5:
                                         timer["current_class"] = label
                                         timer["frame_count"] = 1
+                                        timer["duration"] = 0
                                         timer["miss"] = 0
                         break
 
@@ -319,9 +321,9 @@ async def camera_loop(camera_id: str):
                         mapped_class = current_interval_class
                         if current_interval_class == "LookingAway":
                             duration_sec = timer.get("duration", 0)
-                            if duration_sec < 3:
+                            if duration_sec <= 15:
                                 mapped_class = "LookingAway"
-                            elif duration_sec < 15:
+                            elif duration_sec <= 35:
                                 mapped_class = "Looking_at_the_board"
                             else:
                                 mapped_class = "Taking_notes"
@@ -348,6 +350,19 @@ async def camera_loop(camera_id: str):
                         subject_id = cam_state.get("subject_id")
                         teacher_id = cam_state.get("teacher_id")
                         interval_count = {}
+                        summary_payload = {
+                            "CameraId": int(camera_id) + 1,
+                            "Time": datetime.now().strftime("%H:%M:%S"),
+                        }
+
+                        if jpg_bytes:
+                            summary_payload["image"] = jpg_bytes
+                        
+                        cam_state["show_class"] = summary_payload
+                        # ensure summary_ready_event มี
+                        if "summary_ready_event" not in cam_state:
+                            cam_state["summary_ready_event"] = asyncio.Event()
+                        cam_state["summary_ready_event"].set()
 
                         for cls_label in cam_state["interval_results"]:
                             interval_count[cls_label] = (
@@ -466,7 +481,7 @@ async def summary_to_supabase():
             camera_id = summary["camera_id"]
             teacher_id = summary["teacher_id"]
             subject_id = summary["subject_id"]
-
+            subject_id = subject_id.strip()
             for record in summary["records"]:
                 insert_payload.append(
                     {
@@ -483,8 +498,74 @@ async def summary_to_supabase():
         if insert_payload:
             supabase_client.table("camera_logs").insert(insert_payload).execute()
 
+        grops = defaultdict(list)
+
+        for row in insert_payload:
+            teacher_id = row["teacher_id"]
+            subject_id = row["subject_id"]
+            camera_id = row["camera_id"]
+
+            dt = (
+                row["created_at"]
+                if isinstance(row["created_at"], datetime)
+                else datetime.fromisoformat(str(row["created_at"]).replace("Z", "+00:00"))
+            )
+
+            date_key = dt.date().isoformat()
+
+            key = (teacher_id, subject_id, camera_id, date_key)
+            grops[key].append(row)
+
+        daily_rows = []
+
+        for  (teacher_id, subject_id, camera_id, summary_date), rows in grops.items():
+            total_att = 0.0
+            total_non = 0.0
+            count = len(rows)
+
+            class_totals = defaultdict(float)
+
+            for r in rows:
+                att = float(r.get("Attention") or 0.0)
+                non = float(r.get("Non_Attention") or 0.0)
+                total_att += att
+                total_non += non
+
+                cj = r.get("class_json") or {}
+                if isinstance(cj, str):
+                    try:
+                        import json
+                        cj = json.loads(cj)
+                    except:
+                        cj = {}
+                
+                for cls_name, ratio in cj.items():
+                    class_totals[cls_name] += float(ratio or 0.0)
+            avg_att = total_att / count if count > 0 else 0.0
+            avg_non = total_non / count if count > 0 else 0.0
+
+            class_summary = {}
+            if count > 0:
+                for cls_name, total_val in class_totals.items():
+                    class_summary[cls_name] = round(total_val / count, 3)
+            
+            daily_rows.append(
+                {
+                    "teacher_id": teacher_id,
+                    "subject_id": subject_id,
+                    "camera_id": camera_id,
+                    "summary_date": summary_date,
+                    "avg_attention": round(avg_att, 3),
+                    "avg_non_attention": round(avg_non, 3),
+                    "class_json_summary": class_summary,
+                }
+            )
+
+            if daily_rows:
+                supabase_client.table("camera_daily_summary").insert(daily_rows).execute()
+
         await asyncio.sleep(3)
-        return {"message": "บันทึกข้อมูลเสร็จสิ้น", "inserted": len(insert_payload)}
+        return {"message": "บันทึกข้อมูลเสร็จสิ้น", "inserted": len(insert_payload), "inserted_daily_summary": len(daily_rows)}
     except Exception as e:
         print("Error summary", str(e))
         return {"error": str(e)}
@@ -757,7 +838,11 @@ async def camera_summary(websocket: WebSocket, camera_id: str):
         print(f"❌ หา State ของกล้องไม่เจอ (กล้อง {int(camera_id) + 1})")
         await websocket.close()
         return
-
+    
+    async with cam_state["lock"]:
+        if "summary_ready_event" not in cam_state or cam_state["summary_ready_event"] is None:
+            cam_state["summary_ready_event"] = asyncio.Event()
+    
     try:
         print(f"📡 Summary WS started for camera {int(camera_id) + 1}")
         while True:
@@ -771,7 +856,8 @@ async def camera_summary(websocket: WebSocket, camera_id: str):
                 summary_event = cam_state.get("summary_ready_event")
 
             if not running or not detecting:
-                break
+                await asyncio.sleep(0.5)
+                continue
 
             if summary_event is None:
                 await asyncio.sleep(0.5)

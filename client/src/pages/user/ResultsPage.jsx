@@ -11,6 +11,8 @@ const ResultsPage = () => {
   // 1. แยก State: result, กราฟต่างๆ
   const [result, setResult] = useState([])
   const [lineChartData, setLineChartData] = useState([]);
+  const [groupCameras, setGroupCameras] = useState([]);
+
   const [pieChartData, setPieChartData] = useState([]);
   const [summary, setSummary] = useState({ att: 0, nonAtt: 0, other: 0 });
 
@@ -33,7 +35,7 @@ const ResultsPage = () => {
     // ตั้งค่าวันที่สำหรับ Query (เริ่มที่ 00:00:00 ของวันนี้)
     now.setHours(0, 0, 0, 0);
     setQueryDate(now.toISOString());
-    
+
   }, []);
 
   // useEffect 2: ดึงข้อมูลเมื่อ queryDate หรือ teacher_id เปลี่ยน
@@ -55,6 +57,13 @@ const ResultsPage = () => {
           console.error("ไม่เจอข้อมูลที่เก็บพฤติกรรม", errResponse)
         }
 
+        const groupedByCamera = response.reduce((acc, row) => {
+          if (!acc[row.camera_id]) acc[row.camera_id] = [];
+          acc[row.camera_id].push(row);
+          return acc;
+        }, {})
+
+        setGroupCameras(groupedByCamera)
         setResult(response || [])
       } catch (error) {
         console.error("เกิดข้อผิดพลาดไม่สามารถแสดงผลได้", error)
@@ -135,9 +144,58 @@ const ResultsPage = () => {
       }
     }
   }, [result])
+  const getAvgAttentionPerCamera = (logs) => {
+    if (!logs || logs.length === 0) return { att: 0, non: 0 }
 
+    let totalAtt = 0
+    let totalNon = 0
+
+    logs.forEach(l => {
+      totalAtt += l.Attention || 0
+      totalNon += l.Non_Attention || 0
+    })
+
+    return {
+      att: totalAtt / logs.length,
+      non: totalNon / logs.length
+    }
+  }
+  const groupCamerasWithPie = Object.fromEntries(
+    Object.entries(groupCameras).map(([camId, logs]) => {
+      const totals = {
+        Focused: 0,
+        Looking_at_the_board: 0,
+        Taking_notes: 0,
+        LookingAway: 0,
+        Talking: 0,
+        UsingPhone: 0,
+      };
+
+      logs.forEach(log => {
+        const ratios = log.class_json || {};
+        totals.Focused += ratios.Focused || 0;
+        totals.Looking_at_the_board += ratios.Looking_at_the_board || 0;
+        totals.Taking_notes += ratios.Taking_notes || 0;
+        totals.LookingAway += ratios.LookingAway || 0;
+        totals.Talking += ratios.Talking || 0;
+        totals.UsingPhone += ratios.UsingPhone || 0;
+      });
+
+      const totalCount = logs.length || 1;
+
+      const pieChartData = [
+        { name: "Focused", value: totals.Focused / totalCount },
+        { name: "Looking_at_the_board", value: totals.Looking_at_the_board / totalCount },
+        { name: "Taking_notes", value: totals.Taking_notes / totalCount },
+        { name: "LookingAway", value: totals.LookingAway / totalCount },
+        { name: "UsingPhone", value: totals.UsingPhone / totalCount },
+      ];
+
+      return [camId, { logs, pieChartData }];
+    })
+  );
   const RADIAN = Math.PI / 180;
-  const COLORS = ['#0068c9','#fe2b2b', '#8622FF', '#739206ff', '#FE0056', '#00B7EB', '#FF8000', '#00FFCE', '#FFFF00'];
+  const COLORS = ['#0068c9', '#fe2b2b', '#8622FF', '#739206ff', '#FE0056', '#00B7EB', '#FF8000', '#00FFCE', '#FFFF00'];
 
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -166,57 +224,60 @@ const ResultsPage = () => {
                 ผลรวมรายวัน {displayDate}
               </h2>
             </div>
-            <div className="flex justify-center gap-50">
-              <div className="bg-white  p-6 flex flex-col items-center w-auto">
-                <span className="text-black ">ตั้งใจเรียน</span>
-                <span className="text-4xl font-bold text-[#1D971D]">{(summary.att * 100).toFixed(0)}%</span>
-              </div>
-              <div className="bg-white  p-6 flex flex-col items-center w-auto">
-                <span className="text-black">ไม่ตั้งใจเรียน</span>
-                <span className="text-4xl font-bold text-[#FF3300]">{(summary.nonAtt * 100).toFixed(0)}%</span>
-              </div>
-              <div className="bg-white  p-6 flex flex-col items-center w-auto">
-                <span className="text-black">อื่นๆ</span>
-                <span className="text-4xl font-bold text-[#000000]">{(summary.other * 100).toFixed(0)}%</span>
-              </div>
-            </div>
 
             {/* กราฟเส้น */}
             <div className="w-full rounded-lg p-6 ">
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={lineChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                  <XAxis
-                    dataKey="name"
-                    padding={{ left: 30, right: 30 }}
-                    tick={{ fill: '#666' }}
-                  />
-                  <YAxis tick={{ fill: '#666' }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#fff',
-                      border: '1px solid #e0e0e0',
-                      borderRadius: '8px'
-                    }}
-                  />
-                  <Legend
-                    wrapperStyle={{ paddingTop: '20px' }}
-                  />
+              {Object.entries(groupCameras).map(([camId, logs]) => {
+                const avg = getAvgAttentionPerCamera(logs)
+                return (
+                  <div key={camId} className="bg-white p-4 rounded-xl shadow mb-6 border">
+                    <h3 className="text-lg font-semibold mb-3">กล้องตัวที่ {camId}</h3>
 
-                  <Line
-                    type="monotone"
-                    dataKey="ความตั้งใจ"
-                    stroke="#82ca9d"
-                    strokeWidth={2}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="ความไม่ตั้งใจ"
-                    stroke="#FF3300"
-                    strokeWidth={2}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+                    {/* แสดงข้อมูล Attention แบบล่าสุด */}
+                    <p>ตั้งใจ: {(avg.att * 100).toFixed(1)}%</p>
+                    <p>ไม่ตั้งเรียน: {(avg.non * 100).toFixed(1)}%</p>
+
+                    {/* mini chart ของกล้องนี้ */}
+                    <ResponsiveContainer width="100%" height={200}>
+                      <LineChart data={logs.map(l => ({
+                        time: new Date(l.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+                        ตั้งใจ: (l.Attention * 100).toFixed(2),
+                        ไม่ตั้งใจ: (l.Non_Attention * 100).toFixed(2),
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                        <XAxis
+                          dataKey="time"
+                        />
+                        <YAxis
+                          domain={[0, 100]}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#fff',
+                            border: '1px solid #e0e0e0',
+                            borderRadius: '8px'
+                          }}
+                        />
+                        <Legend
+                          wrapperStyle={{ paddingTop: '20px' }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="ตั้งใจ"
+                          stroke="#82ca9d"
+                          strokeWidth={2}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="ไม่ตั้งใจ"
+                          stroke="#FF3300"
+                          strokeWidth={2}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
@@ -225,26 +286,36 @@ const ResultsPage = () => {
         <div className="flex flex-col space-y-4">
           <div className="bg-white rounded-2xl shadow flex flex-col h-140 border border-gray-300">
             <h2 className="flex justify-start ml-15 p-9 text-lg font-bold">ผลรวม</h2>
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={pieChartData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={renderCustomizedLabel}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {pieChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => `${(value * 100).toFixed(1)}%`} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            {Object.entries(groupCamerasWithPie).map(([camId, logs]) => (
+              <div
+                key={camId}
+                className="bg-white rounded-2xl shadow p-4 flex flex-col border border-gray-300"
+              >
+                <h2 className="text-lg font-bold mb-3">
+                  กล้องตัวที่ {Number(camId)}
+                </h2>
+
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={logs.pieChartData}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      labelLine={false}
+                      label={renderCustomizedLabel}
+                      dataKey="value"
+                    >
+                      {logs.pieChartData.map((entry, index) => (
+                        <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => `${(value * 100).toFixed(1)}%`} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ))}
           </div>
         </div>
       </div>

@@ -184,6 +184,41 @@ const SummarizePage = () => {
       non: totalNon / logs.length
     }
   }
+  const groupCamerasWithPie = Object.fromEntries(
+    Object.entries(groupCameras).map(([camId, logs]) => {
+      const totals = {
+        Focused: 0,
+        Looking_at_the_board: 0,
+        Taking_notes: 0,
+        LookingAway: 0,
+        Talking: 0,
+        UsingPhone: 0,
+      };
+
+      logs.forEach(log => {
+        const ratios = log.class_json || {};
+        totals.Focused += ratios.Focused || 0;
+        totals.Looking_at_the_board += ratios.Looking_at_the_board || 0;
+        totals.Taking_notes += ratios.Taking_notes || 0;
+        totals.LookingAway += ratios.LookingAway || 0;
+        totals.Talking += ratios.Talking || 0;
+        totals.UsingPhone += ratios.UsingPhone || 0;
+      });
+
+      const totalCount = logs.length || 1;
+
+      const pieChartData = [
+        { name: "Focused", value: totals.Focused / totalCount },
+        { name: "Looking_at_the_board", value: totals.Looking_at_the_board / totalCount },
+        { name: "Taking_notes", value: totals.Taking_notes / totalCount },
+        { name: "LookingAway", value: totals.LookingAway / totalCount },
+        { name: "UsingPhone", value: totals.UsingPhone / totalCount },
+      ];
+
+      return [camId, { logs, pieChartData }];
+    })
+  );
+
   if (loading) {
     return (
       <div className="w-full h-screen flex items-center justify-center">
@@ -228,17 +263,6 @@ const SummarizePage = () => {
                   ผลรวมรายวัน {displayDate}
                 </h2>
               </div>
-              {/* <div className="flex justify-center gap-50">
-                <div className="bg-white  p-6 flex flex-col items-center w-auto">
-                  <span className="text-black ">ตั้งใจเรียน</span>
-                  <span className="text-4xl font-bold text-[#1D971D]">{(summary.att * 100).toFixed(0)}%</span>
-                </div>
-                <div className="bg-white  p-6 flex flex-col items-center w-auto">
-                  <span className="text-black">ไม่ตั้งใจเรียน</span>
-                  <span className="text-4xl font-bold text-[#FF3300]">{(summary.nonAtt * 100).toFixed(0)}%</span>
-                </div>
-              </div> */}
-
               <div className="w-full rounded-lg p-6 ">
                 {/* กราฟเส้น */}
                 {Object.entries(groupCameras).map(([camId, logs]) => {
@@ -298,34 +322,38 @@ const SummarizePage = () => {
 
 
           {/* กล่องฝั่งขวา */}
-          <div className="flex flex-col space-y-4">
+          <div className="flex flex-col space-y-4 max-h-[500px] overflow-y-auto">
             <div className="bg-white rounded-2xl shadow flex flex-col h-140 border border-gray-300">
-              {Object.entries(groupCameras).map(([camId, logs]) => {
-                <>
-                  <h2 className="flex justify-start ml-15 p-9 text-lg font-bold">ผลรวมของพฤติกรรมของนักศึกษา</h2>
+              {Object.entries(groupCamerasWithPie).map(([camId, logs]) => (
+                <div
+                  key={camId}
+                  className="bg-white rounded-2xl shadow p-4 flex flex-col border border-gray-300"
+                >
+                  <h2 className="text-lg font-bold mb-3">
+                    กล้องตัวที่ {Number(camId)}
+                  </h2>
+
                   <ResponsiveContainer width="100%" height={250}>
                     <PieChart>
                       <Pie
-                        data={pieChartData}
+                        data={logs.pieChartData}
                         cx="50%"
                         cy="50%"
+                        outerRadius={80}
                         labelLine={false}
                         label={renderCustomizedLabel}
-                        outerRadius={80}
-                        fill="#8884d8"
                         dataKey="value"
                       >
-                        {pieChartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        {logs.pieChartData.map((entry, index) => (
+                          <Cell key={index} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip formatter={(value) => `${(value * 100).toFixed(1)}%`} />
                       <Legend />
                     </PieChart>
                   </ResponsiveContainer>
-                </>
-              })}
-
+                </div>
+              ))}
             </div>
             {/* ปุ่ม */}
             <div className="p- pt-4">

@@ -213,7 +213,7 @@ async def camera_loop(camera_id: str):
                     None,
                     lambda: model.track(
                         source=frame,
-                        conf=0.4,
+                        conf=0.45,
                         device="cpu", # หรือ 'cuda' ถ้ามี GPU
                         verbose=False,
                         tracker="bytetrack.yaml",

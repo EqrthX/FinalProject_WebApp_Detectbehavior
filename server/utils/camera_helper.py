@@ -1,6 +1,3 @@
-# ดึงฟังก์ชัน new_status_dict จากไฟล์ utils.instance_class
-# ฟังก์ชันนี้น่าจะไว้สร้าง dict สำหรับเก็บสถานะของแต่ละ class (เช่น นับกี่ครั้ง, กี่เฟรม ฯลฯ)
-from utils.instance_class import new_status_dict
 
 # นำเข้า asyncio เพื่อใช้สร้างตัวล็อก (Lock) และ Event ที่ใช้ร่วมกับ async/await
 import asyncio
@@ -61,7 +58,6 @@ def create_camera_state(cap, teacher_id=None, subject_id=None):
 
         # ------------------ YOLO detect state ------------------
         "last_frame": None,           # เก็บเฟรมล่าสุดที่อ่านได้ (เอาไว้ส่งให้ frontend หรือเอาไปวาดกรอบ)
-        
 
         "track_id": None,             # ใช้ผูก "กล้องนี้" กับ "นักศึกษาคนใดคนหนึ่ง" ผ่าน track_id จาก YOLO/Tracker
 

@@ -168,7 +168,7 @@ async def camera_loop(camera_id: str):
     - ใช้ Thread Executor เพื่อไม่ให้ Block Main Loop (แก้ปัญหากล้องค้าง)
     """
     loop = asyncio.get_event_loop()
-    FRAME_INTERVAL = 1 / 60  # target ~30 fps ต่อกล้อง
+    FRAME_INTERVAL = 1 / 60  # target ~60 fps ต่อกล้อง
     last_time = time.perf_counter()
 
     try:
@@ -265,18 +265,15 @@ async def camera_loop(camera_id: str):
 
                             if timer["current_class"] is None:
                                 timer["current_class"] = label
-                                timer["frame_count"] = 1
                                 timer["duration"] = 0
                                 timer["miss"] = 0
                             else:
                                 if timer["current_class"] == label:
-                                    timer["frame_count"] += 1
                                     timer["miss"] = 0
                                 else:
                                     timer["miss"] += 1
                                     if timer["miss"] >= 5:
                                         timer["current_class"] = label
-                                        timer["frame_count"] = 1
                                         timer["duration"] = 0
                                         timer["miss"] = 0
                         break
@@ -287,7 +284,7 @@ async def camera_loop(camera_id: str):
 
                 # ถ้าไม่เจอ object ตาม track_id เลย
                 if not found_valid_detection:
-                    # print(f"😶 กล้อง {int(camera_id)+1}: ไม่เจอ object ")
+                    print(f"😶 กล้อง {int(camera_id)+1}: ไม่เจอ object ")
                     cam_state = cameras.get(camera_id)
                     if cam_state:
                         async with cam_state["lock"]:
@@ -300,7 +297,6 @@ async def camera_loop(camera_id: str):
                                 timer["miss"] += 1
                                 if timer["miss"] >= 3:
                                     timer["current_class"] = None
-                                    timer["frame_count"] = 0
                                     timer["duration"] = 0
 
                 # ---------- จัดการ interval (5 วิ / 1 นาที) ----------
@@ -420,7 +416,6 @@ async def camera_loop(camera_id: str):
                         cam_state["interval_count"] = 0
                         cam_state["interval_results"] = []
                         cam_state["last_interval_time"] = now
-                        timer["frame_count"] = 0
                         timer["duration"] = 0.0
                         timer["miss"] = 0
             

@@ -478,35 +478,6 @@ async def list_camera():
 # Start / Stop / Close
 # ==============================================================================
 
-@camera_router.get("/start-detect/{camera_id}")
-async def start_detect(camera_id: str):
-    """
-    เริ่ม detect เฉพาะกล้องนี้
-    """
-    loop = asyncio.get_running_loop()
-
-    if camera_id in camera_threads:
-        th = camera_threads[camera_id]        
-        if th.is_alive():
-            th.detecting = True
-            th.loop = loop
-            if th.summary_ready_event is None:
-                th.summary_ready_event = asyncio.Event()
-            return {"msg": f"resumed camera {int(camera_id)+1}"}
-        else:
-            th.stop()
-            del camera_threads[camera_id]
-
-    # สร้าง thread ใหม่
-    th = CameraThread(camera_id)
-    th.loop = loop
-    th.summary_ready_event = asyncio.Event()
-    th.detecting = True
-    th.start()
-    camera_threads[camera_id] = th
-
-    return {"msg": f"started camera {int(camera_id)+1}"}
-
 
 @camera_router.get("/start-all")
 async def start_all_detections(

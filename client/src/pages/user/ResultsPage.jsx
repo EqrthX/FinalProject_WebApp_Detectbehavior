@@ -62,7 +62,8 @@ const ResultsPage = () => {
           acc[row.camera_id].push(row);
           return acc;
         }, {})
-
+        console.log(groupedByCamera);
+        
         setGroupCameras(groupedByCamera)
         setResult(response || [])
       } catch (error) {
@@ -231,7 +232,10 @@ const ResultsPage = () => {
                 const avg = getAvgAttentionPerCamera(logs)
                 return (
                   <div key={camId} className="bg-white p-4 rounded-xl shadow mb-6 border">
-                    <h3 className="text-lg font-semibold mb-3">กล้องตัวที่ {camId}</h3>
+                    <div className='flex justify-between'>
+                      <h3 className="text-lg font-semibold mb-3">กล้องตัวที่ {camId}</h3>
+                      <h3 className="text-lg font-semibold mb-3">วิชา {logs[0].subject_id}</h3>
+                    </div>
 
                     {/* แสดงข้อมูล Attention แบบล่าสุด */}
                     <p>ตั้งใจ: {(avg.att * 100).toFixed(1)}%</p>

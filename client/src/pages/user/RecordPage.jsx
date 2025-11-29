@@ -696,7 +696,7 @@ const RecordPage = () => {
                                 >
                                     {/* ชื่อกล้อง ถ้ามี name ในข้อมูลก็ใช้เลย ไม่งั้น generate จาก id */}
                                     <h3 className="font-semibold text-lg mb-2 text-center">
-                                        {cam.name || getCameraName(cam.id)}
+                                        {getCameraName(cam.id)}
                                     </h3>
 
                                     {/* พื้นที่โชว์ภาพจากกล้อง (ใช้ canvas ในกรอบ 16:9) */}

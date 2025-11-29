@@ -91,8 +91,8 @@ class CameraThread(threading.Thread):
         self.last_best_conf: float = 0.0
 
         self.last_target_conf = 0.0
-
-        self.skip_frames = 5  # detect ทุก 3 เฟรม เพื่อลดโหลด
+        self.last_annotated = None
+        self.skip_frames = 2  # detect ทุก 3 เฟรม เพื่อลดโหลด
         self.frame_counter = 0
 
         # YOLO model (แยก instance ต่อ thread)
@@ -102,20 +102,26 @@ class CameraThread(threading.Thread):
     def open_camera(self) -> bool:
         backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
         for backend in backends:
-            cap = cv2.VideoCapture(self.source_index, backend)
-            if cap.isOpened():
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                cap.set(cv2.CAP_PROP_FPS, 30)
-                cap.set(
-                    cv2.CAP_PROP_FOURCC,
-                    cv2.VideoWriter_fourcc("M", "J", "P", "G"),
-                )
-                self.cap = cap
-                print(f"✅ Camera {self.camera_id} opened with backend={backend}")
-                return True
-            cap.release()
-        print(f"❌ Camera {self.camera_id} failed to open with all backends")
+            cap = None
+            try:
+                cap = cv2.VideoCapture(self.source_index, backend)
+                if cap.isOpened():
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                    cap.set(cv2.CAP_PROP_FPS, 30)
+                    cap.set(
+                        cv2.CAP_PROP_FOURCC,
+                        cv2.VideoWriter_fourcc("M", "J", "P", "G"),
+                    )
+                    self.cap = cap
+                    print(f"✅ Camera {self.camera_id} opened with backend={backend}")
+                    return True
+            except Exception as e:
+                print(f"เกิดข้อผิดพลาดของการเปิดกล้อง {self.camera_id} ของ backend={backend} error -> {e} ")
+            finally:
+                if cap and (self.cap is None):
+                    cap.release()
+        print(f"❌ กล้อง {self.camera_id} ไม่สามารถเปิดได้เลยตาม backends")
         return False
 
     # ------------- Main loop -------------
@@ -126,53 +132,75 @@ class CameraThread(threading.Thread):
 
         # โหลด YOLO instance สำหรับ thread นี้
         try:
-            print(f"⏳ Loading YOLO model for camera {self.camera_id} ...")
+            print(f"⏳ กำลังโหลดโมเดลของกล้อง {self.camera_id} ...")
             self.model = get_model()
-            print(f"✅ YOLO model loaded for camera {self.camera_id}")
+            print(f"✅ โหลด Model Yolo ของกล้อง {self.camera_id}")
         except Exception as e:
-            print(f"❌ Failed to load YOLO for camera {self.camera_id}: {e}")
+            print(f"❌ เกิดข้อผิดพลาดในการโหลด Model Yolo ของกล้อง {self.camera_id}: {e}")
             return
 
         self.running = True
 
-        while not self.stop_flag.is_set():
-            ret, frame = self.cap.read()
-            if not ret:
-                print(f"⚠️ Camera {self.camera_id} read error")
-                break
+        check_device = None
+        import torch
+        if torch.cuda.is_available():
+            check_device = torch.device("cuda")
+            print(f"GPU พร้อมใช้งาน : {check_device}")
+        else:
+            check_device = torch.device("cpu")
+            print(f"GPU ไม่พร้อมใช้งานใช้ : {check_device}")
+        try:
+            while not self.stop_flag.is_set():
+                ret, frame = self.cap.read()
+                if not ret:
+                    print(f"⚠️ กล้อง {self.camera_id} อ่านเฟรมไม่เจอ")
+                    break
 
-            self.frame_counter += 1
-            now = time.time()
-            annotated = frame
+                self.frame_counter += 1
+                now = time.time()
+                annotated = frame
+                
+                # ---------- ทำ YOLO แค่ตอน detecting=True ----------
+                if self.detecting and self.frame_counter % self.skip_frames == 0:
+                    try:
+                        results = self.model.track(
+                            source=frame,
+                            conf=0.45,
+                            tracker="bytetrack.yaml",
+                            device=check_device,  # GPU 0 (ปรับเป็น "cpu" ถ้าไม่มี GPU)
+                            verbose=False,
+                            persist=True,
+                        )
 
-            # ---------- ทำ YOLO แค่ตอน detecting=True ----------
-            if self.detecting and self.frame_counter % self.skip_frames == 0:
-                try:
-                    results = self.model.track(
-                        source=frame,
-                        conf=0.45,
-                        tracker="bytetrack.yaml",
-                        device="cuda",  # GPU 0 (ปรับเป็น "cpu" ถ้าไม่มี GPU)
-                        verbose=False,
-                        persist=True,
-                    )
+                        result = results[0]
+                        annotated = result.plot()
 
-                    result = results[0]
-                    annotated = result.plot()
+                        self.last_annotated = annotated.copy()
 
-                    self.process_behavior(result, now)
+                        self.process_behavior(result, now)
 
-                except Exception as e:
-                    print(f"❌ YOLO error camera {self.camera_id}: {e}")
-            # else: ใช้ภาพดิบๆ (annotated = frame)
+                    except Exception as e:
+                        print(f"❌ YOLO error camera {self.camera_id}: {e}")
+                        time.sleep(0.2)
+                        continue
+                else: 
+                    if self.last_annotated is not None:
+                        annotated = self.last_annotated.copy()
+                    else:
+                        annotated = frame
 
-            # encode JPEG เก็บไว้ใน buffer ให้ WS เอาไปส่ง
-            ok, buf = cv2.imencode(".jpg", annotated)
-            if ok:
-                with self.lock:
-                    self.jpeg_buffer = buf.tobytes()
+                # encode JPEG เก็บไว้ใน buffer ให้ WS เอาไปส่ง
+                ok, buf = cv2.imencode(".jpg", annotated)
+                if ok:
+                    with self.lock:
+                        self.jpeg_buffer = buf.tobytes()
+                if not ok:
+                    print(f" JPNG encode เกิดข้อผิดพลาดของกล้อง {self.camera_id}")
+                    continue
 
-            time.sleep(0.01)  # ~100 fps ใน thread (ยืดหยุ่น)
+                time.sleep(0.01)  # ~100 fps ใน thread (ยืดหยุ่น)
+        except Exception as e:
+            print(f"Thread กล้อง {self.camera_id} crash: {e}")
 
         # cleanup
         self.running = False
@@ -237,7 +265,7 @@ class CameraThread(threading.Thread):
         """
         ถ้าเฟรมนี้ไม่เจอ target track_id:
         - ถ้า last_best_conf > 0.65 → ใช้ last_best_class
-        - ถ้าไม่ → miss เพิ่ม, ถ้า miss>=3 → current_class=None
+        - ถ้าไม่ → miss เพิ่ม, ถ้า miss>=5 → current_class=None
         """
         timer = self.class_timer
 
@@ -263,6 +291,11 @@ class CameraThread(threading.Thread):
         if self.track_id is None:
             self.select_track_id_first_person(boxes)
 
+        if self.track_id and self.class_timer["miss"] >= 10:
+            print(f"รีเซ็ท track id ของกล้อง {self.camera_id}")
+            self.track_id = None
+            self.last_best_conf = 0.0
+            self.last_best_class = None
         found_target = False
 
         # 2) loop boxes หาเฉพาะ track_id ที่เราเลือกไว้
@@ -324,7 +357,7 @@ class CameraThread(threading.Thread):
 
         if mapped and self.last_target_conf > 0.7:
             self.interval_results.append(mapped)
-            print(f"⏱️ Cam {self.camera_id}: class: {mapped} conf: {last_scan_time} ({len(self.interval_results)})")
+            print(f"⏱️ Cam {self.camera_id}: class: {mapped} conf: {self.last_target_conf} ({len(self.interval_results)})")
 
         if len(self.interval_results) > self.max_intervals:
             self.interval_results.pop(0)
@@ -360,8 +393,7 @@ class CameraThread(threading.Thread):
         non = sum(count[c] for c in count if c in NON_ATTENDENCE) / total
 
         class_json = {k: round(v / total, 3) for k, v in count.items()}
-
-        
+  
         img_base64 = None
 
         with self.lock:
@@ -435,6 +467,10 @@ async def list_camera():
                 "name": f"กล้องตัวที่ {i}",
                 "status": "ใช้ได้"
             })
+    
+    if not cams:
+        return {"message": "ไม่เจอ USB ที่กำลังเชื่อมต่อกล้อง"}
+    
     return {"cameras": cams}
 
 
@@ -450,7 +486,7 @@ async def start_detect(camera_id: str):
     loop = asyncio.get_running_loop()
 
     if camera_id in camera_threads:
-        th = camera_threads[camera_id]
+        th = camera_threads[camera_id]        
         if th.is_alive():
             th.detecting = True
             th.loop = loop
@@ -656,7 +692,11 @@ async def summary_to_supabase_route():
             data = load_buffer(str(cam_id))
             if data:
                 all_summary_data.append(data)
-                clear_buffer(str(cam_id))
+                err_buffer = clear_buffer(str(cam_id))
+                if err_buffer:
+                    print("ไม่สามารถลบไฟล์ JSON ได้")
+            else:
+                print("ไม่เจอไฟล์ JSON ที่กำลังบันทึก")
 
         if not all_summary_data:
             return {"message": "ไม่มีข้อมูลใน buffer", "inserted": 0}

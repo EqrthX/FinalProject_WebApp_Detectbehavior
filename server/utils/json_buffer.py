@@ -10,7 +10,7 @@ def get_buffer_file(camera_id: str):
     return os.path.join(buffer_dir, f"camera_{int(camera_id) + 1}.json")
 
 # บันทึกข้อมูลลงไฟล์ json ก่อน
-def save_buffer(camera_id: str, cam_state, ATT, NON, class_json, subject_id: str):
+def save_buffer(camera_id: str, teacher_id, ATT, NON, class_json, subject_id: str):
     path = get_buffer_file(camera_id)
 
     if os.path.exists(path):
@@ -20,7 +20,7 @@ def save_buffer(camera_id: str, cam_state, ATT, NON, class_json, subject_id: str
 
         data = {
             "camera_id": int(camera_id) + 1,
-            "teacher_id": cam_state["teacher_id"],
+            "teacher_id": teacher_id,
             "subject_id": subject_id,
             "records": []   
         }

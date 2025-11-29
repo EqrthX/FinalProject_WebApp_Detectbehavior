@@ -164,7 +164,7 @@ const AdminTeachingSchedule = () => {
   // --- RENDERING ---
 
   return (
-    <div className="h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4 overflow-hidden">
+    <div className="h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-1 p-4 overflow-hidden">
       <Toaster /> 
 
       {/* 🟢 Inject CSS สำหรับ Ant Design Select ให้หน้าตาเหมือนหน้า Upload */}

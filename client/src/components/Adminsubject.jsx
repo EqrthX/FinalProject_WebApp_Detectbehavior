@@ -227,7 +227,7 @@ const Adminsubject = () => {
   };
   
   return (
-    <div className="w-full bg-white rounded-[20px] border border-[#e9e9e9] shadow-sm p-6 h-[350px] flex flex-col">
+    <div className="w-full bg-white rounded-[20px] border border-[#e9e9e9] shadow-sm p-6 h-[560px] flex flex-col">
       <h2 className="text-[16px] font-semibold mb-3">หมวดหมู่วิชา</h2>
 
       {/* ช่องค้นหา */}

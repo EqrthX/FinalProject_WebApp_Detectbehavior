@@ -81,7 +81,7 @@ const AdminHomePage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4">
+    <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-1 p-4">
       {/* Sidebar */}
       <aside className="w-full md:w-64">
         <AdminNavbar />
@@ -106,17 +106,21 @@ const AdminHomePage = () => {
           {/* เนื้อหา */}
           <div
             className="
-                grid gap-10 
-                grid-cols-1 md:grid-cols-2
+                grid gap-6 lg:gap-10 
+                grid-cols-1 
+                md:grid-cols-2      /* Tablet: แบ่งครึ่ง 50/50 เหมือนเดิม */
+                lg:grid-cols-3      /* PC: แบ่งเป็น 3 ส่วน */
                 items-start
                 max-w-screen-2xl mx-auto mt-9
               "
           >
-            <div>
+            {/* 🟢 กล่องกราฟ: สั่งให้กินพื้นที่ 2 ส่วน (lg:col-span-2) */}
+            <div className="lg:col-span-2 w-full">
               <AdminChart selectedCategory={selectedCategory} />
             </div>
 
-            <div>
+            {/* กล่องรายวิชา: กินพื้นที่ 1 ส่วนที่เหลือ (โดย default) */}
+            <div className="w-full">
               <Adminsubject selectedCategory={selectedCategory} />
             </div>
 
@@ -135,16 +139,19 @@ const AdminHomePage = () => {
                         className="
                           min-w-[200px] flex-1 
                           bg-white rounded-[20px] border border-[#e9e9e9]
-                          p-6 shadow-sm flex flex-col items-start 
+                          p-6 shadow-sm flex flex-col items-center  /* 🟢 1. จัดแกนขวางให้อยู่ตรงกลาง (จากเดิม items-start) */
+            justify-center /* 🟢 2. จัดแกนตั้งให้อยู่ตรงกลาง (เผื่อกล่องสูงขึ้น) */
+            text-center    /* 🟢 3. บังคับให้ text อยู่ตรงกลาง */
                           transition-all
                         "
                         >
-                        <h2 className="text-sm font-medium text-gray-700 mb-1">
-                            {item.title}
-                        </h2>
+                        
                         <p className="text-3xl font-bold text-[#3D42D3]">
                             {item.value}
                         </p>
+                        <h2 className="text-sm font-medium text-gray-700 mb-1">
+                            {item.title}
+                        </h2>
                     </div>
                 ))
             )}

@@ -19,15 +19,20 @@ const data = [
   { subject: "GE407-1", attentive: 66, inattentive: 34 },
 ];
 
-const PercentBarChart = () => {
+const AdminChart = () => {
   return (
-    <div className=" w-full sm:max-w-[650px] md:max-w-[900px] lg:max-w-[740px] h-[420px] md:h-[480px] lg:h-[350px] bg-white border border-gray-200 rounded-2xl shadow-sm p-5 md:p-6 lg:p-8">
-      {/* ... */}
-
+    <div 
+      // 🟢 แก้ไขตรงนี้: 
+      // 1. ลบ max-w-... ออก หรือเปลี่ยนเป็น w-full เพื่อให้กว้างเต็มช่อง Grid
+      // 2. เพิ่ม h-[...] เป็น 500px (หรือ 550px) เพื่อให้กราฟสูงขึ้น
+      className="w-full h-[560px] bg-white border border-gray-200 rounded-2xl shadow-sm p-5 md:p-6 lg:p-8"
+    >
       <h2 className="text-md font-semibold mb-5">
         เปอร์เซ็นต์ตั้งใจเรียน (รายวิชา)
       </h2>
-      <ResponsiveContainer width="100%" height="93%">
+      
+      {/* ResponsiveContainer จะขยายตามขนาดกล่องแม่ที่เราแก้ด้านบน */}
+      <ResponsiveContainer width="100%" height="90%">
         <BarChart data={data}>
           <XAxis dataKey="subject" />
           <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
@@ -41,4 +46,4 @@ const PercentBarChart = () => {
   );
 };
 
-export default PercentBarChart;
+export default AdminChart;

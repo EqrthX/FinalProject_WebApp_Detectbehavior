@@ -117,7 +117,8 @@ const AdminTeachers = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4">
+    // 🟢 เพิ่ม h-screen (หรือ min-h-screen) เพื่อให้ container หลักสูงเต็มจอ
+    <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-1 p-4 h-screen overflow-hidden">
       <Toaster />
       <aside className="w-full md:w-64"> <AdminNavbar /> </aside>
 
@@ -125,7 +126,7 @@ const AdminTeachers = () => {
         <div className="max-w-screen-2xl mx-auto px-6 md:px-4">
           <div className="mt-5"> <Breadcrumbs /> </div>
 
-          <div className="w-full bg-white rounded-[20px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 flex items-center justify-between">
+          <div className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 flex items-center justify-between sticky top-[20px] z-30">
             <h1 className="text-[18px] font-semibold text-black">อาจารย์</h1>
           </div>
 

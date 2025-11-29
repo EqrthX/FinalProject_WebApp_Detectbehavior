@@ -10,7 +10,7 @@ def get_model():
         return model
     
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))   
-    MODEL_PATH = os.path.join(BASE_DIR, "..", "..", "runs", "detect", "train", "weights", "best.pt")
+    MODEL_PATH = os.path.join(BASE_DIR, "..", "..", "dataset", "detect", "train", "weights", "best.pt")
     
     if not os.path.exists(MODEL_PATH):
         print(f"❌ [model_loader] Model file not found at: {MODEL_PATH}")

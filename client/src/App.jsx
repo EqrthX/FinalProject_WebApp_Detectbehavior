@@ -27,7 +27,7 @@ function App() {
         <Route path="/user/Homepage" element={<HomePage />} />
         <Route>
           <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
-          <Route path="/user/Record" element={<Record />} />
+          <Route path="/user/Record/:subjectId" element={<Record />} />
           <Route path="/user/summarize" element={<SummarizePage />} />
         </Route>
         <Route path="/user/ResultsPage" element={<ResultsPage />} />

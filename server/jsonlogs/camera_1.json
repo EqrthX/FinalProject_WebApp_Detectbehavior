@@ -1,0 +1,85 @@
+{
+  "camera_id": 1,
+  "teacher_id": "271054",
+  "subject_id": "ST161",
+  "records": [
+    {
+      "created_at": "2025-11-29T12:25:48.452445+07:00",
+      "Attention": 0.091,
+      "Non_Attention": 0.909,
+      "class_json": {
+        "LookingAway": 0.818,
+        "UsingPhone": 0.091,
+        "Looking_at_the_board": 0.091
+      }
+    },
+    {
+      "created_at": "2025-11-29T12:26:49.526334+07:00",
+      "Attention": 1.0,
+      "Non_Attention": 0.0,
+      "class_json": {
+        "Focused": 1.0
+      }
+    },
+    {
+      "created_at": "2025-11-29T12:27:50.851557+07:00",
+      "Attention": 0.583,
+      "Non_Attention": 0.417,
+      "class_json": {
+        "UsingPhone": 0.167,
+        "LookingAway": 0.25,
+        "Looking_at_the_board": 0.333,
+        "Taking_notes": 0.25
+      }
+    },
+    {
+      "created_at": "2025-11-29T12:28:52.159958+07:00",
+      "Attention": 0.75,
+      "Non_Attention": 0.25,
+      "class_json": {
+        "LookingAway": 0.25,
+        "Looking_at_the_board": 0.333,
+        "Taking_notes": 0.417
+      }
+    },
+    {
+      "created_at": "2025-11-29T12:29:53.139597+07:00",
+      "Attention": 0.0,
+      "Non_Attention": 1.0,
+      "class_json": {
+        "UsingPhone": 1.0
+      }
+    },
+    {
+      "created_at": "2025-11-29T12:30:54.055230+07:00",
+      "Attention": 0.636,
+      "Non_Attention": 0.364,
+      "class_json": {
+        "UsingPhone": 0.091,
+        "LookingAway": 0.273,
+        "Focused": 0.636
+      }
+    },
+    {
+      "created_at": "2025-11-29T12:31:55.325449+07:00",
+      "Attention": 0.583,
+      "Non_Attention": 0.417,
+      "class_json": {
+        "UsingPhone": 0.167,
+        "LookingAway": 0.25,
+        "Looking_at_the_board": 0.333,
+        "Taking_notes": 0.083,
+        "Focused": 0.167
+      }
+    },
+    {
+      "created_at": "2025-11-29T14:43:22.242925+07:00",
+      "Attention": 0.0,
+      "Non_Attention": 1.0,
+      "class_json": {
+        "Talking": 0.5,
+        "LookingAway": 0.5
+      }
+    }
+  ]
+}

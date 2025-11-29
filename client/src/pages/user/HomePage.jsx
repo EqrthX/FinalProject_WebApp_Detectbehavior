@@ -4,7 +4,7 @@ import BookMark from "../../assets/BookMark.png";
 
 
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import Classroom from '../../components/Classroom';
+import Schedule from '../../components/schedule';
 
 const HomePage = () => {
 
@@ -65,7 +65,7 @@ const HomePage = () => {
         {/* ตารางสอน ดึงมาจาก complemant Classroom */}
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2 bg-white rounded-2xl shadow p-6 ">
-            <Classroom/> 
+            <Schedule/> 
           </div>
                    
           {/* ฝั่งขวา: กราฟ + สรุปผล */}

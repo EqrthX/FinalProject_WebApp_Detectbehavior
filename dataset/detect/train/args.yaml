@@ -1,10 +1,10 @@
 task: detect
 mode: train
 model: runs/detect/train/weights/last.pt
-data: C:\Users\User\Desktop\train\Project_Detection.v4-model-v3.2.yolov11\data.yaml
+data: C:\Users\User\Desktop\train\Project_Detection.v9i.yolov11\data.yaml
 epochs: 100
 time: null
-patience: 20
+patience: 40
 batch: 16
 imgsz: 640
 save: true

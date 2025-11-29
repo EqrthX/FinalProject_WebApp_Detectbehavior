@@ -3,6 +3,7 @@ import cv2
 import time
 import base64
 import asyncio
+import torch
 from datetime import datetime
 from collections import defaultdict
 from typing import Optional
@@ -74,7 +75,6 @@ class CameraThread(threading.Thread):
         self.summary_ready_event: asyncio.Event | None = None
 
         # tracking logic
-        self.track_id: int | None = None
         self.class_timer = {
             "current_class": None,
             "duration": 0.0,
@@ -87,17 +87,21 @@ class CameraThread(threading.Thread):
         self.interval_count = 0
         self.max_intervals = 12  # 12 x 5 วินาที = 1 นาที
 
-        self.last_best_class: str | None = None
-        self.last_best_conf: float = 0.0
-
         self.last_target_conf = 0.0
         self.last_annotated = None
-        self.skip_frames = 2  # detect ทุก 3 เฟรม เพื่อลดโหลด
+        self.skip_frames = 3  # detect ทุก 3 เฟรม เพื่อลดโหลด
         self.frame_counter = 0
 
         # YOLO model (แยก instance ต่อ thread)
         self.model = None
 
+        # target tracking (predict mode)
+        self.target_box = None         # เก็บ box เป้าหมาย
+        self.target_center = None      # จุดกลางของเป้าหมาย
+        self.target_lost = 0           # เก็บว่าหายไปกี่เฟรม
+        self.target_max_lost = 15      # ปล่อยได้ 15 เฟรม (~0.5 วินาที)
+        
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
     # ------------- เปิดกล้อง -------------
     def open_camera(self) -> bool:
         backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
@@ -108,10 +112,10 @@ class CameraThread(threading.Thread):
                 if cap.isOpened():
                     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                    cap.set(cv2.CAP_PROP_FPS, 30)
+                    cap.set(cv2.CAP_PROP_FPS, 60)
                     cap.set(
                         cv2.CAP_PROP_FOURCC,
-                        cv2.VideoWriter_fourcc("M", "J", "P", "G"),
+                        cv2.VideoWriter_fourcc(*"MJPG"),
                     )
                     self.cap = cap
                     print(f"✅ Camera {self.camera_id} opened with backend={backend}")
@@ -140,15 +144,6 @@ class CameraThread(threading.Thread):
             return
 
         self.running = True
-
-        check_device = None
-        import torch
-        if torch.cuda.is_available():
-            check_device = torch.device("cuda")
-            print(f"GPU พร้อมใช้งาน : {check_device}")
-        else:
-            check_device = torch.device("cpu")
-            print(f"GPU ไม่พร้อมใช้งานใช้ : {check_device}")
         try:
             while not self.stop_flag.is_set():
                 ret, frame = self.cap.read()
@@ -163,13 +158,11 @@ class CameraThread(threading.Thread):
                 # ---------- ทำ YOLO แค่ตอน detecting=True ----------
                 if self.detecting and self.frame_counter % self.skip_frames == 0:
                     try:
-                        results = self.model.track(
+                        results = self.model.predict(
                             source=frame,
                             conf=0.45,
-                            tracker="bytetrack.yaml",
-                            device=check_device,  # GPU 0 (ปรับเป็น "cpu" ถ้าไม่มี GPU)
+                            device=self.device,  # GPU 0 (ปรับเป็น "cpu" ถ้าไม่มี GPU)
                             verbose=False,
-                            persist=True,
                         )
 
                         result = results[0]
@@ -177,7 +170,7 @@ class CameraThread(threading.Thread):
 
                         self.last_annotated = annotated.copy()
 
-                        self.process_behavior(result, now)
+                        self.process_behavior_predict(result, now)
 
                     except Exception as e:
                         print(f"❌ YOLO error camera {self.camera_id}: {e}")
@@ -218,24 +211,6 @@ class CameraThread(threading.Thread):
 
     # ------------- Tracking / Behavior logic -------------
 
-    def select_track_id_first_person(self, boxes):
-        """
-        เลือกคนแรกที่ conf สูงสุดในเฟรมแรก แล้วล็อก track_id นี้ยาว ๆ
-        """
-        best_id = None
-        best_conf = 0.0
-        for box in boxes:
-            if box.id is None:
-                continue
-            tid = int(box.id)
-            conf = float(box.conf.item())
-            if conf > best_conf:
-                best_conf = conf
-                best_id = tid
-
-        self.track_id = best_id
-        print(f"🎯 Camera {self.camera_id} picked target track_id = {best_id}")
-
     def update_class_state(self, label: str):
         """
         อัปเดต state ของ current_class / miss
@@ -261,76 +236,80 @@ class CameraThread(threading.Thread):
             timer["duration"] = 0
             timer["miss"] = 0
 
-    def handle_missing_target(self):
+    def process_behavior_predict(self, result, now: float):
         """
-        ถ้าเฟรมนี้ไม่เจอ target track_id:
-        - ถ้า last_best_conf > 0.65 → ใช้ last_best_class
-        - ถ้าไม่ → miss เพิ่ม, ถ้า miss>=5 → current_class=None
-        """
-        timer = self.class_timer
-
-        if self.last_best_conf > 0.65 and self.last_best_class:
-            timer["current_class"] = self.last_best_class
-            return
-
-        timer["miss"] += 1
-        if timer["miss"] >= 5:
-            timer["current_class"] = None
-            timer["duration"] = 0
-
-    def process_behavior(self, result, now: float):
-        """
-        ใช้กับ YOLO result (ByteTrack):
-        - เลือก track_id เป้าหมาย (คนแรก) ครั้งเดียว
-        - ทุกเฟรม หาเฉพาะ box ที่ track_id == target แล้วอัปเดต class
-        - ทุก 5 วิ ทำ interval logic
+        Tracking แบบ manual จาก predict:
+        - เลือก box เป้าหมาย
+        - ตามด้วย center-distance
+        - อัปเดต class behavior
         """
         boxes = result.boxes
+        dets = []
 
-        # 1) ถ้ายังไม่มี target → เลือกคนแรกที่ conf สูงสุด
-        if self.track_id is None:
-            self.select_track_id_first_person(boxes)
-
-        if self.track_id and self.class_timer["miss"] >= 10:
-            print(f"รีเซ็ท track id ของกล้อง {self.camera_id}")
-            self.track_id = None
-            self.last_best_conf = 0.0
-            self.last_best_class = None
-        found_target = False
-
-        # 2) loop boxes หาเฉพาะ track_id ที่เราเลือกไว้
         for box in boxes:
-            if box.id is None:
-                continue
-
-            tid = int(box.id)
-            conf = float(box.conf.item())
             cls_idx = int(box.cls)
             label = self.model.names[cls_idx]
 
-            # เก็บ best class เผื่อ fallback
-            if conf > self.last_best_conf:
-                self.last_best_conf = conf
-                self.last_best_class = label
+            # เอาเฉพาะ class ที่ต้องการ (ตามโมเดลของคุณ)
+            if label not in ATTENDENCE + NON_ATTENDENCE:
+                continue
 
-            if tid == self.track_id:
-                found_target = True
-                self.last_target_conf = conf
-                self.update_class_state(label)
-                break
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            conf = float(box.conf.item())
+            cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
 
-        # 3) ถ้าไม่เจอ target ในเฟรมนี้ → ใช้ fallback
-        if not found_target:
-            self.last_target_conf = 0.0
-            self.handle_missing_target()
+            dets.append({
+                "box": box,
+                "label": label,
+                "conf": conf,
+                "center": (cx, cy)
+            })
 
-        # 4) เช็คครบ 5 วิหรือยัง → interval logic
+        # ไม่มี detection
+        if not dets:
+            self.target_lost += 1
+            if self.target_lost >= self.target_max_lost:
+                self.target_box = None
+                self.target_center = None
+            return
+
+        # ถ้าไม่มี target → เลือก box conf สูงสุด
+        if self.target_box is None:
+            best = max(dets, key=lambda d: d["conf"])
+            self.target_box = best["box"]
+            self.target_center = best["center"]
+            self.last_target_conf = best["conf"]   # สำคัญมาก
+            self.target_lost = 0
+            # update behavior ทันทีในเฟรมแรก
+            if best["conf"] > 0.60:
+                self.update_class_state(best["label"])
+            return
+
+        # มี target แล้ว → หา box ที่ใกล้ที่สุด
+        tx, ty = self.target_center
+
+        def dist(det):
+            cx, cy = det["center"]
+            return (cx - tx) ** 2 + (cy - ty) ** 2
+
+        best_det = min(dets, key=dist)
+
+        # update target
+        self.target_box = best_det["box"]
+        self.target_center = best_det["center"]
+        self.last_target_conf = best_det["conf"]   # อัปเดต conf!!!
+        self.target_lost = 0
+
+        # update behavior logic
+        if best_det["conf"] > 0.60:
+            self.update_class_state(best_det['label'])
+
+        # interval summary
         if now - self.last_interval_time >= self.interval_seconds:
             self.last_interval_time = now
             self.handle_interval()
 
     # ------------- Interval / Summary -------------
-
     def handle_interval(self):
         """
         ทุก 5 วิ:
@@ -355,7 +334,7 @@ class CameraThread(threading.Thread):
         else:
             self.class_timer["duration"] = 0
 
-        if mapped and self.last_target_conf > 0.7:
+        if mapped:
             self.interval_results.append(mapped)
             print(f"⏱️ Cam {self.camera_id}: class: {mapped} conf: {self.last_target_conf} ({len(self.interval_results)})")
 
@@ -417,10 +396,9 @@ class CameraThread(threading.Thread):
         # บันทึกลง buffer สำหรับ insert Supabase ทีหลัง
         if self.teacher_id and self.subject_id:
             try:
-                fake_cam_state = {"teacher_id": self.teacher_id}
                 save_buffer(
                     camera_id=self.camera_id,
-                    cam_state=fake_cam_state,
+                    teacher_id=self.teacher_id,
                     ATT=att,
                     NON=non,
                     class_json=class_json,
@@ -429,11 +407,9 @@ class CameraThread(threading.Thread):
             except Exception as e:
                 print(f"❌ save_buffer error cam {self.camera_id}: {e}")
 
-
 # ==============================================================================
 # Scan Cameras
 # ==============================================================================
-
 
 def quick_scan_camera(index: int) -> bool:
     cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
@@ -477,7 +453,6 @@ async def list_camera():
 # ==============================================================================
 # Start / Stop / Close
 # ==============================================================================
-
 
 @camera_router.get("/start-all")
 async def start_all_detections(
@@ -693,7 +668,72 @@ async def summary_to_supabase_route():
 
         if insert_payload:
             supabase_client.table("camera_logs").insert(insert_payload).execute()
+        grops = defaultdict(list)
 
+        for row in insert_payload:
+            teacher_id = row["teacher_id"]
+            subject_id = row["subject_id"]
+            camera_id = row["camera_id"]
+
+            dt = (
+                row["created_at"]
+                if isinstance(row["created_at"], datetime)
+                else datetime.fromisoformat(str(row["created_at"]).replace("Z", "+00:00"))
+            )
+
+            date_key = dt.date().isoformat()
+
+            key = (teacher_id, subject_id, camera_id, date_key)
+            grops[key].append(row)
+
+        daily_rows = []
+
+        for  (teacher_id, subject_id, camera_id, summary_date), rows in grops.items():
+            total_att = 0.0
+            total_non = 0.0
+            count = len(rows)
+
+            class_totals = defaultdict(float)
+
+            for r in rows:
+                att = float(r.get("Attention") or 0.0)
+                non = float(r.get("Non_Attention") or 0.0)
+                total_att += att
+                total_non += non
+
+                cj = r.get("class_json") or {}
+                if isinstance(cj, str):
+                    try:
+                        import json
+                        cj = json.loads(cj)
+                    except:
+                        cj = {}
+                
+                for cls_name, ratio in cj.items():
+                    class_totals[cls_name] += float(ratio or 0.0)
+            avg_att = total_att / count if count > 0 else 0.0
+            avg_non = total_non / count if count > 0 else 0.0
+
+            class_summary = {}
+            if count > 0:
+                for cls_name, total_val in class_totals.items():
+                    class_summary[cls_name] = round(total_val / count, 3)
+            
+            daily_rows.append(
+                {
+                    "teacher_id": teacher_id,
+                    "subject_id": subject_id,
+                    "camera_id": camera_id,
+                    "summary_date": summary_date,
+                    "avg_attention": round(avg_att, 3),
+                    "avg_non_attention": round(avg_non, 3),
+                    "class_json_summary": class_summary,
+                }
+            )
+
+        if daily_rows:
+            supabase_client.table("camera_daily_summary").insert(daily_rows).execute()
+            
         return {
             "message": "บันทึกข้อมูลเสร็จสิ้น",
             "inserted": len(insert_payload),

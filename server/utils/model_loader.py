@@ -1,13 +1,7 @@
 from ultralytics import YOLO
 import os
 
-model = None
-
 def get_model():
-    global model
-
-    if model is not None:
-        return model
     
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))   
     MODEL_PATH = os.path.join(BASE_DIR, "..", "..", "dataset", "detect", "train", "weights", "best.pt")

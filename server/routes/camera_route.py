@@ -40,8 +40,11 @@ available_cameras: list[dict] = []
 last_scan_time: float = 0
 # Lock กันไม่ให้มีการ scan กล้องซ้อนกัน
 scan_lock = asyncio.Lock()
+
 model_path = get_model_path()
 
+TARGET_FPS = 30
+DETECT_INTERVEL = 1 / TARGET_FPS
 
 # ==============================================================================
 #  Class: CameraThread — กล้อง 1 ตัว = 1 Thread
@@ -147,6 +150,7 @@ class CameraThread(threading.Thread):
         # ให้หายไปได้สูงสุดกี่เฟรมก่อนจะยอม reset main_track_id
         self.main_max_lost_frames = 15    # สมมติประมาณ ~0.5 วินาที ถ้า 30fps
 
+        self.last_detect_time = 0
     # ----------------------------------------------------------------------
     # ฟังก์ชันเปิดกล้อง (พยายามหลาย backend)
     # ----------------------------------------------------------------------
@@ -235,7 +239,8 @@ class CameraThread(threading.Thread):
 
         # ----------------- 3) เริ่มลูปหลัก -----------------
         self.running = True
-
+        
+        
         try:
             # วนลูปไปเรื่อย ๆ จนกว่าจะมีคนสั่ง stop_flag.set()
             while not self.stop_flag.is_set():
@@ -252,7 +257,9 @@ class CameraThread(threading.Thread):
 
                 # เวลา timestamp ตอนนี้ (ใช้กับ interval summary)
                 now = time.time()
-
+                if now - self.last_detect_time < DETECT_INTERVEL:
+                    continue
+                self.last_detect_time = now
                 # เริ่มจากใช้ภาพดิบจากกล้องก่อน
                 annotated = frame
 

@@ -40,12 +40,12 @@ export const AddSubjectAction = ({ isOpen, onClose, onSuccess }) => {
   
       if (selectError) {
         console.error("Supabase Select Error:", selectError);
-        toast.error("เกิดข้อผิดพลาดในการตรวจสอบข้อมูล ❌");
+        toast.error("เกิดข้อผิดพลาดในการตรวจสอบข้อมูล");
         return;
       }
   
       if (existingSubjects && existingSubjects.length > 0) {
-        toast.error(`ไม่สามารถเพิ่มได้: รหัสวิชา ${newSubject.subject_id} มีอยู่ในระบบแล้ว ⚠️`);
+        toast.error(`ไม่สามารถเพิ่มได้: รหัสวิชา ${newSubject.subject_id} มีอยู่ในระบบแล้ว`);
         return;
       }
   
@@ -59,10 +59,10 @@ export const AddSubjectAction = ({ isOpen, onClose, onSuccess }) => {
       ]);
   
       if (insertError) {
-        toast.error("เกิดข้อผิดพลาดในการเพิ่มรายวิชา ❌");
+        toast.error("เกิดข้อผิดพลาดในการเพิ่มรายวิชา");
         console.error(insertError);
       } else {
-        toast.success("เพิ่มรายวิชาสำเร็จ! ✅");
+        toast.success("เพิ่มรายวิชาสำเร็จ!");
         onSuccess(); 
         onClose();   
       }
@@ -118,11 +118,7 @@ export const AddSubjectAction = ({ isOpen, onClose, onSuccess }) => {
                 className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-gray-50 appearance-none placeholder-transparent"
               >
                 <option value="" disabled></option>
-                <option value="1">1</option>
-                <option value="2">2</option>
                 <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="5">5</option>
                 <option value="6">6</option>
               </select>
               <label htmlFor="credit" className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none ${newSubject.credit ? "-top-2.5 text-gray-400" : "top-2.5 text-gray-400"}`}>

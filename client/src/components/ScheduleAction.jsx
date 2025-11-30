@@ -74,7 +74,7 @@ export const UploadScheduleAction = ({
   const handleUploadSchedule = async (e) => {
     e.preventDefault();
 
-    // 1. ตรวจสอบว่ากรอกข้อมูลครบหรือไม่ (โค้ดเดิม)
+    // 1. Validation พื้นฐาน (เหมือนเดิม)
     if (
       !selectedCode || !subjectName || !classSchedule.year || !classSchedule.semester ||
       !classSchedule.group || !classSchedule.day || !classSchedule.room || !classSchedule.building ||
@@ -88,10 +88,9 @@ export const UploadScheduleAction = ({
     const endStr = classSchedule.classTimes[1].format(format);
 
     // ----------------------------------------------------
-    // 🔴 ส่วนที่เพิ่มใหม่: ตรวจสอบตารางสอนซ้ำ/ชนกัน
+    // 🔴 ส่วนตรวจสอบตาราง (ฉบับสมบูรณ์: Co-teaching + Multitasking)
     // ----------------------------------------------------
     try {
-      // ดึงข้อมูลตารางสอนทั้งหมด ของ ปี/เทอม/วัน นั้นๆ มาตรวจสอบ
       const { data: existingSchedules, error: checkError } = await supabase
         .from("class_schedule")
         .select("*")
@@ -101,53 +100,70 @@ export const UploadScheduleAction = ({
 
       if (checkError) throw checkError;
 
-      // แปลงเวลาใหม่เป็น dayjs object เพื่อใช้เปรียบเทียบ (ใช้วันที่สมมติเพื่อให้เทียบเวลาได้ง่าย)
       const newStart = dayjs(`2000-01-01 ${startStr}`);
       const newEnd = dayjs(`2000-01-01 ${endStr}`);
 
-      // วนลูปเช็คทีละรายการที่ดึงมา
       for (const existing of existingSchedules) {
-        // 1. เช็คว่าเป็นวิชาเดียวกัน กลุ่มเดียวกันไหม? (ป้องกันเพิ่มซ้ำ)
+        
+        // 1. เช็ค Duplicate เป๊ะๆ (วิชาเดิม + กลุ่มเดิม + อาจารย์คนเดิม)
         if (
             existing.subject_id === selectedCode && 
-            existing.group === classSchedule.group
+            existing.group === classSchedule.group &&
+            existing.teacher_id === classSchedule.teacher_id
         ) {
-            toast.error(`ไม่สามารถเพิ่มได้: วิชานี้กลุ่มเรียนที่ ${classSchedule.group} มีตารางเรียนในวันนี้แล้ว ⚠️`);
+            toast.error(`ข้อมูลซ้ำ: อาจารย์ ${classSchedule.teacher_name} มีตารางสอนวิชานี้ กลุ่มนี้ อยู่แล้ว ⚠️`);
             return;
         }
 
-        // 2. เช็คเรื่องเวลาชนกัน (Time Overlap)
-        // สูตร: (StartA < EndB) && (EndA > StartB)
+        // 2. เช็คเวลาชน (Time Overlap)
         const existStart = dayjs(`2000-01-01 ${existing.start_time}`);
         const existEnd = dayjs(`2000-01-01 ${existing.end_time}`);
-
         const isTimeOverlap = newStart.isBefore(existEnd) && newEnd.isAfter(existStart);
 
         if (isTimeOverlap) {
-            // 2.1 ห้องเรียนชนกันไหม?
-            if (existing.room === classSchedule.room && existing.building === classSchedule.building) {
-                toast.error(`ไม่สามารถเพิ่มได้: ห้อง ${classSchedule.room} มีการเรียนการสอนในช่วงเวลานี้แล้ว (${existing.subject_id}) ⚠️`);
-                return;
+            
+            // 🟢 CASE A: เช็คอาจารย์ชน (Teacher Conflict)
+            if (existing.teacher_id === classSchedule.teacher_id) {
+                // อาจารย์คนเดียวกัน เวลาชนกัน...
+                
+                // เช็คว่า "ห้องเดียวกัน" ไหม?
+                if (existing.room === classSchedule.room && existing.building === classSchedule.building) {
+                    // ✅ ถ้าห้องเดียวกัน -> อนุญาต! (อาจารย์สอน 2 วิชาในห้องเดิมพร้อมกัน)
+                    // ไม่ต้องทำอะไร ปล่อยผ่านไปเช็ค Loop ถัดไป
+                    continue; 
+                } else {
+                    // ❌ ถ้าคนละห้อง -> ห้าม! (อาจารย์แยกร่างไปสอนอีกห้องไม่ได้)
+                    toast.error(`ไม่สามารถเพิ่มได้: อาจารย์ ${classSchedule.teacher_name} ติดสอนอยู่ที่ห้อง ${existing.room} ในเวลานี้ ⚠️`);
+                    return;
+                }
             }
 
-            // 2.2 อาจารย์คนเดียวกันสอนซ้อนไหม?
-            if (existing.teacher_id === classSchedule.teacher_id) {
-                toast.error(`ไม่สามารถเพิ่มได้: อาจารย์ท่านนี้มีตารางสอนวิชาอื่นในช่วงเวลานี้แล้ว ⚠️`);
-                return;
+            // 🟢 CASE B: เช็คห้องชน (Room Conflict) - กรณีคนละอาจารย์ (เพราะถ้าอาจารย์เดียวกัน Case A จัดการไปแล้ว)
+            if (existing.room === classSchedule.room && existing.building === classSchedule.building) {
+                
+                // เช็คว่าเป็น "วิชาเดียวกัน + กลุ่มเดียวกัน" ไหม? (Co-teaching)
+                const isSameSubjectAndGroup = (existing.subject_id === selectedCode && existing.group === classSchedule.group);
+
+                if (isSameSubjectAndGroup) {
+                    // ✅ อนุญาต: Co-teaching (วิชาเดิม คนละอาจารย์ ห้องเดิม)
+                    continue;
+                } else {
+                    // ❌ ไม่อนุญาต: มีคนอื่นใช้ออกอยู่สอนวิชาอื่น
+                    toast.error(`ห้อง ${classSchedule.room} ไม่ว่าง (มีสอนวิชา ${existing.subject_id}) ⚠️`);
+                    return;
+                }
             }
         }
       }
 
     } catch (err) {
       console.error("Check duplicate error:", err);
-      toast.error("เกิดข้อผิดพลาดในการตรวจสอบตารางเรียน ❌");
+      toast.error("เกิดข้อผิดพลาดในการตรวจสอบ ❌");
       return;
     }
     // ----------------------------------------------------
-    // 🟢 จบส่วนตรวจสอบ
-    // ----------------------------------------------------
 
-    // ถ้าผ่านการตรวจสอบทั้งหมด ก็ทำการ Insert (โค้ดเดิม)
+    // ถ้าผ่านหมด ก็ Insert ตามปกติ
     const dataToInsert = {
       subject_id: selectedCode,
       subject_name: subjectName,
@@ -167,10 +183,9 @@ export const UploadScheduleAction = ({
     const { error } = await supabase.from("class_schedule").insert([dataToInsert]);
 
     if (error) {
-      toast.error(`เกิดข้อผิดพลาด: ตรวจสอบข้อมูลอีกครั้ง ❌`);
-      console.error("Supabase insert error:", error);
+      toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
     } else {
-      toast.success("อัพโหลดตารางสอนสำเร็จ! ✅");
+      toast.success("เพิ่มอาจารย์เข้าสู่ตารางสอนเรียบร้อย!"); // เปลี่ยนข้อความให้สื่อความหมาย
       onSuccess(); 
       onClose();   
     }

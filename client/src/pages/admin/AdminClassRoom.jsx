@@ -130,7 +130,7 @@ const AdminClassRoom = () => {
             <div className="mt-4 p-3 text-sm text-gray-600">
               <p className="italic">*หมายเหตุ</p>
               <p className="mt-1">
-                ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุุกภาคเทอม
+                ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุกภาคเทอม
               </p>
             </div>
           </div>

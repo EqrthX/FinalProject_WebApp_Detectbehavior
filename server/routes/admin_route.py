@@ -47,4 +47,5 @@ async def create_teacher(
         else:
             raise HTTPException(status_code=400, detail=f"Insert failed: {result.error}")
     except Exception as e:
+        print(f"Error: {e}") # <--- มันจะปริ้น Error ออกมาตรงนี้
         raise HTTPException(status_code=400, detail=str(e))

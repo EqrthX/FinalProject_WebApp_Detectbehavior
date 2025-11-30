@@ -264,35 +264,60 @@ const AdminTeachingSchedule = () => {
               </div>
             </div>
 
-            <div className="flex-1 max-h-[560px] overflow-y-auto overflow-x-auto relative">
-              <table className="min-w-full border border-gray-200">
-                <thead className="bg-[#f2f2f2] sticky top-0 z-[5]">
+            {/* เพิ่ม relative ที่ container หลักเพื่อให้ sticky ทำงานเทียบกับกรอบนี้ */}
+            <div className="h-[567px] overflow-y-auto overflow-x-auto relative shadow-inner border border-gray-300 rounded-lg"> {/* 🟢 เพิ่ม border รอบนอก */}
+              <table className="min-w-full border-separate border-spacing-0 text-sm"> {/* 🟢 เพิ่ม text-sm เพื่อความสวยงาม */}
+                <thead className="bg-[#f2f2f2] sticky top-0 z-[30] text-gray-700 font-semibold"> 
                   <tr>
-                    <th className="text-left px-4 py-2 border border-gray-300">รหัสวิชา</th>
-                    <th className="text-left px-4 py-2 border border-gray-300">ชื่อวิชา</th>
-                    <th className="text-left px-4 py-2 border border-gray-300">ปี</th>
-                    <th className="text-left px-4 py-2 border border-gray-300">เทอม</th>
-                    <th className="text-left px-4 py-2 border border-gray-300">กลุ่ม</th>
-                    <th className="text-left px-4 py-2 border border-gray-300">วัน</th>
-                    <th className="text-left px-4 py-2 border border-gray-300">เวลา</th>
-                    <th className="text-left px-4 py-2 border border-gray-300">ห้อง</th>
-                    <th className="text-left px-4 py-2 border border-gray-300">ตึก</th>
-                    <th className="text-left px-4 py-2 border border-gray-300">หน่วยกิต</th>
-                    <th className="text-left px-4 py-2 border border-gray-300">ผู้สอน</th>
-                    <th className="text-center px-4 py-2 border border-gray-300 w-[100px]">จัดการ</th>
+                    {/* 🟢 1. รหัสวิชา (Sticky ซ้ายสุด) - เพิ่ม border-r */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 whitespace-nowrap sticky left-0 z-40 bg-[#f2f2f2] w-[120px] min-w-[120px]">
+                      รหัสวิชา
+                    </th>
+
+                    {/* 🟢 2. ชื่อวิชา (Sticky ซ้าย) - เพิ่ม border-r */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[250px] sticky left-[120px] z-40 bg-[#f2f2f2] shadow-[4px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                      ชื่อวิชา
+                    </th>
+                    
+                    {/* --- คอลัมน์ทั่วไป (เพิ่ม border-r ให้ทุกอันเพื่อเป็นตาราง) --- */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[40px]">ปี</th>
+                    
+                    {/* 🎯 แก้ไข: จัดกึ่งกลาง เทอม */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[40px]">เทอม</th>
+                    
+                    {/* 🎯 แก้ไข: จัดกึ่งกลาง กลุ่ม */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[40px]">กลุ่ม</th>
+                    
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[80px]">วัน</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[120px] whitespace-nowrap">เวลา</th>
+                    
+                    {/* 🎯 แก้ไข: จัดกึ่งกลาง ห้อง */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[100px]">ห้อง</th>
+                    
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[60px]">ตึก</th>
+                    
+                    {/* 🎯 แก้ไข: จัดกึ่งกลาง หน่วยกิต */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[80px]">หน่วยกิต</th>
+                    
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[200px] whitespace-nowrap">ผู้สอน</th>
+
+                    {/* 🟢 3. จัดการ (Sticky ขวาสุด) */}
+                    <th className="text-center px-4 py-3 border-b border-gray-300 w-[100px] sticky right-0 z-40 bg-[#f2f2f2] shadow-[-4px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                      จัดการ
+                    </th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan="12" className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan="12" className="px-4 py-8 text-center text-gray-500 border-b border-gray-300">
                         กำลังดึงข้อมูล...
                       </td>
                     </tr>
                   ) : currentSchedules.length === 0 ? (
                     <tr>
-                      <td colSpan="12" className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan="12" className="px-4 py-8 text-center text-gray-500 border-b border-gray-300">
                         {searchTerm || filterTeacher
                              ? "ไม่พบข้อมูลตามเงื่อนไข" 
                              : "ไม่พบข้อมูลรายวิชา"}
@@ -300,31 +325,52 @@ const AdminTeachingSchedule = () => {
                     </tr>
                   ) : (
                     currentSchedules.map((t) => (
-                      <tr key={t.id} className="hover:bg-gray-50 group">
-                        <td className="px-4 py-2 border border-gray-300">{t.code}</td>
-                        <td className="px-4 py-2 border border-gray-300">{t.name}</td>
-                        <td className="px-4 py-2 border border-gray-300">{t.year}</td>
-                        <td className="px-4 py-2 border border-gray-300">{t.semester}</td>
-                        <td className="px-4 py-2 border border-gray-300">{t.group}</td>
-                        <td className="px-4 py-2 border border-gray-300">{t.day}</td>
-                        <td className="px-4 py-2 border border-gray-300">{t.time}</td>
-                        <td className="px-4 py-2 border border-gray-300">{t.room}</td>
-                        <td className="px-4 py-2 border border-gray-300">{t.building}</td>
-                        <td className="px-4 py-2 border border-gray-300">{t.credit}</td>
-                        <td className="px-4 py-2 border border-gray-300">{t.teacher}</td>
+                      <tr key={t.id} className="hover:bg-gray-50 group transition-colors">
+                        {/* 🟢 1. รหัสวิชา (Sticky Body) - เพิ่ม border-r */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 sticky left-0 z-20 bg-white group-hover:bg-gray-50 font-semibold text-gray-700">
+                          {t.code}
+                        </td>
+
+                        {/* 🟢 2. ชื่อวิชา (Sticky Body) - เพิ่ม border-r */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 sticky left-[120px] z-20 bg-white group-hover:bg-gray-50 shadow-[4px_0_5px_-2px_rgba(0,0,0,0.1)] font-semibold text-gray-700">
+                          {t.name}
+                        </td>
+
+                        {/* --- ข้อมูล --- */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.year}</td>
                         
-                        <td className="px-4 py-2 border border-gray-300 text-center">
+                        {/* 🎯 แก้ไข: จัดกึ่งกลาง เนื้อหาเทอม */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.semester}</td>
+                        
+                        {/* 🎯 แก้ไข: จัดกึ่งกลาง เนื้อหากลุ่ม */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.group}</td>
+                        
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.day}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center font-semibold text-gray-700">{t.time}</td>
+                        
+                        {/* 🎯 แก้ไข: จัดกึ่งกลาง เนื้อหาห้อง */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center font-semibold text-gray-700">{t.room}</td>
+                        
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.building}</td>
+                        
+                        {/* 🎯 แก้ไข: จัดกึ่งกลาง เนื้อหาหน่วยกิต */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.credit}</td>
+                        
+                        <td className="px-4 py-3 border-b border-r border-gray-300 font-semibold text-gray-700">{t.teacher}</td>
+                        
+                        {/* 🟢 3. จัดการ (Sticky Body ขวาสุด) */}
+                        <td className="px-4 py-3 border-b border-gray-300 text-center sticky right-0 z-20 bg-white group-hover:bg-gray-50 shadow-[-4px_0_5px_-2px_rgba(0,0,0,0.1)]">
                           <div className="flex items-center justify-center gap-2">
                             <button 
                                 onClick={() => handleEditClick(t)}
-                                className="text-blue-600 hover:text-blue-800 p-1 rounded-md hover:bg-blue-100 transition-all duration-200 hover:scale-110"
+                                className="text-blue-600 hover:text-blue-800 p-1.5 rounded-md hover:bg-blue-100 transition-all hover:scale-110"
                                 title="แก้ไขข้อมูล"
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                             </button>
                             <button 
                                 onClick={() => handleDeleteClick(t.id)}
-                                className="text-red-600 hover:text-red-800 p-1 rounded-md hover:bg-red-100 transition-all duration-200 hover:scale-110"
+                                className="text-red-600 hover:text-red-800 p-1.5 rounded-md hover:bg-red-100 transition-all hover:scale-110"
                                 title="ลบข้อมูล"
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>

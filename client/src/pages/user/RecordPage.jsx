@@ -591,17 +591,15 @@ const RecordPage = () => {
                             <div className="flex items-center space-x-3">
                                 {/* วงกลมด้านนอก มี ring แสดงสีต่างกันตามสถานะ */}
                                 <div
-                                    className={`w-5 h-5 rounded-full ring-2 ring-offset-2 ${
-                                        isRecording ? "ring-red-300" : "ring-green-300"
-                                    } flex items-center justify-center`}
+                                    className={`w-5 h-5 rounded-full ring-2 ring-offset-2 ${isRecording ? "ring-red-300" : "ring-green-300"
+                                        } flex items-center justify-center`}
                                 >
                                     {/* วงกลมด้านใน ถ้ากำลังตรวจจับจะกระพริบสีแดง */}
                                     <div
-                                        className={`w-3.5 h-3.5 rounded-full ${
-                                            isRecording
+                                        className={`w-3.5 h-3.5 rounded-full ${isRecording
                                                 ? "bg-red-500 animate-pulse"
                                                 : "bg-green-500"
-                                        }`}
+                                            }`}
                                     />
                                 </div>
                                 {/* ข้อความอธิบายสถานะ */}
@@ -634,11 +632,10 @@ const RecordPage = () => {
                         <div className="flex flex-wrap gap-3 mb-4">
                             {/* ปุ่มเริ่มตรวจจับทุกกล้อง */}
                             <button
-                                className={`px-4 py-2 rounded-lg text-white font-semibold ${
-                                    isRecording
+                                className={`px-4 py-2 rounded-lg text-white font-semibold ${isRecording
                                         ? "bg-gray-400 cursor-not-allowed"
                                         : "bg-green-500"
-                                }`}
+                                    }`}
                                 // ถ้ากำลังบันทึกอยู่ ให้ disable ปุ่ม
                                 disabled={isRecording}
                                 // เมื่อกดเรียกฟังก์ชัน handleStartDetect
@@ -649,11 +646,10 @@ const RecordPage = () => {
 
                             {/* ปุ่มหยุดการตรวจจับ */}
                             <button
-                                className={`px-4 py-2 rounded-lg text-white font-semibold ${
-                                    !isRecording
+                                className={`px-4 py-2 rounded-lg text-white font-semibold ${!isRecording
                                         ? "bg-gray-400 cursor-not-allowed"
                                         : "bg-red-500"
-                                }`}
+                                    }`}
                                 // ถ้าไม่ได้บันทึกอยู่ ก็ disable ปุ่ม
                                 disabled={!isRecording}
                                 // เมื่อกดเรียก handleStopDetect
@@ -741,30 +737,43 @@ const RecordPage = () => {
                         </h2>
 
                         {/* โซนเลื่อนดู summary ได้สูงสุด 500px ถ้าเกินจะมี scrollbar */}
-                        <div className="max-h-[500px] overflow-y-auto pr-2">
+                        <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
                             {/* วนแสดงข้อมูล summary ที่ถูก push จาก WebSocket */}
                             {summaryData.map((item, index) => (
                                 // กล่องแต่ละรายการ summary
                                 <div
                                     key={index}
-                                    className="border-b border-gray-200 pb-3 mb-3 flex justify-around"
+                                    className="bg-white shadow rounded-xl p-4 border border-gray-200 flex gap-4"
                                 >
-                                    {/* ชื่อกล้องที่ส่ง summary นี้มา */}
-                                    <h3 className="font-semibold text-gray-700">
-                                        กล้องตัวที่ {Number(item.cameraId) + 1}
-                                    </h3>
+                                    {/* ปุ่มซ้าย: Info */}
+                                    <div className="flex-1">
+                                        <h3 className="text-lg font-semibold text-gray-800">
+                                            กล้อง {Number(item.cameraId) + 1}
+                                        </h3>
 
-                                    {/* เวลาในข้อมูล summary (สมมุติว่า field ชื่อ Time) */}
-                                    <p className="text-sm text-gray-600">
-                                        เวลา: {item.data.Time}
-                                    </p>
+                                        <p className="text-sm text-gray-500">
+                                            เวลา: {item.data.Time}
+                                        </p>
 
-                                    {/* ถ้ามีรูปภาพใน summary (field image เป็น base64) ก็แสดง */}
+                                        {/* ค่า Attention */}
+                                        <div className="mt-2">
+                                            <p className="text-sm font-medium text-green-600">
+                                                ✔ ตั้งใจเรียน: {(item.data.Attention * 100).toFixed(1)}%
+                                            </p>
+                                            <p className="text-sm font-medium text-red-600">
+                                                ✘ ไม่ตั้งใจ: {(item.data.Non_Attention * 100).toFixed(1)}%
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* รูป summary */}
                                     {item.data.image && (
-                                        <img
-                                            src={`data:image/jpeg;base64,${item.data.image}`}
-                                            className="w-40 rounded-lg mt-2"
-                                        />
+                                        <div className="w-32 h-24 overflow-hidden rounded-lg border border-gray-300">
+                                            <img
+                                                src={`data:image/jpeg;base64,${item.data.image}`}
+                                                className="object-cover w-full h-full"
+                                            />
+                                        </div>
                                     )}
                                 </div>
                             ))}

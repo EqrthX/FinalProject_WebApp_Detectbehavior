@@ -322,8 +322,8 @@ const SummarizePage = () => {
 
 
           {/* กล่องฝั่งขวา */}
-          <div className="flex flex-col space-y-4 max-h-[500px] overflow-y-auto">
-            <div className="bg-white rounded-2xl shadow flex flex-col h-140 border border-gray-300">
+          <div className="flex flex-col space-y-4 max-h-[700px] overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow flex flex-col h-140 border border-gray-300 gap-5">
               {Object.entries(groupCamerasWithPie).map(([camId, logs]) => (
                 <div
                   key={camId}
@@ -354,18 +354,18 @@ const SummarizePage = () => {
                   </ResponsiveContainer>
                 </div>
               ))}
-            </div>
-            {/* ปุ่ม */}
-            <div className="p- pt-4">
-              <Link to="/user/ResultsPage">
-                <button
-                  type="submit"
-                  className="bg-[#3D42D3] text-white w-full py-3 rounded-xl font-semibold hover:bg-blue-900 transition-colors"
-                >
-                  ดูสรุปผลทุกวิชา
-                </button>
-              </Link>
+              {/* ปุ่ม */}
+              <div className="p- pt-4">
+                <Link to="/user/ResultsPage">
+                  <button
+                    type="submit"
+                    className="bg-[#3D42D3] text-white w-full py-3 rounded-xl font-semibold hover:bg-blue-900 transition-colors"
+                  >
+                    ดูสรุปผลทุกวิชา
+                  </button>
+                </Link>
 
+              </div>
             </div>
           </div>
 

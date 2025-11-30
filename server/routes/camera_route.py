@@ -1,399 +1,723 @@
-import threading
-import cv2
-import time
-import base64
-import asyncio
-import torch
-from datetime import datetime
-from collections import defaultdict
-from typing import Optional
+import threading          # ใช้สำหรับสร้าง Thread แยกให้แต่ละกล้องทำงานของตัวเอง
+import cv2                # OpenCV สำหรับเปิดกล้องและจัดการภาพ
+import time               # ใช้สำหรับจับเวลา เช่น interval สรุปผลทุก 5 วินาที ฯลฯ
+import base64             # ใช้แปลง bytes ของรูปเป็น base64 เพื่อส่งผ่าน WebSocket / JSON
+import asyncio            # ใช้สำหรับ async/await ใน FastAPI (WebSocket / Router ต่าง ๆ)
+import torch              # ใช้ดูว่ามี GPU ไหม (cuda) และใช้กับ YOLO ที่อยู่ใน ultralytics
+from datetime import datetime           # ใช้สำหรับเวลาปัจจุบันเก็บลง summary
+from collections import defaultdict     # ใช้ dict แบบค่า default=0 (นับจำนวน class ต่าง ๆ)
+from typing import Optional             # ใช้บอก type ของพารามิเตอร์ที่เป็น optional
+
 from fastapi import (
-    APIRouter,
-    WebSocket,
-    WebSocketDisconnect,
-    Depends,
+    APIRouter,          # สร้าง router ย่อยสำหรับ path ที่เกี่ยวกับกล้อง
+    WebSocket,          # สำหรับประกาศ WebSocket endpoint
+    WebSocketDisconnect,# สำหรับจับ event เมื่อ WebSocket หลุด
+    Depends,            # ใช้กับ Depends(verify_token) เพื่อเช็ค token
 )
 
-from utils.model_loader import get_model
-from utils.auth import verify_token
-from config.bn_supabase import supabase_client
-from utils.json_buffer import save_buffer, load_buffer, clear_buffer
+from utils.model_loader import get_model          # ฟังก์ชันโหลด YOLO model (จากไฟล์อื่น)
+from utils.auth import verify_token               # ฟังก์ชันเช็ค token ของผู้ใช้
+from config.bn_supabase import supabase_client    # client สำหรับเรียก Supabase
+from utils.json_buffer import save_buffer, load_buffer, clear_buffer  # จัดการไฟล์ buffer JSON
 
-# ----------------- Router -----------------
+# ----------------- Router หลักของกล้อง -----------------
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
+# prefix หมายถึง path ทุกอันในไฟล์นี้จะขึ้นต้นด้วย /api/camera
+# tags ใช้สำหรับจัด group ใน docs ของ FastAPI
 
-# ไม่โหลด YOLO เป็น global เพื่อหลีกเลี่ยงปัญหา multi-thread
+# ----------------- กำหนดกลุ่มคลาสพฤติกรรม -----------------
+# กลุ่มที่ถือว่า "ตั้งใจเรียน"
 ATTENDENCE = ["Focused", "Looking_at_the_board", "Taking_notes"]
+# กลุ่มที่ถือว่า "ไม่ตั้งใจ"
 NON_ATTENDENCE = ["LookingAway", "Talking", "UsingPhone"]
 
-# state กล้องทั้งหมด
+# ----------------- state สำหรับกล้องทั้งหมดในเซิร์ฟเวอร์ -----------------
+# dict เก็บ Thread ของแต่ละกล้อง โดย key เป็น str(camera_id)
 camera_threads: dict[str, "CameraThread"] = {}
+# list เก็บข้อมูลกล้องที่ scan เจอ (เช่น id, name, backend)
 available_cameras: list[dict] = []
+# เวลา stamp ล่าสุดที่ scan กล้องเสร็จ
 last_scan_time: float = 0
+# Lock กันไม่ให้มีการ scan กล้องซ้อนกัน
 scan_lock = asyncio.Lock()
 
-# ==============================================================================
-# CameraThread — 1 กล้อง = 1 Thread
-# ==============================================================================
 
+# ==============================================================================
+#  Class: CameraThread — กล้อง 1 ตัว = 1 Thread
+# ==============================================================================
 class CameraThread(threading.Thread):
     """
-    Thread สำหรับกล้อง 1 ตัว:
-    - เปิดกล้อง
-    - อ่านเฟรม
-    - ถ้า detecting=True → รัน YOLO + ByteTrack
-    - Tracking แบบ "จับคนแรกแล้วตามยาว"
-    - สรุปผลทุก 5 วินาที / 1 นาที
-    - เตรียมภาพล่าสุด + summary ให้ WebSocket ใช้
+    คลาสนี้แทน "กล้อง 1 ตัว" ที่รันอยู่บน Thread แยกของมันเอง
+
+    หน้าที่หลัก:
+    - เปิดกล้อง (VideoCapture)
+    - วนลูปอ่านเฟรมจากกล้อง
+    - ถ้า self.detecting == True → เรียก YOLO + Track (model.track)
+    - ใช้ track_id เลือก "คนหลักคนแรก" แล้วตามคนนี้ไปเรื่อย ๆ
+    - อัปเดตพฤติกรรม (Focused / LookingAway / ฯลฯ) ของคนหลัก
+    - ทุก ๆ 5 วินาที สรุป class ที่เกิดขึ้น → เก็บลง self.interval_results
+    - ทุก ๆ 1 นาที (12 interval) สรุปเป็น Attention / Non_Attention แล้วเก็บลง buffer + ส่ง WS
+    - เก็บภาพล่าสุด (annotated frame) ไว้ใน self.jpeg_buffer ให้ WebSocket live / summary ใช้
     """
 
     def __init__(self, camera_id: str, teacher_id=None, subject_id=None):
+        """
+        ฟังก์ชันเริ่มต้นของ Thread กล้อง
+        - รับ camera_id เป็น string (เช่น "0", "1")
+        - teacher_id, subject_id เอาไว้ผูกข้อมูลกับครู/วิชา เวลา insert Supabase
+        """
+        # เรียก __init__ ของ threading.Thread และ set daemon=True (ถ้า main ตาย Thread ก็ตายตาม)
         super().__init__(daemon=True)
-        self.camera_id = str(camera_id)
-        self.source_index = int(camera_id)
 
+        # ----------------- ข้อมูลพื้นฐานของกล้อง -----------------
+        self.camera_id = str(camera_id)          # id ของกล้องในรูปแบบ string
+        self.source_index = int(camera_id)       # index ที่ใช้กับ cv2.VideoCapture
+
+        # ข้อมูลที่ใช้ผูกกับตารางใน Supabase
         self.teacher_id = teacher_id
         self.subject_id = subject_id
 
-        # flags
-        self.running = False
-        self.detecting = False
-        self.stop_flag = threading.Event()
+        # ----------------- flag และ state ทั่วไป -----------------
+        self.running = False                     # บอกว่า Thread นี้กำลังทำงานอยู่ไหม
+        self.detecting = False                   # บอกว่าตอนนี้กำลัง detect/track อยู่ไหม
+        self.stop_flag = threading.Event()       # Event ใช้สั่งหยุดลูปหลัก (เมื่อปิดกล้อง)
 
-        # OpenCV
-        self.cap = None
+        # ----------------- ตัวแปรของ OpenCV -----------------
+        self.cap = None                          # จะเก็บ VideoCapture object ของกล้องนี้
 
-        # sync
-        self.lock = threading.Lock()
-
-        # buffers
-        self.jpeg_buffer: bytes | None = None
-        self.latest_summary: dict = {}
-
-        # asyncio loop + event สำหรับ summary WS
-        self.loop: asyncio.AbstractEventLoop | None = None
-        self.summary_ready_event: asyncio.Event | None = None
-
-        # tracking logic
-        self.class_timer = {
-            "current_class": None,
-            "duration": 0.0,
-            "miss": 0,
-        }
-
-        self.interval_results: list[str] = []
-        self.interval_seconds = 5
-        self.last_interval_time = time.time()
-        self.interval_count = 0
-        self.max_intervals = 12  # 12 x 5 วินาที = 1 นาที
-
-        self.last_target_conf = 0.0
-        self.last_annotated = None
-        self.skip_frames = 3  # detect ทุก 3 เฟรม เพื่อลดโหลด
-        self.frame_counter = 0
-
-        # YOLO model (แยก instance ต่อ thread)
+        # ----------------- YOLO Model -----------------
+        # ตอน __init__ ยังไม่โหลด model เพื่อให้การสร้าง object เร็วขึ้น
+        # จะไปโหลดใน run() อีกที (ต่อ Thread)
         self.model = None
 
-        # target tracking (predict mode)
-        self.target_box = None         # เก็บ box เป้าหมาย
-        self.target_center = None      # จุดกลางของเป้าหมาย
-        self.target_lost = 0           # เก็บว่าหายไปกี่เฟรม
-        self.target_max_lost = 15      # ปล่อยได้ 15 เฟรม (~0.5 วินาที)
-        
+        # device ที่จะใช้ (ถ้ามี GPU → cuda, ถ้าไม่มี → cpu)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-    # ------------- เปิดกล้อง -------------
+
+        # ----------------- Lock สำหรับ sync ข้อมูลใน Thread นี้ -----------------
+        # ใช้เวลาจะอ่าน/เขียน self.jpeg_buffer หรือ self.latest_summary จาก WebSocket
+        self.lock = threading.Lock()
+
+        # ----------------- Buffer ภาพล่าสุด (annotated) -----------------
+        self.jpeg_buffer: bytes | None = None    # เก็บ bytes ของภาพ JPEG ล่าสุด
+        self.latest_summary: dict = {}           # เก็บ payload summary ล่าสุดสำหรับ WS
+
+        # ----------------- ตัวแปรที่ใช้ร่วมกับ WebSocket summary -----------------
+        self.loop: asyncio.AbstractEventLoop | None = None   # เก็บ event loop ของ FastAPI
+        self.summary_ready_event: asyncio.Event | None = None# ใช้แจ้งว่า summary พร้อมส่งแล้ว
+
+        # ----------------- ตัวแปรสำหรับ Behavior / Timer -----------------
+        # dict เก็บสถานะของคลาสปัจจุบัน + duration + miss
+        self.class_timer = {
+            "current_class": None,   # class ปัจจุบันที่ถือว่าใช้ (เช่น "Focused")
+            "duration": 0.0,         # ใช้กับ LookingAway → เวลา accum
+            "miss": 0,               # ใช้ตัดสินใจเปลี่ยน class เมื่อเจอคลาสใหม่ซ้ำ ๆ
+        }
+
+        # list เก็บ class ในแต่ละ interval (ทุก 5 วินาที)
+        self.interval_results: list[str] = []
+
+        # ความถี่ในการสรุป interval (วินาที)
+        self.interval_seconds = 5
+        # เวลา timestamp ล่าสุดที่สรุป interval ไปแล้ว
+        self.last_interval_time = time.time()
+        # นับจำนวน interval ที่ผ่านไปแล้วในรอบ "1 นาที"
+        self.interval_count = 0
+        # จำนวน interval สูงสุดใน 1 รอบสรุป (12 x 5 วิ = 1 นาที)
+        self.max_intervals = 12
+
+        # เก็บค่า confidence ล่าสุดของ target (ไว้ print log)
+        self.last_target_conf = 0.0
+
+        # เก็บภาพ annotated ล่าสุด (จะใช้เวลาไม่ detect frame นั้น)
+        self.last_annotated = None
+
+        # จำนวน frame ที่จะ skip ก่อน detect/track อีกครั้ง (ลดโหลด)
+        # เช่น skip_frames=3 → detect ทุก ๆ frame ที่ 3
+        self.skip_frames = 3
+        self.frame_counter = 0      # นับจำนวน frame ทั้งหมดที่อ่านจากกล้อง
+
+        # ----------------- ตัวแปรสำหรับ Tracking ด้วย track_id -----------------
+        # track_id ของ "คนหลัก" คนแรกที่กล้องเจอ
+        self.main_track_id = None
+
+        # ใช้นับจำนวนเฟรมที่ "ไม่เจอคนหลัก" ถ้าเกิน limit จะ reset main_track_id
+        self.main_lost_frames = 0
+
+        # ให้หายไปได้สูงสุดกี่เฟรมก่อนจะยอม reset main_track_id
+        self.main_max_lost_frames = 15    # สมมติประมาณ ~0.5 วินาที ถ้า 30fps
+
+    # ----------------------------------------------------------------------
+    # ฟังก์ชันเปิดกล้อง (พยายามหลาย backend)
+    # ----------------------------------------------------------------------
     def open_camera(self) -> bool:
+        """
+        พยายามเปิดกล้องด้วย backend ต่าง ๆ ของ OpenCV:
+        - CAP_DSHOW
+        - CAP_MSMF
+        - CAP_ANY
+
+        ถ้าเปิดสำเร็จ → เซ็ต self.cap และ return True
+        ถ้าไม่สำเร็จเลย → return False
+        """
+        # กำหนดลำดับ backend ที่จะลอง
         backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
+
+        # วนลองทีละ backend
         for backend in backends:
             cap = None
             try:
+                # พยายามสร้าง VideoCapture ด้วย index และ backend นี้
                 cap = cv2.VideoCapture(self.source_index, backend)
+
+                # ถ้าเปิดได้ (isOpened=True)
                 if cap.isOpened():
+                    # ตั้งค่าความกว้างของเฟรม (pixel)
                     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                    # ตั้งค่าความสูงของเฟรม (pixel)
                     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                    # ตั้งค่า FPS เป้าหมาย
                     cap.set(cv2.CAP_PROP_FPS, 60)
+                    # ตั้งค่ารูปแบบ fourcc (รูปแบบ encode video ที่ driver ชอบ)
                     cap.set(
                         cv2.CAP_PROP_FOURCC,
                         cv2.VideoWriter_fourcc(*"MJPG"),
                     )
+
+                    # บันทึก VideoCapture นี้ลง self.cap
                     self.cap = cap
+
                     print(f"✅ Camera {self.camera_id} opened with backend={backend}")
                     return True
+
             except Exception as e:
+                # ถ้าเกิด error ตอนเปิดกล้อง → print log ไว้ debug
                 print(f"เกิดข้อผิดพลาดของการเปิดกล้อง {self.camera_id} ของ backend={backend} error -> {e} ")
             finally:
+                # ถ้า cap ถูกสร้าง แต่ self.cap ยัง None แปลว่าเปิดไม่สำเร็จ → release cap
                 if cap and (self.cap is None):
                     cap.release()
+
+        # ถ้าลองทุก backend แล้วยังไม่สำเร็จ → แจ้งเตือนและ return False
         print(f"❌ กล้อง {self.camera_id} ไม่สามารถเปิดได้เลยตาม backends")
         return False
 
-    # ------------- Main loop -------------
-
+    # ----------------------------------------------------------------------
+    # ฟังก์ชันหลักของ Thread (เริ่มทำงานเมื่อเรียก .start())
+    # ----------------------------------------------------------------------
     def run(self):
+        """
+        ฟังก์ชันที่ Thread จะรันเมื่อเราเรียก .start() บน object นี้
+
+        ขั้นตอน:
+        1. พยายามเปิดกล้อง (open_camera)
+        2. โหลด YOLO model สำหรับ Thread นี้
+        3. วนลูปอ่านเฟรมจากกล้อง
+        4. ถ้า self.detecting=True และถึงรอบที่ต้อง track → เรียก self.model.track()
+        5. ประมวลผลผลลัพธ์ของ track → อัปเดตพฤติกรรม + summary
+        6. แปลงภาพเป็น JPEG แล้วเก็บใน self.jpeg_buffer
+        7. ถ้ามี error → print log แล้วออกจากลูป
+        """
+        # ----------------- 1) เปิดกล้อง -----------------
         if not self.open_camera():
+            # ถ้าเปิดกล้องไม่ได้ → ไม่ทำอะไรต่อ (ออกจาก Thread เลย)
             return
 
-        # โหลด YOLO instance สำหรับ thread นี้
+        # ----------------- 2) โหลด YOLO Model -----------------
         try:
             print(f"⏳ กำลังโหลดโมเดลของกล้อง {self.camera_id} ...")
+
+            # เรียกใช้ get_model() จากไฟล์ model_loader
+            # (แนะนำ: ข้างในควรใช้ fuse=False หรือไม่ fuse ในตอนโหลด เพื่อเลี่ยงปัญหา track+fuse ซ้อน)
             self.model = get_model()
+
             print(f"✅ โหลด Model Yolo ของกล้อง {self.camera_id}")
         except Exception as e:
+            # ถ้าโหลดโมเดลไม่สำเร็จ → print error แล้วจบ Thread
             print(f"❌ เกิดข้อผิดพลาดในการโหลด Model Yolo ของกล้อง {self.camera_id}: {e}")
             return
 
+        # ----------------- 3) เริ่มลูปหลัก -----------------
         self.running = True
+
         try:
+            # วนลูปไปเรื่อย ๆ จนกว่าจะมีคนสั่ง stop_flag.set()
             while not self.stop_flag.is_set():
+                # 3.1 อ่านเฟรมจากกล้อง
                 ret, frame = self.cap.read()
+
+                # ถ้าอ่านไม่ได้ → แจ้งเตือนและ break ออกจากลูป
                 if not ret:
                     print(f"⚠️ กล้อง {self.camera_id} อ่านเฟรมไม่เจอ")
                     break
 
+                # อัปเดตตัวนับเฟรม
                 self.frame_counter += 1
+
+                # เวลา timestamp ตอนนี้ (ใช้กับ interval summary)
                 now = time.time()
+
+                # เริ่มจากใช้ภาพดิบจากกล้องก่อน
                 annotated = frame
-                
-                # ---------- ทำ YOLO แค่ตอน detecting=True ----------
+
+                # ----------------- 4) ถ้าต้องการ detect / track -----------------
+                # เงื่อนไข:
+                # - self.detecting == True → กำลัง detect อยู่
+                # - self.frame_counter % self.skip_frames == 0 → ถึงรอบที่จะ track แล้ว
                 if self.detecting and self.frame_counter % self.skip_frames == 0:
                     try:
-                        results = self.model.predict(
-                            source=frame,
-                            conf=0.45,
-                            device=self.device,  # GPU 0 (ปรับเป็น "cpu" ถ้าไม่มี GPU)
-                            verbose=False,
+                        # ข้อสำคัญ:
+                        # - persist=True → ใช้ track_id ต่อเนื่องระหว่างเฟรม
+                        # - tracker="bytetrack.yaml" → ใช้ ByteTrack เป็น tracker
+                        results = self.model.track(
+                            source=frame,           # เฟรมปัจจุบันจากกล้อง
+                            conf=0.45,              # ค่าความมั่นใจขั้นต่ำในการ detect
+                            device=self.device,     # "cuda" หรือ "cpu"
+                            verbose=False,          # ไม่ต้อง print log จาก ultralytics
+                            persist=True,           # ให้ YOLO จำ track_id ต่อเนื่อง
+                            tracker="bytetrack.yaml",  # ใช้ ByteTrack
                         )
 
+                        # results เป็น list ของผลลัพธ์ต่อ source 1 ตัว → หยิบอันแรก
                         result = results[0]
+
+                        # วาดกล่อง/label ลงบนภาพด้วย .plot()
                         annotated = result.plot()
 
+                        # เก็บ annotated frame ล่าสุดไว้ (เผื่อเฟรมอื่นที่ไม่ track)
                         self.last_annotated = annotated.copy()
 
-                        self.process_behavior_predict(result, now)
+                        # ประมวลผล behavior โดยใช้ข้อมูล track (track_id, class)
+                        self.process_behavior_track(result, now)
 
                     except Exception as e:
-                        print(f"❌ YOLO error camera {self.camera_id}: {e}")
-                        time.sleep(0.2)
+                        # ถ้า YOLO หรือ track พัง → print error, หน่วงเวลาเล็กน้อยแล้วข้ามเฟรมนี้
+                        print(f"❌ YOLO track error camera {self.camera_id}: {e}")
+                        
+                        print("➡ fallback ไปใช้ model.predict() แทน")
+
+                        # --------------- Fallback detect-only (แก้พังทันที) -----------------
+                        try:
+                            results = self.model.predict(
+                                source=frame,
+                                conf=0.45,
+                                device=self.device,
+                                verbose=False,
+                            )
+                            result = results[0]
+
+                            # วาดกล่องปกติ
+                            annotated = result.plot()
+                            self.last_annotated = annotated.copy()
+
+                            # detect ไม่มี track_id → ใช้ logic แบบง่าย ๆ
+                            self.process_behavior_predict(result, now)
+
+                        except Exception as e2:
+                            print(f"❌ fallback predict ก็พังอีก camera {self.camera_id}: {e2}")
+
+                            # ถ้าวาดไม่ได้เลย → เอาภาพเดิมไปก่อน
+                            annotated = frame
+                            self.last_annotated = frame.copy()
                         continue
-                else: 
+
+                else:
+                    # ----------------- 5) ถ้าไม่ได้ detect ในเฟรมนี้ -----------------
+                    # ถ้าเคยมี annotated เก็บไว้ → ใช้รูปเก่าที่วาดกล่องแล้ว
                     if self.last_annotated is not None:
                         annotated = self.last_annotated.copy()
                     else:
+                        # ถ้ายังไม่เคย detect เลย → ใช้ภาพดิบจากกล้อง
                         annotated = frame
 
-                # encode JPEG เก็บไว้ใน buffer ให้ WS เอาไปส่ง
+                # ----------------- 6) แปลงภาพเป็น JPEG แล้วเก็บลง buffer -----------------
+                # cv2.imencode(".jpg", annotated) จะคืน (ok, buf)
                 ok, buf = cv2.imencode(".jpg", annotated)
+
                 if ok:
+                    # แปลง buffer เป็น bytes แล้วเก็บลง self.jpeg_buffer โดยใช้ lock กันชนกับ WebSocket
                     with self.lock:
                         self.jpeg_buffer = buf.tobytes()
-                if not ok:
-                    print(f" JPNG encode เกิดข้อผิดพลาดของกล้อง {self.camera_id}")
+                else:
+                    print(f"JPG encode เกิดข้อผิดพลาดของกล้อง {self.camera_id}")
                     continue
 
-                time.sleep(0.01)  # ~100 fps ใน thread (ยืดหยุ่น)
+                # หน่วงเล็กน้อยเพื่อไม่ให้ลูปวิ่งเร็วเกินไป (~100 fps)
+                time.sleep(0.01)
+
         except Exception as e:
+            # ถ้าเกิด error ใด ๆ ที่หลุดมานอก try ด้านใน → log ไว้ก่อนปิดกล้อง
             print(f"Thread กล้อง {self.camera_id} crash: {e}")
 
-        # cleanup
+        # ----------------- 7) cleanup เมื่อออกจากลูปหลัก -----------------
         self.running = False
+
+        # ปิดกล้องถ้ามี
         if self.cap:
             self.cap.release()
+
         print(f"🛑 CameraThread {self.camera_id} stopped")
 
-    def stop(self):
-        self.stop_flag.set()
-        try:
-            self.join(timeout=1.0)
-        except RuntimeError:
-            # ถ้า thread ยังไม่ start หรือ join ซ้ำ ให้ข้าม
-            pass
-
-    # ------------- Tracking / Behavior logic -------------
-
-    def update_class_state(self, label: str):
+    def process_behavior_predict(self, result, now):
         """
-        อัปเดต state ของ current_class / miss
-        กติกา:
-        - ถ้า label เดิม → miss=0
-        - ถ้า label ใหม่ → เพิ่ม miss, ถ้า miss>=5 → เปลี่ยน label
-        """
-        timer = self.class_timer
-
-        if timer["current_class"] is None:
-            timer["current_class"] = label
-            timer["duration"] = 0
-            timer["miss"] = 0
-            return
-
-        if timer["current_class"] == label:
-            timer["miss"] = 0
-            return
-
-        timer["miss"] += 1
-        if timer["miss"] >= 5:
-            timer["current_class"] = label
-            timer["duration"] = 0
-            timer["miss"] = 0
-
-    def process_behavior_predict(self, result, now: float):
-        """
-        Tracking แบบ manual จาก predict:
-        - เลือก box เป้าหมาย
-        - ตามด้วย center-distance
-        - อัปเดต class behavior
+        fallback เมื่อ track ใช้ไม่ได้ → ใช้ predict()
+        ไม่มี track_id → เลือก box conf สูงสุดตัวเดียวเป็น “คนหลัก”
         """
         boxes = result.boxes
-        dets = []
+        if boxes is None or len(boxes) == 0:
+            return
 
+        detections = []
         for box in boxes:
             cls_idx = int(box.cls)
             label = self.model.names[cls_idx]
 
-            # เอาเฉพาะ class ที่ต้องการ (ตามโมเดลของคุณ)
+            if label.lower() == "phone":
+                label = "UsingPhone"
+
             if label not in ATTENDENCE + NON_ATTENDENCE:
                 continue
 
-            x1, y1, x2, y2 = box.xyxy[0].tolist()
             conf = float(box.conf.item())
-            cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+            detections.append({"label": label, "conf": conf})
 
-            dets.append({
-                "box": box,
-                "label": label,
-                "conf": conf,
-                "center": (cx, cy)
-            })
-
-        # ไม่มี detection
-        if not dets:
-            self.target_lost += 1
-            if self.target_lost >= self.target_max_lost:
-                self.target_box = None
-                self.target_center = None
+        if not detections:
             return
 
-        # ถ้าไม่มี target → เลือก box conf สูงสุด
-        if self.target_box is None:
-            best = max(dets, key=lambda d: d["conf"])
-            self.target_box = best["box"]
-            self.target_center = best["center"]
-            self.last_target_conf = best["conf"]   # สำคัญมาก
-            self.target_lost = 0
-            # update behavior ทันทีในเฟรมแรก
-            if best["conf"] > 0.60:
-                self.update_class_state(best["label"])
-            return
+        best = max(detections, key=lambda d: d["conf"])
+        if best["conf"] > 0.60:
+            self.update_class_state(best["label"])
 
-        # มี target แล้ว → หา box ที่ใกล้ที่สุด
-        tx, ty = self.target_center
-
-        def dist(det):
-            cx, cy = det["center"]
-            return (cx - tx) ** 2 + (cy - ty) ** 2
-
-        best_det = min(dets, key=dist)
-
-        # update target
-        self.target_box = best_det["box"]
-        self.target_center = best_det["center"]
-        self.last_target_conf = best_det["conf"]   # อัปเดต conf!!!
-        self.target_lost = 0
-
-        # update behavior logic
-        if best_det["conf"] > 0.60:
-            self.update_class_state(best_det['label'])
-
-        # interval summary
+        # สรุป interval
         if now - self.last_interval_time >= self.interval_seconds:
             self.last_interval_time = now
             self.handle_interval()
 
-    # ------------- Interval / Summary -------------
+    # ----------------------------------------------------------------------
+    # ฟังก์ชันสั่งหยุด Thread อย่างสุภาพ
+    # ----------------------------------------------------------------------
+    def stop(self):
+        """
+        ใช้สั่งให้ Thread นี้หยุดทำงาน:
+        - set stop_flag
+        - พยายาม join ให้ Thread จบตัวเองใน 1 วินาที
+        """
+        # สั่งให้ลูปหลักใน run() รู้ว่าต้องหยุด
+        self.stop_flag.set()
+
+        try:
+            # join คือรอให้ Thread จบ ในเวลา timeout=1 วินาที
+            self.join(timeout=1.0)
+        except RuntimeError:
+            # ถ้า Thread ยังไม่ start หรือ join ซ้ำ → ไม่ต้องทำอะไร
+            pass
+
+    # ----------------------------------------------------------------------
+    # ฟังก์ชันอัปเดต state ของ class_timer ตาม label ที่เข้ามา
+    # ----------------------------------------------------------------------
+    def update_class_state(self, label: str):
+        """
+        อัปเดตสถานะ class ปัจจุบัน (current_class) และ miss counter
+
+        กติกา:
+        - ถ้า current_class ยังเป็น None → เซ็ตเป็น label ที่เข้ามาเลย
+        - ถ้า label ใหม่ == current_class เดิม → reset miss เป็น 0
+        - ถ้า label ใหม่ != current_class เดิม:
+            - เพิ่ม miss ทีละ 1
+            - ถ้า miss >= 5 → ยอมเปลี่ยน current_class = label ใหม่ และ reset duration เป็น 0
+        """
+        timer = self.class_timer
+
+        # ถ้ายังไม่เคยมี class มาก่อนเลย → ตั้งค่า initial
+        if timer["current_class"] is None:
+            timer["current_class"] = label
+            timer["duration"] = 0.0
+            timer["miss"] = 0
+            return
+
+        # ถ้า label เดิมเหมือน current_class → ถือว่าต่อเนื่อง → miss=0
+        if timer["current_class"] == label:
+            timer["miss"] = 0
+            return
+
+        # ถ้า label ใหม่ต่างจาก current_class → เพิ่ม miss
+        timer["miss"] += 1
+
+        # ถ้า miss ถึง threshold (5 ครั้งติดต่อกัน)
+        if timer["miss"] >= 5:
+            # เปลี่ยน class ปัจจุบันเป็น label ใหม่นี้
+            timer["current_class"] = label
+            # reset duration (แยก counting ใหม่สำหรับ LookingAway)
+            timer["duration"] = 0.0
+            # reset miss
+            timer["miss"] = 0
+
+    # ----------------------------------------------------------------------
+    # ฟังก์ชันประมวลผล Behavior จาก YOLO result (โหมด track)
+    # ----------------------------------------------------------------------
+    def process_behavior_track(self, result, now: float):
+        """
+        ประมวลผล behavior โดยใช้ผลลัพธ์จาก YOLO track.
+
+        แนวคิด:
+        - YOLO track ให้ boxes พร้อม track_id (box.id)
+        - เราเลือกเฉพาะ class ที่อยู่ใน ATTENDENCE + NON_ATTENDENCE
+        - ถ้ายังไม่มี main_track_id:
+            - เลือก box ที่ conf สูงสุด → ตั้งเป็น main_track_id
+        - ถ้ามี main_track_id แล้ว:
+            - หาดูว่ามี box.id == main_track_id ไหม
+            - ถ้ามี → ใช้กล่องนั้นเป็นคนหลัก → update_class_state(label)
+            - ถ้าไม่มี → เพิ่ม main_lost_frames
+                - ถ้า main_lost_frames >= main_max_lost_frames:
+                    - reset main_track_id = None (ยอมเลือกคนใหม่รอบหน้า)
+        - เมื่อได้ label สำหรับคนหลัก → เรียก update_class_state()
+        - ทุก ๆ 5 วินาที จะมีการเรียก handle_interval() (อยู่ท้ายฟังก์ชันนี้)
+        """
+        # ดึง boxes ทั้งหมดจาก YOLO result
+        boxes = result.boxes
+
+        # ถ้าไม่มี box เลยในเฟรมนี้
+        if boxes is None or len(boxes) == 0:
+            # ถือว่า "ไม่เจอคนหลักในเฟรมนี้เลย" → main_lost_frames +1
+            self.main_lost_frames += 1
+
+            # ถ้าหายเกิน limit → ยอม reset main_track_id
+            if self.main_lost_frames >= self.main_max_lost_frames:
+                self.main_track_id = None
+
+            # ไม่ต้องอัปเดต behavior เพิ่ม (เพราะไม่มีคนหลัก)
+            return
+
+        # list เก็บ detection ที่ "เกี่ยวข้อง" (เฉพาะคลาสที่เราสนใจ)
+        detections = []
+
+        # วนดูทุก box ที่ detect ได้
+        for box in boxes:
+            # class index (ตัวเลข)
+            cls_idx = int(box.cls)
+            # ชื่อคลาส (string) จาก model.names
+            label = self.model.names[cls_idx]
+
+            # ตัวอย่าง: map label "Phone" → "UsingPhone" ถ้าต้องการ
+            # (คุณสามารถเพิ่ม mapping อื่น ๆ ได้ตามต้องการ)
+            if label.lower() == "phone":
+                label = "UsingPhone"
+
+            # สนใจเฉพาะ class ที่อยู่ใน list ATTENDENCE + NON_ATTENDENCE
+            if label not in ATTENDENCE + NON_ATTENDENCE:
+                continue
+
+            # ค่าความมั่นใจของ box นี้ (confidence)
+            conf = float(box.conf.item())
+
+            # track_id (ถ้า YOLO ตั้งให้)
+            track_id = None
+            if box.id is not None:
+                track_id = int(box.id.item() if hasattr(box.id, "item") else box.id)
+
+            # ถ้าไม่มี track_id → ข้าม (เพราะเราจะใช้ track_id ในการเลือกคนหลัก)
+            if track_id is None:
+                continue
+
+            detections.append({
+                "box": box,
+                "label": label,
+                "conf": conf,
+                "track_id": track_id,
+            })
+
+        # ถ้าไม่มี detection ที่เข้าเงื่อนไขเลย
+        if not detections:
+            # เหมือนด้านบน → main_lost_frames + 1
+            self.main_lost_frames += 1
+            if self.main_lost_frames >= self.main_max_lost_frames:
+                self.main_track_id = None
+            return
+
+        # ----------------- เลือก / ติดตาม main_track_id -----------------
+
+        # ถ้ายังไม่มีคนหลักมาก่อนเลย → เลือกจาก detection ที่ conf สูงสุดในเฟรมนี้
+        if self.main_track_id is None:
+            # ใช้ max ด้วย key เป็น conf
+            best = max(detections, key=lambda d: d["conf"])
+            # ตั้ง main_track_id เป็น track_id ของ box นี้
+            self.main_track_id = best["track_id"]
+            # reset main_lost_frames เพราะเพิ่งเจอคนนี้
+            self.main_lost_frames = 0
+            # เก็บ conf ล่าสุด
+            self.last_target_conf = best["conf"]
+
+            # ถ้า conf สูงพอ (เช่น > 0.6) → อัปเดต behavior ทันที
+            if best["conf"] > 0.60:
+                self.update_class_state(best["label"])
+
+        else:
+            # ถ้ามี main_track_id อยู่แล้ว → หาว่าใน detections มี box ไหนที่ track_id ตรงกันไหม
+            main_det = None
+            for d in detections:
+                if d["track_id"] == self.main_track_id:
+                    main_det = d
+                    break
+
+            if main_det is not None:
+                # เจอคนหลักในเฟรมนี้
+                self.main_lost_frames = 0
+                self.last_target_conf = main_det["conf"]
+
+                # ถ้า conf สูงพอ → อัปเดต behavior
+                if main_det["conf"] > 0.60:
+                    self.update_class_state(main_det["label"])
+            else:
+                # ถ้าไม่เจอคนหลักเลยในเฟรมนี้ → เพิ่ม main_lost_frames
+                self.main_lost_frames += 1
+
+                # ถ้าหายไปนานเกิน main_max_lost_frames → reset main_track_id
+                if self.main_lost_frames >= self.main_max_lost_frames:
+                    self.main_track_id = None
+
+        # ----------------- เรียก handle_interval() ทุก ๆ 5 วินาที -----------------
+        # เช็คว่าจากครั้งสุดท้ายที่ handle_interval() ถูกเรียกผ่านมาเกิน 5 วินาทีหรือยัง
+        if now - self.last_interval_time >= self.interval_seconds:
+            # อัปเดตเวลา last_interval_time เป็นตอนนี้
+            self.last_interval_time = now
+            # ทำงานสรุป class ใน interval นี้
+            self.handle_interval()
+
+    # ----------------------------------------------------------------------
+    # ฟังก์ชัน handle_interval — ถูกเรียกทุก ๆ 5 วินาที
+    # ----------------------------------------------------------------------
     def handle_interval(self):
         """
-        ทุก 5 วิ:
-        - ดู current_class
-        - ถ้าเป็น LookingAway → ใช้ duration map ไปเป็น 3 ระดับ
-        - เก็บลง interval_results
-        - ครบ 12 รอบ (1 นาที) → save_summary()
+        ฟังก์ชันนี้จะถูกเรียกทุก ๆ self.interval_seconds (5 วินาที)
+        เพื่อ:
+        - ดูค่า current_class จาก self.class_timer
+        - ถ้าเป็น LookingAway:
+            - เพิ่ม duration ทีละ 5 วินาที
+            - ใช้ duration ตัดสินว่า map เป็น LookingAway / Looking_at_the_board / Taking_notes
+        - นำ class ที่ได้ (mapped) ไปเก็บใน self.interval_results
+        - ถ้าสะสมครบ self.max_intervals (12 ครั้ง = 1 นาที):
+            - เรียก save_summary() สรุปผล 1 นาที
+            - reset ตัวนับ interval ต่าง ๆ
         """
+        # ดึง current_class ที่คำนวณล่าสุด
         cls = self.class_timer["current_class"]
+
+        # ค่าเริ่มต้น mapped = class เดิม
         mapped = cls
 
+        # ถ้า current_class เป็น "LookingAway" → ใช้ duration แปลเป็น 3 level
         if cls == "LookingAway":
+            # เพิ่มเวลา duration = duration เดิม + 5 วินาที
             self.class_timer["duration"] += self.interval_seconds
+
+            # เอา duration มาเก็บในตัวแปร dur เพื่ออ่านง่าย
             dur = self.class_timer["duration"]
 
+            # ถ้า duration <= 15 วิ → mapped = "LookingAway"
             if dur <= 15:
                 mapped = "LookingAway"
+            # ถ้า duration <= 35 วิ → mapped = "Looking_at_the_board"
             elif dur <= 35:
                 mapped = "Looking_at_the_board"
+            # เกิน 35 วิ → mapped = "Taking_notes"
             else:
                 mapped = "Taking_notes"
         else:
-            self.class_timer["duration"] = 0
+            # ถ้าไม่ใช่ LookingAway → reset duration เป็น 0
+            self.class_timer["duration"] = 0.0
 
+        # ถ้า mapped ไม่ใช่ None → เอาไปเก็บใน interval_results
         if mapped:
             self.interval_results.append(mapped)
-            print(f"⏱️ Cam {self.camera_id}: class: {mapped} conf: {self.last_target_conf} ({len(self.interval_results)})")
+            # log เล็ก ๆ สำหรับ debug ว่าตอนนี้ class อะไร conf เท่าไหร่ และมี interval กี่อันแล้ว
+            print(
+                f"⏱️ Cam {self.camera_id}: class: {mapped} "
+                f"conf: {self.last_target_conf:.3f} "
+                f"({len(self.interval_results)})"
+            )
 
+        # ถ้าเก็บ interval_results เกิน max_intervals → ลบตัวเก่าสุดออก (ให้ list มีขนาด max)
         if len(self.interval_results) > self.max_intervals:
             self.interval_results.pop(0)
 
+        # เพิ่มตัวนับ interval_count ทีละ 1
         self.interval_count += 1
 
+        # ถ้าเกินหรือเท่ากับ max_intervals (12 ครั้ง = 1 นาที)
         if self.interval_count >= self.max_intervals:
+            # สรุปผลและบันทึก summary 1 นาที
             self.save_summary()
+
+            # reset ตัวนับ interval, interval_results, miss, duration
             self.interval_count = 0
             self.interval_results.clear()
-            self.last_best_class = None
-            self.last_best_conf = 0.0
-            self.class_timer["miss"] = 0
-            self.class_timer["duration"] = 0
 
+            # reset ค่าอื่น ๆ ที่เคยใช้ (ป้องกัน state เก่ามีผลเกินจำเป็น)
+            self.class_timer["miss"] = 0
+            self.class_timer["duration"] = 0.0
+
+    # ----------------------------------------------------------------------
+    # ฟังก์ชัน save_summary — สรุปผลทุก 1 นาที
+    # ----------------------------------------------------------------------
     def save_summary(self):
         """
-        สรุปทุก 1 นาที:
-        - คิดสัดส่วน ATTENDENCE / NON_ATTENDENCE
-        - เก็บ class_json
-        - แจ้ง WS summary
-        - save_buffer ลง JSON ไฟล์
+        ฟังก์ชันนี้จะถูกเรียกเมื่อครบรอบ 1 นาที (12 interval)
+        หน้าที่:
+        - นับจำนวนแต่ละ class ใน self.interval_results
+        - แปลงเป็นสัดส่วน (attention / non-attention)
+        - สร้าง class_json ตามสัดส่วนของแต่ละ class
+        - เตรียม payload ที่ใช้ส่งผ่าน WebSocket (summary)
+        - เรียก save_buffer() เพื่อสะสมข้อมูลลง JSON ต่อกล้อง
+        - แจ้ง event ให้ WS summary รู้ว่ามีข้อมูลใหม่ให้ส่งแล้ว
         """
+        # จำนวนทั้งหมดของค่าใน interval_results
         total = len(self.interval_results)
+
+        # ถ้าไม่มีเลย → ไม่ต้องสรุป
         if total == 0:
             return
 
+        # ใช้ defaultdict(int) ไว้นับว่ามีแต่ละ class กี่ครั้ง
         count = defaultdict(int)
+
+        # วนทุก class ที่เก็บใน interval_results
         for c in self.interval_results:
             count[c] += 1
 
+        # คำนวณสัดส่วน ATTENDENCE (จาก ATTENDENCE list)
         att = sum(count[c] for c in count if c in ATTENDENCE) / total
+        # คำนวณสัดส่วน NON_ATTENDENCE
         non = sum(count[c] for c in count if c in NON_ATTENDENCE) / total
 
+        # สร้าง class_json ที่เก็บสัดส่วนของแต่ละ class
         class_json = {k: round(v / total, 3) for k, v in count.items()}
-  
+
+        # เตรียมตัวแปรสำหรับเก็บภาพที่แปลงเป็น base64
         img_base64 = None
 
+        # เข้าถึง jpeg_buffer ด้วย lock เพื่ออ่านภาพล่าสุด
         with self.lock:
             if self.jpeg_buffer:
+                # แปลง bytes → base64 string
                 img_base64 = base64.b64encode(self.jpeg_buffer).decode("utf-8")
-        
+
+            # สร้าง payload ที่จะส่งให้ frontend ผ่าน WS summary
             payload = {
-                "CameraId": int(self.camera_id) + 1,
-                "Time": datetime.now().strftime("%H:%M:%S"),
-                "Attention": att,
-                "Non_Attention": non,
-                "image": img_base64
+                "CameraId": int(self.camera_id) + 1,             # หมายเลขกล้อง (1-based)
+                "Time": datetime.now().strftime("%H:%M:%S"),     # เวลา ณ นาทีนี้
+                "Attention": att,                                # สัดส่วน ATTENDENCE
+                "Non_Attention": non,                            # สัดส่วน NON_ATTENDENCE
+                "image": img_base64,                             # รูป base64
             }
 
+            # เก็บ payload ไว้ใน latest_summary
             self.latest_summary = payload
-        
-        # แจ้ง WS summary (ถ้ามี loop + event)
+
+        # ถ้ามี event loop กับ summary_ready_event อยู่
         if self.loop and self.summary_ready_event:
+            # เรียก set() ผ่าน call_soon_threadsafe เพื่อแจ้ง loop ฝั่ง async ว่าพร้อมแล้ว
             self.loop.call_soon_threadsafe(self.summary_ready_event.set)
 
-        # บันทึกลง buffer สำหรับ insert Supabase ทีหลัง
+        # บันทึกลง JSON buffer ไว้รอ insert Supabase (สำหรับ camera_logs)
         if self.teacher_id and self.subject_id:
             try:
                 save_buffer(
@@ -407,108 +731,155 @@ class CameraThread(threading.Thread):
             except Exception as e:
                 print(f"❌ save_buffer error cam {self.camera_id}: {e}")
 
-# ==============================================================================
-# Scan Cameras
-# ==============================================================================
 
+# ==============================================================================
+# ฟังก์ชันช่วย scan กล้องอย่างรวดเร็ว (ไม่เกี่ยวกับ track)
+# ==============================================================================
 def quick_scan_camera(index: int) -> bool:
+    """
+    ฟังก์ชันนี้ลองเปิดกล้อง index ที่ระบุด้วย backend ต่าง ๆ
+    ใช้แค่เช็คว่า "มีอะไรเสียบอยู่ไหม" (ไม่เก็บ VideoCapture ไว้)
+    """
+    # ลองเปิดด้วย CAP_DSHOW
     cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
     if cap.isOpened():
         cap.release()
         return True
 
+    # ถ้าไม่สำเร็จ ลองเปิดด้วย CAP_MSMF
     cap = cv2.VideoCapture(index, cv2.CAP_MSMF)
     if cap.isOpened():
         cap.release()
         return True
 
+    # ถ้าไม่สำเร็จอีก ลอง CAP_ANY (ให้ OpenCV เลือกเอง)
     cap = cv2.VideoCapture(index, cv2.CAP_ANY)
     if cap.isOpened():
         cap.release()
         return True
 
+    # ถ้าเปิดไม่ได้ทุก backend → return False
     return False
+
 
 @camera_router.get("/list-camera")
 async def list_camera():
     """
-    endpoint สำหรับหน้า RecordPage.jsx ใช้ดึงรายชื่อกล้อง
+    Endpoint สำหรับหน้า RecordPage.jsx ใช้ดึง "รายชื่อกล้อง" ที่ใช้งานได้
+
+    ขั้นตอน:
+    - ลอง quick_scan_camera ตั้งแต่ index 0-9
+    - ถ้าเปิดได้ → เพิ่มลง list (id, name, status)
+    - ถ้าไม่มีเลย → ส่ง message ว่าไม่เจอ
     """
     cams = []
+
+    # ลอง index 0 ถึง 9
     for i in range(10):
         ok = quick_scan_camera(i)
         if ok:
             cams.append({
                 "id": i,
                 "name": f"กล้องตัวที่ {i}",
-                "status": "ใช้ได้"
+                "status": "ใช้ได้",
             })
-    
+
     if not cams:
+        # ถ้าไม่เจอกล้องเลย → ส่ง message อย่างเดียว
         return {"message": "ไม่เจอ USB ที่กำลังเชื่อมต่อกล้อง"}
-    
+
+    # ถ้าเจอบางตัว → ส่ง list ของกล้องกลับไป
     return {"cameras": cams}
 
 
 # ==============================================================================
-# Start / Stop / Close
+# Start / Stop / Close กล้องทั้งหมด
 # ==============================================================================
 
 @camera_router.get("/start-all")
 async def start_all_detections(
     subject_id: Optional[str] = None,
-    user=Depends(verify_token)
+    user=Depends(verify_token),
 ):
     """
-    เริ่ม detect ทุกกล้องที่มี
-    ผูก teacher_id จาก token, subject_id ใช้ DEFAULT_SUB ชั่วคราว
+    Endpoint ใช้เริ่ม "การตรวจจับ/track" สำหรับทุกกล้องที่มี
+    - ดึง teacher_id จาก token (ตาราง teacher)
+    - เปิด Thread ใหม่สำหรับกล้องที่ยังไม่ถูกเปิด
+    - set detecting=True เพื่อให้เริ่ม track
     """
+    # ดึง event loop ปัจจุบันของ FastAPI (ใช้กับ WS summary ภายหลัง)
     loop = asyncio.get_running_loop()
 
+    # ไป Supabase ตาราง teacher เพื่อเอา teacher_id ตาม user id
     teacher_res = (
         supabase_client.table("teacher")
         .select("teacher_id")
         .eq("id", user["id"])
         .execute()
     )
+
+    # ถ้าเจอข้อมูล → เอา teacher_id ออกมา, ถ้าไม่เจอ → None
     t_id = teacher_res.data[0]["teacher_id"] if teacher_res.data else None
 
+    # list เก็บ id กล้องที่เราจะ start ในคำสั่งนี้
     started = []
 
-    # ใช้ available_cameras ที่ scan ได้ ถ้าไม่มีให้ default 0-1
+    # ถ้ามี available_cameras ที่ scan ไว้แล้ว → ใช้ id จากตรงนั้น
+    # ถ้าไม่มี (ยังไม่เคย scan) → default ใช้ [0, 1]
     cam_ids = (
         [str(cam["id"]) for cam in available_cameras]
         if available_cameras
         else [str(i) for i in range(2)]
     )
 
+    # วนทุก camera id ที่จะใช้
     for cid in cam_ids:
+        # ถ้า cid ยังไม่มีใน camera_threads หรือ Thread ตายไปแล้ว
         if cid not in camera_threads or not camera_threads[cid].is_alive():
+            # สร้าง CameraThread ใหม่
             th = CameraThread(cid, teacher_id=t_id, subject_id=subject_id)
+
+            # ให้ Thread รู้จัก event loop และ summary_ready_event
             th.loop = loop
             th.summary_ready_event = asyncio.Event()
+
+            # set ให้ detect/track ทันที
             th.detecting = True
+
+            # start Thread (จะไปเรียก th.run() ภายใน)
             th.start()
+
+            # เก็บไว้ใน dictionary กลาง
             camera_threads[cid] = th
         else:
+            # ถ้า Thread เดิมยังมีชีวิตอยู่ → เอา object เดิมมาใช้งานต่อ
             th = camera_threads[cid]
+            # เปิดการ detect/track
             th.detecting = True
             th.loop = loop
+
+            # ถ้า summary_ready_event ยังไม่มี → สร้างใหม่
             if th.summary_ready_event is None:
                 th.summary_ready_event = asyncio.Event()
+
+            # อัปเดต teacher_id / subject_id ให้ตรงกับค่าใหม่
             if t_id:
                 th.teacher_id = t_id
                 if not th.subject_id:
-                    th.subject_id = "DEFAULT_SUB"
+                    th.subject_id = subject_id or "DEFAULT_SUB"
+
+        # เพิ่ม cid ลง list started
         started.append(cid)
 
+    # ส่งข้อความกลับว่าเริ่มกล้องกี่ตัว id อะไรบ้าง
     return {"message": f"Started {len(started)} cameras", "started": started}
 
 
 @camera_router.get("/stop-all")
 async def stop_all_detections():
     """
-    แค่หยุด detect (แต่ไม่ปิดกล้อง)
+    Endpoint สำหรับ "หยุด detect/track" ทุกกล้อง
+    หมายเหตุ: ไม่ได้ปิดกล้อง, แค่ตั้ง th.detecting = False
     """
     for th in camera_threads.values():
         th.detecting = False
@@ -518,60 +889,81 @@ async def stop_all_detections():
 @camera_router.get("/close-all")
 async def close_all_cameras():
     """
-    ปิดกล้อง / หยุด thread ทั้งหมด
+    Endpoint สำหรับ "ปิดกล้องทั้งหมด" และหยุด Thread ทุกตัว
+    - เรียก th.stop() ซึ่งจะ set stop_flag และ join thread
+    - ลบ entry ของแต่ละกล้องออกจาก camera_threads
     """
     for cid, th in list(camera_threads.items()):
         th.stop()
         del camera_threads[cid]
+
     return {"message": "All camera threads closed"}
 
 
 # ==============================================================================
-# WebSocket: live video
+# WebSocket: ส่งภาพจากกล้องแบบ real-time
 # ==============================================================================
-
 @camera_router.websocket("/ws/camera/{camera_id}")
 async def ws_camera(websocket: WebSocket, camera_id: str):
     """
-    ส่งภาพจากกล้องแบบ real-time (JPEG base64)
+    WebSocket สำหรับส่งภาพ real-time ของกล้องแต่ละตัว (JPEG base64 string ต่อเฟรม)
+
+    ขั้นตอน:
+    - accept websocket
+    - ถ้ายังไม่มี Thread กล้องนี้ → สร้าง CameraThread ใหม่ (detecting=False แค่ preview)
+    - วนลูปดึง jpeg_buffer จาก Thread แล้วส่งไปหน้าเว็บ
     """
+    # อนุญาตให้ client เชื่อมต่อ
     await websocket.accept()
+
+    # ดึง event loop ปัจจุบัน
     loop = asyncio.get_running_loop()
+
+    # ดึง query params teacher_id, subject_id (ถ้ามี) จาก URL
     teacher_id = websocket.query_params.get("teacher_id")
     subject_id = websocket.query_params.get("subject_id")
-    
-    # ensure thread
+
+    # ----------------- สร้าง Thread ให้กล้องนี้ ถ้ายังไม่มี -----------------
     if camera_id not in camera_threads or not camera_threads[camera_id].is_alive():
+        # สร้าง CameraThread ใหม่ (detecting=False → preview)
         th = CameraThread(camera_id, teacher_id=teacher_id, subject_id=subject_id)
         th.loop = loop
         th.summary_ready_event = asyncio.Event()
-        th.detecting = False  # live preview เฉย ๆ ยังไม่ detect
+        th.detecting = False     # แสดงภาพอย่างเดียว ยังไม่ detect/track
         th.start()
+
         camera_threads[camera_id] = th
     else:
-
+        # ถ้ามี Thread เดิม → อัปเดต teacher_id / subject_id ตาม query ล่าสุด
         th = camera_threads[camera_id]
         if teacher_id:
             th.teacher_id = teacher_id
         if subject_id:
             th.subject_id = subject_id
 
+    # ให้ Thread รู้จัก event loop ปัจจุบัน
     th = camera_threads[camera_id]
     th.loop = loop
 
     try:
+        # วนลูปส่งภาพไปเรื่อย ๆ
         while True:
+            # อ่าน frame ล่าสุดจาก Thread ด้วย lock
             with th.lock:
                 frame = th.jpeg_buffer
 
             if frame:
+                # แปลง bytes → base64 string ก่อนส่งไปทาง WebSocket
                 await websocket.send_text(base64.b64encode(frame).decode())
 
-            await asyncio.sleep(0.04)  # ~25 fps
+            # หน่วง ~0.04 วินาที (ประมาณ 25 fps)
+            await asyncio.sleep(0.04)
 
     except WebSocketDisconnect:
+        # ถ้ามีการ disconnect จากฝั่ง client → log ไว้
         print(f"🔌 WS camera disconnected: {camera_id}")
     finally:
+        # พยายามปิด websocket ให้เรียบร้อย
         try:
             await websocket.close()
         except Exception:
@@ -579,42 +971,60 @@ async def ws_camera(websocket: WebSocket, camera_id: str):
 
 
 # ==============================================================================
-# WebSocket: summary per minute
+# WebSocket: ส่ง Summary ราย 1 นาที
 # ==============================================================================
-
-
 @camera_router.websocket("/ws/camera/summary/{camera_id}")
 async def ws_summary(websocket: WebSocket, camera_id: str):
     """
-    WS ส่ง Summary ทุก 1 นาที
+    WebSocket สำหรับส่ง summary ราย 1 นาที ของกล้องแต่ละตัว
+
+    การทำงาน:
+    - accept websocket
+    - หาว่า camera_id นี้มี Thread หรือไม่
+    - รอให้ summary_ready_event ของ Thread ถูก set (จาก save_summary)
+    - เมื่อ event ถูก set → ส่ง payload summary (th.latest_summary) ให้ client
     """
+    # อนุญาตให้ client เชื่อมต่อ
     await websocket.accept()
+
+    # ดึง event loop ปัจจุบัน
     loop = asyncio.get_running_loop()
 
+    # หา Thread ของกล้องนี้จาก dict
     th = camera_threads.get(camera_id)
     if not th:
+        # ถ้าไม่เจอ Thread เลย → ปิด WebSocket ทันที
         await websocket.close()
         return
 
+    # ให้ Thread รู้จัก event loop
     th.loop = loop
+
+    # ถ้า summary_ready_event ยังไม่มี → สร้างใหม่
     if th.summary_ready_event is None:
         th.summary_ready_event = asyncio.Event()
 
     try:
+        # วนลูปตลอดการเชื่อมต่อ
         while True:
-            # รอ event จาก thread
+            # รอ event จาก Thread (จะถูก set ใน save_summary)
             await th.summary_ready_event.wait()
+            # พอ event ถูก set แล้ว → reset event กลับไปเป็น False
             th.summary_ready_event.clear()
 
+            # ดึง payload summary ล่าสุดจาก Thread ด้วย lock
             with th.lock:
                 payload = th.latest_summary.copy()
 
+            # ถ้ามี payload → ส่งเป็น JSON ไปยัง client
             if payload:
                 await websocket.send_json(payload)
 
     except WebSocketDisconnect:
+        # ถ้า client ปิด WebSocket → log ไว้
         print(f"🔌 WS summary disconnected: {camera_id}")
     finally:
+        # พยายามปิด websocket
         try:
             await websocket.close()
         except Exception:
@@ -622,37 +1032,48 @@ async def ws_summary(websocket: WebSocket, camera_id: str):
 
 
 # ==============================================================================
-# summary-to-supabase
+# Endpoint: ดึง summary จาก buffer แล้ว insert ลง Supabase
 # ==============================================================================
-
-
 @camera_router.get("/summary-to-supabase")
 async def summary_to_supabase_route():
     """
-    ดึง buffer ทุกกล้อง → insert ลง Supabase
-    (camera_logs เท่านั้น, daily summary ถ้าจะทำเพิ่มภายหลังได้)
+    Endpoint นี้มีหน้าที่:
+    1) ดึง buffer ของทุกกล้อง จากไฟล์ JSON (ผ่าน load_buffer)
+    2) เตรียม payload สำหรับ insert ลงตาราง camera_logs (ทุก record ที่มี)
+    3) สร้าง daily summary (ค่าเฉลี่ย attention / non-attention / class_json_summary รายวัน)
+       แล้ว insert ลงตาราง camera_daily_summary
+    4) ล้าง buffer (ไฟล์ JSON) ด้วย clear_buffer เมื่อ insert สำเร็จ
     """
     all_summary_data = []
+
     try:
+        # ----------------- 1) ดึงข้อมูลจาก buffer ของทุกกล้อง -----------------
         for cam_id in list(camera_threads.keys()):
             data = load_buffer(str(cam_id))
             if data:
                 all_summary_data.append(data)
+
+                # หลังอ่านแล้ว ลองลบไฟล์ buffer
                 err_buffer = clear_buffer(str(cam_id))
                 if err_buffer:
                     print("ไม่สามารถลบไฟล์ JSON ได้")
             else:
                 print("ไม่เจอไฟล์ JSON ที่กำลังบันทึก")
 
+        # ถ้าไม่มีข้อมูลเลยในทุก buffer → ส่ง message ว่าไม่มีข้อมูล
         if not all_summary_data:
             return {"message": "ไม่มีข้อมูลใน buffer", "inserted": 0}
 
+        # ----------------- 2) เตรียม insert ลง camera_logs -----------------
         insert_payload = []
+
+        # all_summary_data เป็น list ของ dict ต่อกล้อง
         for summary in all_summary_data:
             camera_id = summary["camera_id"]
             teacher_id = summary["teacher_id"]
             subject_id = (summary.get("subject_id") or "").strip()
 
+            # summary["records"] เก็บข้อมูลหลายช่วงเวลาในวันนั้น
             for record in summary["records"]:
                 insert_payload.append(
                     {
@@ -666,8 +1087,12 @@ async def summary_to_supabase_route():
                     }
                 )
 
+        # ถ้ามีข้อมูลพร้อม insert → เรียก Supabase insert
         if insert_payload:
             supabase_client.table("camera_logs").insert(insert_payload).execute()
+
+        # ----------------- 3) เตรียม daily summary ลง camera_daily_summary -----------------
+        # ใช้ defaultdict(list) เพื่อ group row ตาม (teacher_id, subject_id, camera_id, date)
         grops = defaultdict(list)
 
         for row in insert_payload:
@@ -675,24 +1100,29 @@ async def summary_to_supabase_route():
             subject_id = row["subject_id"]
             camera_id = row["camera_id"]
 
+            # created_at เป็น datetime หรือ string (ISO) → แปลงเป็น datetime เสมอ
             dt = (
                 row["created_at"]
                 if isinstance(row["created_at"], datetime)
                 else datetime.fromisoformat(str(row["created_at"]).replace("Z", "+00:00"))
             )
 
+            # date_key คือวันที่ในรูปแบบ YYYY-MM-DD
             date_key = dt.date().isoformat()
 
             key = (teacher_id, subject_id, camera_id, date_key)
             grops[key].append(row)
 
+        # list สำหรับเก็บ row ที่จะ insert ลง camera_daily_summary
         daily_rows = []
 
-        for  (teacher_id, subject_id, camera_id, summary_date), rows in grops.items():
+        # วนกลุ่มทีละ group
+        for (teacher_id, subject_id, camera_id, summary_date), rows in grops.items():
             total_att = 0.0
             total_non = 0.0
             count = len(rows)
 
+            # เช่น {"Focused": 1.2, "LookingAway": 0.7, ...}
             class_totals = defaultdict(float)
 
             for r in rows:
@@ -705,39 +1135,48 @@ async def summary_to_supabase_route():
                 if isinstance(cj, str):
                     try:
                         import json
+
                         cj = json.loads(cj)
-                    except:
+                    except Exception:
                         cj = {}
-                
+
                 for cls_name, ratio in cj.items():
                     class_totals[cls_name] += float(ratio or 0.0)
+
+            # ค่าเฉลี่ย attention / non-attention ของวันนั้น
             avg_att = total_att / count if count > 0 else 0.0
             avg_non = total_non / count if count > 0 else 0.0
 
+            # คำนวณค่าเฉลี่ย class_json_summary
             class_summary = {}
             if count > 0:
                 for cls_name, total_val in class_totals.items():
                     class_summary[cls_name] = round(total_val / count, 3)
-            
+
+            # เตรียม row สำหรับ insert ลง camera_daily_summary
             daily_rows.append(
                 {
                     "teacher_id": teacher_id,
                     "subject_id": subject_id,
                     "camera_id": camera_id,
-                    "summary_date": summary_date,
+                    "summary_date": summary_date,                  # string "YYYY-MM-DD"
                     "avg_attention": round(avg_att, 3),
                     "avg_non_attention": round(avg_non, 3),
                     "class_json_summary": class_summary,
                 }
             )
 
+        # ถ้ามี daily_rows ให้ insert ลง Supabase
         if daily_rows:
             supabase_client.table("camera_daily_summary").insert(daily_rows).execute()
-            
+
+        # สุดท้ายส่งคำตอบกลับว่าบันทึกสำเร็จ และมีกี่ record
         return {
             "message": "บันทึกข้อมูลเสร็จสิ้น",
             "inserted": len(insert_payload),
         }
+
     except Exception as e:
+        # ถ้าระหว่างทางมี error → log และส่ง error message กลับ
         print("Error summary_to_supabase:", e)
         return {"error": str(e)}

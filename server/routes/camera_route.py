@@ -257,9 +257,15 @@ class CameraThread(threading.Thread):
 
                 # เวลา timestamp ตอนนี้ (ใช้กับ interval summary)
                 now = time.time()
-                if now - self.last_detect_time < DETECT_INTERVEL:
-                    continue
-                self.last_detect_time = now
+                elapsed = now - self.last_detect_time
+
+                if elapsed < DETECT_INTERVEL:
+                    # ถ้า detect ถึงเร็วเกินไป ให้หน่วงเฉพาะเวลาที่ขาดจริง ๆ
+                    time.sleep(DETECT_INTERVEL - elapsed)
+                else:
+                    # ถ้าถึงรอบ detect แล้ว → อัปเดตเวลา detect
+                    self.last_detect_time = time.time()
+
                 # เริ่มจากใช้ภาพดิบจากกล้องก่อน
                 annotated = frame
 
@@ -341,9 +347,6 @@ class CameraThread(threading.Thread):
                 else:
                     print(f"JPG encode เกิดข้อผิดพลาดของกล้อง {self.camera_id}")
                     continue
-
-                # หน่วงเล็กน้อยเพื่อไม่ให้ลูปวิ่งเร็วเกินไป (~100 fps)
-                time.sleep(0.01)
 
         except Exception as e:
             # ถ้าเกิด error ใด ๆ ที่หลุดมานอก try ด้านใน → log ไว้ก่อนปิดกล้อง

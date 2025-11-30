@@ -109,7 +109,7 @@ class CameraThread(threading.Thread):
         # dict เก็บสถานะของคลาสปัจจุบัน + duration + miss
         self.class_timer = {
             "current_class": None,   # class ปัจจุบันที่ถือว่าใช้ (เช่น "Focused")
-            "duration": 0.0,         # ใช้กับ LookingAway → เวลา accum
+            "duration": 0.0,         # ใช้กับ LookingAway → เวลา
             "miss": 0,               # ใช้ตัดสินใจเปลี่ยน class เมื่อเจอคลาสใหม่ซ้ำ ๆ
         }
 
@@ -309,9 +309,6 @@ class CameraThread(threading.Thread):
                             annotated = result.plot()
                             self.last_annotated = annotated.copy()
 
-                            # detect ไม่มี track_id → ใช้ logic แบบง่าย ๆ
-                            self.process_behavior_predict(result, now)
-
                         except Exception as e2:
                             print(f"❌ fallback predict ก็พังอีก camera {self.camera_id}: {e2}")
 
@@ -357,43 +354,8 @@ class CameraThread(threading.Thread):
 
         print(f"🛑 CameraThread {self.camera_id} stopped")
 
-    def process_behavior_predict(self, result, now):
-        """
-        fallback เมื่อ track ใช้ไม่ได้ → ใช้ predict()
-        ไม่มี track_id → เลือก box conf สูงสุดตัวเดียวเป็น “คนหลัก”
-        """
-        boxes = result.boxes
-        if boxes is None or len(boxes) == 0:
-            return
-
-        detections = []
-        for box in boxes:
-            cls_idx = int(box.cls)
-            label = self.model.names[cls_idx]
-
-            if label.lower() == "phone":
-                label = "UsingPhone"
-
-            if label not in ATTENDENCE + NON_ATTENDENCE:
-                continue
-
-            conf = float(box.conf.item())
-            detections.append({"label": label, "conf": conf})
-
-        if not detections:
-            return
-
-        best = max(detections, key=lambda d: d["conf"])
-        if best["conf"] > 0.60:
-            self.update_class_state(best["label"])
-
-        # สรุป interval
-        if now - self.last_interval_time >= self.interval_seconds:
-            self.last_interval_time = now
-            self.handle_interval()
-
     # ----------------------------------------------------------------------
-    # ฟังก์ชันสั่งหยุด Thread อย่างสุภาพ
+    # ฟังก์ชันสั่งหยุด Thread 
     # ----------------------------------------------------------------------
     def stop(self):
         """
@@ -496,11 +458,6 @@ class CameraThread(threading.Thread):
             cls_idx = int(box.cls)
             # ชื่อคลาส (string) จาก model.names
             label = self.model.names[cls_idx]
-
-            # ตัวอย่าง: map label "Phone" → "UsingPhone" ถ้าต้องการ
-            # (คุณสามารถเพิ่ม mapping อื่น ๆ ได้ตามต้องการ)
-            if label.lower() == "phone":
-                label = "UsingPhone"
 
             # สนใจเฉพาะ class ที่อยู่ใน list ATTENDENCE + NON_ATTENDENCE
             if label not in ATTENDENCE + NON_ATTENDENCE:

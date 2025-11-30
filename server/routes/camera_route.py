@@ -7,7 +7,7 @@ import torch              # ใช้ดูว่ามี GPU ไหม (cuda) 
 from datetime import datetime           # ใช้สำหรับเวลาปัจจุบันเก็บลง summary
 from collections import defaultdict     # ใช้ dict แบบค่า default=0 (นับจำนวน class ต่าง ๆ)
 from typing import Optional             # ใช้บอก type ของพารามิเตอร์ที่เป็น optional
-
+from ultralytics import YOLO
 from fastapi import (
     APIRouter,          # สร้าง router ย่อยสำหรับ path ที่เกี่ยวกับกล้อง
     WebSocket,          # สำหรับประกาศ WebSocket endpoint
@@ -15,7 +15,7 @@ from fastapi import (
     Depends,            # ใช้กับ Depends(verify_token) เพื่อเช็ค token
 )
 
-from utils.model_loader import get_model          # ฟังก์ชันโหลด YOLO model (จากไฟล์อื่น)
+from utils.model_loader import get_model_path          # ฟังก์ชันหา path model (จากไฟล์อื่น)
 from utils.auth import verify_token               # ฟังก์ชันเช็ค token ของผู้ใช้
 from config.bn_supabase import supabase_client    # client สำหรับเรียก Supabase
 from utils.json_buffer import save_buffer, load_buffer, clear_buffer  # จัดการไฟล์ buffer JSON
@@ -40,6 +40,7 @@ available_cameras: list[dict] = []
 last_scan_time: float = 0
 # Lock กันไม่ให้มีการ scan กล้องซ้อนกัน
 scan_lock = asyncio.Lock()
+model_path = get_model_path()
 
 
 # ==============================================================================
@@ -88,7 +89,7 @@ class CameraThread(threading.Thread):
         # ----------------- YOLO Model -----------------
         # ตอน __init__ ยังไม่โหลด model เพื่อให้การสร้าง object เร็วขึ้น
         # จะไปโหลดใน run() อีกที (ต่อ Thread)
-        self.model = None
+        self.model = YOLO(model_path)
 
         # device ที่จะใช้ (ถ้ามี GPU → cuda, ถ้าไม่มี → cpu)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -225,10 +226,6 @@ class CameraThread(threading.Thread):
         # ----------------- 2) โหลด YOLO Model -----------------
         try:
             print(f"⏳ กำลังโหลดโมเดลของกล้อง {self.camera_id} ...")
-
-            # เรียกใช้ get_model() จากไฟล์ model_loader
-            # (แนะนำ: ข้างในควรใช้ fuse=False หรือไม่ fuse ในตอนโหลด เพื่อเลี่ยงปัญหา track+fuse ซ้อน)
-            self.model = get_model()
 
             print(f"✅ โหลด Model Yolo ของกล้อง {self.camera_id}")
         except Exception as e:
@@ -808,6 +805,7 @@ async def start_all_detections(
 
             # เก็บไว้ใน dictionary กลาง
             camera_threads[cid] = th
+            print(camera_threads)
         else:
             # ถ้า Thread เดิมยังมีชีวิตอยู่ → เอา object เดิมมาใช้งานต่อ
             th = camera_threads[cid]

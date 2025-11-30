@@ -100,69 +100,6 @@ const RecordPage = () => {
 
     // ---------------------- WebSocket: สตรีมภาพ (annotated/raw) ----------------------
 
-    // ฟังก์ชันเชื่อม WebSocket สำหรับ "สตรีมภาพแบบมี bounding box" (detect socket)
-    const connectDetectSocket = (cameraId) => {
-        // ถ้ากล้องนี้มี WebSocket อยู่แล้ว ไม่ต้องเชื่อมซ้ำ
-        if (wsRefs.current[cameraId]) return;
-
-        // อ่านค่าฐาน URL ของ API จากไฟล์ .env (เช่น http://localhost:8000/api)
-        const base = import.meta.env.VITE_API_BASE;
-        // ถ้า base ขึ้นต้นด้วย https ให้ใช้ wss (ปลอดภัย) ไม่งั้นใช้ ws ปกติ
-        const wsProtocol = base.startsWith("https") ? "wss" : "ws";
-        // ตัดคำว่า http:// หรือ https:// ออก เพื่อใช้ต่อกับ ws/wss
-        const wsBase = base.replace(/^https?:\/\//, "");
-        // สร้าง URL สำหรับเชื่อมต่อ WebSocket
-        // เพิ่ม query string teacher_id และ subject_id ส่งไปให้หลังบ้าน
-        const wsUrl = `${wsProtocol}://${wsBase}/camera/ws/camera/${cameraId}?teacher_id=${teacherId}&subject_id=${subjectId}`;
-
-        // แสดงใน console ว่ากำลังเชื่อม WebSocket ตัวไหน
-        console.log("🔌 connecting detect WS:", wsUrl);
-
-        // สร้าง WebSocket ใหม่ด้วย URL ที่เตรียมไว้
-        const ws = new WebSocket(wsUrl);
-        // เก็บ WebSocket นี้ไว้ใน ref ตาม cameraId
-        wsRefs.current[cameraId] = ws;
-
-        // เมื่อเชื่อมต่อสำเร็จ
-        ws.onopen = () => console.log(`📡 Detect WS opened cam ${cameraId}`);
-
-        // เมื่อการเชื่อมต่อปิดลง (ถูกปิดเอง หรือหลุด)
-        ws.onclose = () => {
-            console.log(`Detect WS closed cam ${cameraId}`);
-            // ลบ reference ทิ้ง เพื่อให้รู้ว่าไม่เชื่อมแล้ว
-            delete wsRefs.current[cameraId];
-        };
-
-        // ถ้าเกิด error ใน WebSocket
-        ws.onerror = (err) => console.error("Detect WS error", err);
-
-        // เมื่อได้รับข้อความจาก WebSocket
-        ws.onmessage = (event) => {
-            // ข้อมูลที่ได้มาคือรูปภาพที่ถูกแปลงเป็น base64 string
-            const base64Image = event.data;
-            // ดึง canvas ของกล้องนี้จาก ref
-            const canvas = canvasRef.current[cameraId];
-            // ถ้าไม่มี canvas (เช่น element ยังไม่ render) ก็ไม่ต้องทำอะไร
-            if (!canvas) return;
-
-            // ดึง context 2D เพื่อใช้วาดรูปลงบน canvas
-            const ctx = canvas.getContext("2d");
-            // สร้าง object Image ใหม่
-            const img = new Image();
-            // ตั้ง src ของรูปให้เป็นข้อมูล base64 ที่เติม header ให้ครบ
-            img.src = "data:image/jpeg;base64," + base64Image;
-
-            // เมื่อรูปโหลดเสร็จ
-            img.onload = () => {
-                // ปรับขนาด canvas ให้เท่าขนาดรูปจริง
-                canvas.width = img.width;
-                canvas.height = img.height;
-                // วาดรูปลงตรง (0,0) เต็มขนาด canvas
-                ctx.drawImage(img, 0, 0);
-            };
-        };
-    };
-
     // ฟังก์ชันเชื่อม WebSocket สำหรับ "สตรีมภาพกล้อง" (เวอร์ชันเดิม)
     const connectWebSocket = (cameraId) => {
         // อ่านฐาน URL จาก .env
@@ -381,8 +318,6 @@ const RecordPage = () => {
         cameras.forEach((cam) => {
             // เชื่อม WebSocket สำหรับสตรีมภาพกล้อง
             connectWebSocket(cam.id);
-            // เชื่อม WebSocket สำหรับภาพแบบ detect (ถ้าหลังบ้านส่ง annotated แยก)
-            connectDetectSocket(cam.id);
         });
 
         // แจ้งเตือนว่า "เปิดกล้องทั้งหมดแล้ว!"
@@ -489,12 +424,6 @@ const RecordPage = () => {
             const resStartDetect = await axios.get(`camera/start-all`);
             // รับรายการ id กล้องที่เริ่มตรวจจับสำเร็จจากหลังบ้าน
             const started_ids = resStartDetect.data.started || [];
-
-            // วนทุก id กล้องที่เริ่มตรวจจับได้
-            started_ids.forEach((id) => {
-                // เชื่อม detect socket สำหรับกล้องนั้น
-                connectDetectSocket(id);
-            });
 
             // แจ้งเตือนว่าการเริ่มตรวจจับสำเร็จ
             toast.success(`เริ่มตรวจจับทุกกล้อง`);

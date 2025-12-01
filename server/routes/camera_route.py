@@ -26,9 +26,7 @@ camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 # tags ใช้สำหรับจัด group ใน docs ของ FastAPI
 
 # ----------------- กำหนดกลุ่มคลาสพฤติกรรม -----------------
-# กลุ่มที่ถือว่า "ตั้งใจเรียน"
 ATTENDENCE = ["Focused", "Looking_at_the_board", "Taking_notes"]
-# กลุ่มที่ถือว่า "ไม่ตั้งใจ"
 NON_ATTENDENCE = ["LookingAway", "Talking", "UsingPhone"]
 
 # ----------------- state สำหรับกล้องทั้งหมดในเซิร์ฟเวอร์ -----------------
@@ -40,7 +38,6 @@ available_cameras: list[dict] = []
 last_scan_time: float = 0
 # Lock กันไม่ให้มีการ scan กล้องซ้อนกัน
 scan_lock = asyncio.Lock()
-
 model_path = get_model_path()
 
 
@@ -292,7 +289,6 @@ class CameraThread(threading.Thread):
                     if self.last_annotated is not None:
                         annotated = self.last_annotated.copy()
                     else:
-                        # ถ้ายังไม่เคย detect เลย → ใช้ภาพดิบจากกล้อง
                         annotated = frame
 
                 # ----------------- 6) แปลงภาพเป็น JPEG แล้วเก็บลง buffer -----------------
@@ -367,16 +363,12 @@ class CameraThread(threading.Thread):
             timer["miss"] = 0
             return
 
-        # ถ้า label ใหม่ต่างจาก current_class → เพิ่ม miss
         timer["miss"] += 1
 
         # ถ้า miss ถึง threshold (5 ครั้งติดต่อกัน)
         if timer["miss"] >= 5:
-            # เปลี่ยน class ปัจจุบันเป็น label ใหม่นี้
             timer["current_class"] = label
-            # reset duration (แยก counting ใหม่สำหรับ LookingAway)
             timer["duration"] = 0.0
-            # reset miss
             timer["miss"] = 0
 
     # ----------------------------------------------------------------------

@@ -13,6 +13,17 @@ const Classroom = () => {
   const days = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์"];
   const timeSlots = [8, 9, 10, 11, 12, 13, 14, 15, 16];
 
+      // เวลาเริ่ม 8:00 (480 นาที) ถึง 17:00 (1020 นาที) = 540 นาที
+    const START_MINUTES = 8 * 60;
+    const TOTAL_MINUTES = 9 * 60; 
+
+    // แปลงเวลา "HH:MM" เป็นนาที
+    const timeToMinutes = (timeStr) => {
+        if (!timeStr) return 0;
+        const [h, m] = timeStr.split(":").map(Number);
+        return h * 60 + m;
+    };
+    
   useEffect(() => {
     const fetchSchedule = async () => {
       if (!id) return;
@@ -70,120 +81,107 @@ const Classroom = () => {
     console.log("คลิกวิชา:", subjectId);
   };
 
-  // Function หลักในการสร้างตาราง
-  const renderTableBody = () => {
-    if (loading) {
-      return (
-        <tr>
-          <td colSpan="10" className="text-center p-8 text-gray-500">
-            กำลังโหลดข้อมูลตารางสอน...
-          </td>
-        </tr>
-      );
-    }
-    if (schedule.length === 0 && teacherInfo) {
-      return (
-        <tr>
-          <td colSpan="10" className="text-center p-8 text-gray-500">
-            ไม่พบข้อมูลตารางสอนสำหรับ อ. {teacherInfo.name}
-          </td>
-        </tr>
-      );
-    }
+   // ✅ แก้ไขส่วน renderTableBody ให้รองรับการซ้อนกัน
+    const renderTableBody = () => {
+        if (loading) return <tr><td colSpan="10" className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr>;
+        if (schedule.length === 0) return <tr><td colSpan="10" className="p-8 text-center text-gray-500">ไม่พบข้อมูล</td></tr>;
 
-    return days.map((day) => {
-      const classesForDay = schedule
-        .filter((item) => {
-          if (!item.day) return false;
-          return String(item.day).trim() === day;
-        })
-        .sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
+        return days.map((day) => {
+            // ดึงวิชาของวันนี้
+            const classes = schedule
+                .filter((item) => String(item.day).trim() === day)
+                .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
-      const cells = [];
-      let slotIndex = 0;
+            return (
+                <tr key={day} className="h-24 border-b border-gray-200">
+                    <td className="bg-gray-100 border-r border-gray-300 p-2 font-semibold text-gray-700 w-24 align-middle">
+                        {day}
+                    </td>
 
-      while (slotIndex < timeSlots.length) {
-        const currentSlotHour = timeSlots[slotIndex];
+                    <td colSpan={9} className="p-0 relative align-top h-full">
+                        {/* 1. Grid พื้นหลัง */}
+                        <div className="absolute inset-0 flex w-full h-full pointer-events-none z-0">
+                            {timeSlots.map((_, i) => (
+                                <div key={i} className={`flex-1 border-r border-gray-200 ${i === timeSlots.length - 1 ? 'border-none' : ''}`}></div>
+                            ))}
+                        </div>
 
-        // 1. เปลี่ยนจาก find เป็น filter เพื่อหา 'ทุกวิชา' ที่เริ่มเวลานี้
-        const startingClasses = classesForDay.filter(
-          (c) => c.start_time && parseInt(c.start_time.split(":")[0]) === currentSlotHour
-        );
+                        {/* 2. กล่องวิชา (คำนวณการซ้อนทับ) */}
+                        <div className="relative w-full h-full min-h-[96px] z-10"> 
+                            {classes.map((item, idx) => {
+                                // A. คำนวณตำแหน่งแนวนอน (ซ้าย/ขวา)
+                                const startMin = timeToMinutes(item.start_time);
+                                const endMin = timeToMinutes(item.end_time);
+                                const duration = endMin - startMin;
+                                const widthPercent = (duration / TOTAL_MINUTES) * 100;
+                                const leftPercent = ((startMin - START_MINUTES) / TOTAL_MINUTES) * 100;
 
-        if (startingClasses.length > 0) {
-          // 2. หาวิชาที่เรียนนานที่สุดในกลุ่มนี้ เพื่อกำหนด colSpan ของ td หลัก
-          let maxDuration = 1;
-          let longestClass = startingClasses[0]; // ใช้อ้างอิงสำหรับ key หรือข้อมูลหลักหากจำเป็น
+                                // B. 🟢 คำนวณตำแหน่งแนวตั้ง (บน/ล่าง) กรณีชนกัน
+                                // หาเพื่อนที่เวลาชนกับเราเป๊ะๆ (Same Start & Same End)
+                                const overlappingItems = classes.filter(c => 
+                                    c.start_time === item.start_time && c.end_time === item.end_time
+                                );
+                                
+                                const totalOverlaps = overlappingItems.length;
+                                const myIndexInOverlap = overlappingItems.indexOf(item); // เราเป็นคนที่เท่าไหร่ในกลุ่มที่ชนกัน
 
-          startingClasses.forEach((c) => {
-            const s = parseInt(c.start_time.split(":")[0]);
-            const e = c.end_time ? parseInt(c.end_time.split(":")[0]) : s + 1;
-            const duration = e - s;
-            if (duration > maxDuration) {
-              maxDuration = duration;
-              longestClass = c;
-            }
-          });
+                                // ถ้าชนกัน 2 วิชา -> สูงคนละ 50%, top 0% กับ 50%
+                                // ถ้าชนกัน 3 วิชา -> สูงคนละ 33.3%, top 0%, 33%, 66%
+                                const heightPercent = 100 / totalOverlaps;
+                                const topPercent = heightPercent * myIndexInOverlap;
 
-          const finalColSpan = maxDuration;
+                                return (
+                                    <div
+                                        key={idx}
+                                        onClick={() => handleCourseClick(item.subject_id)}
+                                        // 🟢 เอา absolute top/bottom ออก แล้วใช้ style คุมแทน
+                                        className="absolute bg-yellow-400 hover:bg-orange-500 hover:text-white 
+                                                   border border-gray-300 shadow-sm cursor-pointer 
+                                                   flex flex-col justify-center items-center text-center 
+                                                   rounded-sm overflow-hidden p-1 transition-all hover:z-50"
+                                        style={{
+                                            left: `${leftPercent}%`,
+                                            width: `${widthPercent}%`,
+                                            
+                                            // 🟢 กำหนดความสูงและตำแหน่งแนวตั้ง
+                                            height: `${heightPercent}%`,
+                                            top: `${topPercent}%`,
+                                            
+                                            // เพิ่ม z-index เล็กน้อยตามลำดับเพื่อไม่ให้เงาบังกันเอง
+                                            zIndex: 10 + myIndexInOverlap 
+                                        }}
+                                        title={`${item.subject_name} (${item.start_time} - ${item.end_time})`}
+                                    >
+                                        <div className="flex flex-col justify-center h-full w-full">
+                                            <u className="font-bold text-m">{item.subject_id}</u>
+                                            <span className="font-medium text-[13px] truncate w-full px-1 block">
+                                                {item.subject_name || "(ไม่มีชื่อ)"}
+                                            </span>
+                                            {/* ถ้าซ้อนกันเยอะ ซ่อนรายละเอียดบางอย่าง */}
+                                            {totalOverlaps <= 2 && (
+                                                <div className="text-[13px] leading-tight mt-0.5 opacity-90 hidden sm:block">
+                                                    กลุ่ม {item.group} | {item.room}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </td>
+                </tr>
+            );
+        });
+    };
 
-          // 3. ใช้ Code HTML ที่คุณให้มา
-          cells.push(
-            <td
-              key={longestClass.subject_id + longestClass.group + currentSlotHour}
-              colSpan={finalColSpan}
-              className="bg-yellow-400 text-xs cursor-pointer transition-all duration-200 border border-gray-300 align-top text-center shadow-sm p-0.5"
-              style={{ position: 'relative' }}
-            >
-              {/* แสดงทุกวิชาที่เริ่มต้น ณ จุดนี้ในเซลล์เดียว */}
-              {startingClasses.map((classItem, index) => (
-                <div
-                  key={classItem.subject_id + classItem.group + index}
-                  className={`
-                    hover:bg-orange-500 hover:text-white 
-                    transition-all duration-200 
-                    p-2 rounded
-                    ${index > 0 ? "mt-1 border-t border-yellow-500/50" : ""}
-                    ${startingClasses.length > 1 ? "bg-yellow-500/30" : "bg-transparent"}
-                  `}
-                  onClick={() => handleCourseClick(classItem.subject_id)}
-                  title="คลิกเพื่อบันทึกการสอน"
-                >
-                  <u className="font-bold">{classItem.subject_id}</u> <br />
-                  {/* 5. ลดขนาดชื่อวิชา */}
-                  <span className="font-medium text-[15px]">
-                    {classItem.subject_name || "(ไม่พบชื่อวิชา)"}
-                  </span> <br />
-                  {/* 6. ลดขนาดกลุ่ม/ห้อง/เวลา ให้เล็กที่สุด */}
-                  <span className="text-[12px]">กลุ่ม {classItem.group} | ห้อง {classItem.room}</span> <br />
-                  <span className="text-[12px]">[{classItem.start_time} - {classItem.end_time}]</span>
-                </div>
-              ))}
-            </td>
-          );
-
-          // ข้าม Slot ตามความยาวของวิชาที่นานที่สุด
-          slotIndex += finalColSpan;
-        } else {
-          // กรณีไม่มีเรียนในเวลานี้
-          cells.push(
-            <td
-              key={`${day}-${currentSlotHour}`}
-              className="border border-gray-300"
-            ></td>
-          );
-          slotIndex++;
-        }
-      }
-
-      return (
-        <tr key={day}>
-          <td className="bg-gray-100 border border-gray-300 p-1">{day}</td>
-          {cells}
-        </tr>
-      );
-    });
-  };
+  //     return (
+  //       <tr key={day}>
+  //         <td className="bg-gray-100 border border-gray-300 p-1">{day}</td>
+  //         {cells}
+  //       </tr>
+  //     );
+  //   });
+  // };
 
   return (
     <div className="">

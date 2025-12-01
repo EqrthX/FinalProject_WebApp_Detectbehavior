@@ -102,7 +102,7 @@ export const TeacherActionModal = ({
         payload.append("password", password);
         payload.append("teacher_id", teacherId);
         payload.append("fullname", fullname);
-        payload.append("major", majorId);
+        payload.append("majorId", majorId);
 
         const response = await axios.post(`admin/create-teacher`, payload, {
           headers: { "Content-Type": "multipart/form-data" },

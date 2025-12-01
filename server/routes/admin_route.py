@@ -9,14 +9,14 @@ async def create_teacher(
     password:str = Form(), 
     teacher_id: str = Form(), 
     fullname: str = Form(), 
-    major: str = Form()
+    majorId: str = Form()
     ):
     try:
         print("email", email)
         print("password", password)
         print("teacher_id", teacher_id)
         print("fullname", fullname)
-        print("major", major)
+        print("major", majorId)
         auth_response = supabase_client.auth.admin.create_user(
             attributes={
                 "email": email,
@@ -37,7 +37,7 @@ async def create_teacher(
             "teacher_id": teacher_id,
             "first_name": first_name,
             "last_name": last_name,
-            "major_id": major
+            "major_id": majorId
         }
 
         result = supabase_client.table("teacher").insert(profile_data).execute()

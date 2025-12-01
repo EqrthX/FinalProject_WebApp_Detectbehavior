@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"; 
+import React, { useState, useEffect } from "react";
 import { Search, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "../config/supabase.js";
 import { SubjectDetailModal } from "../components/SubjectDetailModal"; // 🟢 อย่าลืม Import Modal
@@ -15,39 +15,51 @@ const BASE_CATEGORIES = [
 
 // ฟังก์ชันจัดกลุ่มหมวดหมู่ (Mapping ชื่อจาก DB ให้เข้ากลุ่มหลัก)
 const normalizeCategory = (dbCategory) => {
-    if (!dbCategory) return null;
-    const lower = dbCategory.toLowerCase().trim();
+  if (!dbCategory) return null;
+  const lower = dbCategory.toLowerCase().trim();
 
-    if (lower.includes('ทั่วไป')) return "หมวดวิชาศึกษาทั่วไป";
-    if (lower.includes('เฉพาะ') || lower.includes('เอก')) return "หมวดวิชาเฉพาะ";
-    if (lower.includes('เสรี')) return "หมวดวิชาเสรี";
-    
-    return "หมวดวิชาศึกษาทั่วไป"; // Default Fallback
-}
+  if (lower.includes("ทั่วไป")) return "หมวดวิชาศึกษาทั่วไป";
+  if (lower.includes("เฉพาะ") || lower.includes("เอก")) return "หมวดวิชาเฉพาะ";
+  if (lower.includes("เสรี")) return "หมวดวิชาเสรี";
+
+  return "หมวดวิชาศึกษาทั่วไป"; // Default Fallback
+};
 
 const getCategoryDescription = (title) => {
   switch (title) {
-    case "หมวดวิชาศึกษาทั่วไป": return "วิชาพื้นฐานที่นักศึกษาทุกคณะต้องเรียน (GE)";
-    case "หมวดวิชาเฉพาะ": return "วิชาบังคับและวิชาเลือกในสาขาวิชา";
-    case "หมวดวิชาเสรี": return "วิชาที่นักศึกษาสามารถเลือกเรียนได้ตามความสนใจ";
-    default: return "";
+    case "หมวดวิชาศึกษาทั่วไป":
+      return "วิชาพื้นฐานที่นักศึกษาทุกคณะต้องเรียน (GE)";
+    case "หมวดวิชาเฉพาะ":
+      return "วิชาบังคับและวิชาเลือกในสาขาวิชา";
+    case "หมวดวิชาเสรี":
+      return "วิชาที่นักศึกษาสามารถเลือกเรียนได้ตามความสนใจ";
+    default:
+      return "";
   }
 };
 
 // ==========================================
 // 2. Sub-Component: CategoryItem
 // ==========================================
-const CategoryItem = ({ title, subjects = [], description, onSubjectClick }) => {
-  // ถ้ามีการค้นหา (subjects ถูก filter มาแล้ว) ให้เปิดอัตโนมัติ
+const CategoryItem = ({
+  title,
+  subjects = [],
+  description,
+  onSubjectClick,
+  isSearching,
+}) => {
+  // รับ prop เพิ่ม
   const [isOpen, setIsOpen] = useState(false);
 
-  // Effect: ถ้ามีวิชาข้างในน้อยกว่า 10 ตัว (ผลจากการค้นหา) ให้เปิดรอเลย
   useEffect(() => {
-     // Logic นี้ช่วยให้ตอนค้นหา User ไม่ต้องมากดเปิดเอง
-     if (subjects.length > 0 && subjects.length < 5) { 
-         setIsOpen(true);
-     }
-  }, [subjects.length]);
+    // 🟢 แก้เงื่อนไข: เปิดเฉพาะเมื่อ "กำลังค้นหา (isSearching)" และมีผลลัพธ์
+    if (isSearching && subjects.length > 0) {
+      setIsOpen(true);
+    } else if (!isSearching) {
+      // (Optional) ถ้าเคลียร์ช่องค้นหา อยากให้พับเก็บเหมือนเดิมไหม? ถ้าใช่ใส่บรรทัดนี้
+      setIsOpen(false);
+    }
+  }, [isSearching, subjects.length]);
 
   return (
     <div className="border-b border-gray-200 last:border-0">
@@ -59,12 +71,16 @@ const CategoryItem = ({ title, subjects = [], description, onSubjectClick }) => 
                     }`}
       >
         <span className="flex items-center gap-2">
-            {title}
-            <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                {subjects.length}
-            </span>
+          {title}
+          <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+            {subjects.length}
+          </span>
         </span>
-        {isOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+        {isOpen ? (
+          <ChevronUp className="h-4 w-4 text-gray-400" />
+        ) : (
+          <ChevronDown className="h-4 w-4 text-gray-400" />
+        )}
       </button>
 
       {isOpen && (
@@ -82,22 +98,25 @@ const CategoryItem = ({ title, subjects = [], description, onSubjectClick }) => 
                   className="cursor-pointer group flex items-center justify-between p-2 rounded-md hover:bg-[#EEF2FF] border border-transparent hover:border-[#3D42D3]/20 transition-all duration-200"
                 >
                   <div className="flex flex-col">
-                      <span className="font-bold text-[#3D42D3] text-sm group-hover:underline">
-                          {s.code}
-                      </span>
-                      <span className="text-sm text-gray-700 truncate w-full max-w-[200px] md:max-w-[180px]" title={s.name}>
-                          {s.name}
-                      </span>
+                    <span className="font-bold text-[#3D42D3] text-sm group-hover:underline">
+                      {s.code}
+                    </span>
+                    <span
+                      className="text-sm text-gray-700 truncate w-full max-w-[200px] md:max-w-[180px]"
+                      title={s.name}
+                    >
+                      {s.name}
+                    </span>
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Search className="w-4 h-4 text-[#3D42D3]" />
+                    <Search className="w-4 h-4 text-[#3D42D3]" />
                   </div>
                 </li>
               ))}
             </ul>
           ) : (
             <p className="text-gray-400 italic text-sm pl-2">
-                - ไม่พบรายวิชาในหมวดนี้ -
+              - ไม่พบรายวิชาในหมวดนี้ -
             </p>
           )}
         </div>
@@ -114,7 +133,7 @@ const Adminsubject = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   // State Modal
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState(null);
@@ -125,7 +144,7 @@ const Adminsubject = () => {
     try {
       const { data, error } = await supabase
         .from("subjects")
-        .select("subject_id, subject_name, category"); 
+        .select("subject_id, subject_name, category");
 
       if (error) throw error;
 
@@ -141,12 +160,12 @@ const Adminsubject = () => {
         data.forEach((item) => {
           const categoryTitle = normalizeCategory(item.category);
           const group = grouped.find((g) => g.title === categoryTitle);
-          
+
           if (group) {
             group.subjects.push({
-              code: item.subject_id, 
+              code: item.subject_id,
               name: item.subject_name,
-              category: categoryTitle
+              category: categoryTitle,
             });
           }
         });
@@ -181,64 +200,71 @@ const Adminsubject = () => {
   // --- Render ---
   return (
     <>
-        {/* Container หลัก */}
-        <div className="w-full bg-white rounded-[20px] border border-[#e9e9e9] shadow-sm p-6 h-[560px] flex flex-col">
+      {/* Container หลัก */}
+      <div className="w-full bg-white rounded-[20px] border border-[#e9e9e9] shadow-sm p-6 h-[560px] flex flex-col">
         <div className="flex justify-between items-center mb-4">
-            <h2 className="text-[18px] font-semibold text-gray-800">หมวดหมู่วิชา</h2>
-            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-md">
-                รวม {categories.reduce((acc, curr) => acc + curr.subjects.length, 0)} วิชา
-            </span>
+          <h2 className="text-[18px] font-semibold text-gray-800">
+            หมวดหมู่วิชา
+          </h2>
+          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-md">
+            รวม{" "}
+            {categories.reduce((acc, curr) => acc + curr.subjects.length, 0)}{" "}
+            วิชา
+          </span>
         </div>
 
         {/* ช่องค้นหา */}
-        <div className="relative mb-4 shrink-0">
-            <input
+        <div className="relative mb-4 shrink-0 text-gray-500">
+          <input
             type="text"
             placeholder="ค้นหารหัสวิชา หรือ ชื่อวิชา..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full border border-gray-300 rounded-full pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-[#38A738] focus:border-transparent outline-none transition-all bg-[#F6F6F4]"
-            />
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
         </div>
 
         {/* รายการหมวดหมู่ (Scrollable Area) */}
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-            {loading ? (
+          {loading ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#3D42D3]"></div>
-                <p className="text-sm">กำลังโหลดข้อมูล...</p>
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#3D42D3]"></div>
+              <p className="text-sm">กำลังโหลดข้อมูล...</p>
             </div>
-            ) : filteredCategories.every(c => c.subjects.length === 0) ? (
-                <div className="text-center py-10 text-gray-400">
-                    <p>ไม่พบรายวิชาที่ค้นหา</p>
-                </div>
-            ) : (
-                filteredCategories.map((cat) => (
-                    // แสดงหมวดหมู่เฉพาะที่มีวิชาข้างใน (ถ้าค้นหาแล้วไม่เจอวิชาในหมวดนั้น ก็ซ่อนหมวดนั้นไปเลย)
-                    (searchTerm === "" || cat.subjects.length > 0) && (
-                        <CategoryItem
-                            key={cat.title}
-                            title={cat.title}
-                            description={cat.description}
-                            subjects={cat.subjects}
-                            onSubjectClick={handleSubjectClick} // 🟢 ส่ง Function ไปให้ลูกใช้
-                        />
-                    )
-                ))
-            )}
+          ) : filteredCategories.every((c) => c.subjects.length === 0) ? (
+            <div className="text-center py-10 text-gray-400">
+              <p>ไม่พบรายวิชาที่ค้นหา</p>
+            </div>
+          ) : (
+            filteredCategories.map(
+              (cat) =>
+                // แสดงหมวดหมู่เฉพาะที่มีวิชาข้างใน (ถ้าค้นหาแล้วไม่เจอวิชาในหมวดนั้น ก็ซ่อนหมวดนั้นไปเลย)
+                (searchTerm === "" || cat.subjects.length > 0) && (
+                  // ... (ใน loop filteredCategories.map)
+                  <CategoryItem
+                    key={cat.title}
+                    title={cat.title}
+                    description={cat.description}
+                    subjects={cat.subjects}
+                    onSubjectClick={handleSubjectClick}
+                    isSearching={searchTerm.length > 0} // 🟢 ส่ง flag ว่ากำลังค้นหาอยู่ไหม
+                  />
+                )
+            )
+          )}
         </div>
-        </div>
+      </div>
 
-        {/* 🟢 Modal จะแสดงเมื่อ State เป็น true */}
-        <SubjectDetailModal 
-            isOpen={showDetailModal}
-            onClose={() => {
-                setShowDetailModal(false);
-                setSelectedSubject(null);
-            }}
-            subject={selectedSubject}
-        />
+      {/* 🟢 Modal จะแสดงเมื่อ State เป็น true */}
+      <SubjectDetailModal
+        isOpen={showDetailModal}
+        onClose={() => {
+          setShowDetailModal(false);
+          setSelectedSubject(null);
+        }}
+        subject={selectedSubject}
+      />
     </>
   );
 };

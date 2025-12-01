@@ -21,7 +21,7 @@ const AdminTeachers = () => {
   const [teachers, setTeachers] = useState([]);
   
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(20);
   
   const [filterFacultyId, setFilterFacultyId] = useState("");
   const [filterMajorId, setFilterMajorId] = useState("");
@@ -175,7 +175,7 @@ const AdminTeachers = () => {
             </div>
 
             {/* 🟢 Table Wrapper: ใช้ flex-1 และ overflow-auto เพื่อให้ตารางเลื่อนได้ในกรอบที่เหลือ */}
-            <div className="h-[560px] overflow-y-auto overflow-x-auto relative shadow-inner border border-gray-300 rounded-lg"> {/* 🟢 เพิ่ม border รอบนอก */}
+            <div className="h-full overflow-y-auto overflow-x-auto relative shadow-inner border border-gray-300 rounded-lg"> {/* 🟢 เพิ่ม border รอบนอก */}
               <table className="min-w-full border-separate border-spacing-0 text-sm">
                 <thead className="bg-[#f2f2f2] sticky top-0 z-[30] text-gray-700 font-semibold">
                   <tr>

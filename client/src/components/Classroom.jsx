@@ -142,7 +142,7 @@ const Classroom = () => {
                   className={`
                     hover:bg-orange-500 hover:text-white 
                     transition-all duration-200 
-                    p-0.5 rounded // 4. ลด padding ภายในเหลือ p-0.5
+                    p-2 rounded
                     ${index > 0 ? "mt-1 border-t border-yellow-500/50" : ""}
                     ${startingClasses.length > 1 ? "bg-yellow-500/30" : "bg-transparent"}
                   `}
@@ -151,12 +151,12 @@ const Classroom = () => {
                 >
                   <u className="font-bold">{classItem.subject_id}</u> <br />
                   {/* 5. ลดขนาดชื่อวิชา */}
-                  <span className="font-medium text-[10px]">
+                  <span className="font-medium text-[15px]">
                     {classItem.subject_name || "(ไม่พบชื่อวิชา)"}
                   </span> <br />
                   {/* 6. ลดขนาดกลุ่ม/ห้อง/เวลา ให้เล็กที่สุด */}
-                  <span className="text-[9px]">กลุ่ม {classItem.group} | ห้อง {classItem.room}</span> <br />
-                  <span className="text-[9px]">[{classItem.start_time} - {classItem.end_time}]</span>
+                  <span className="text-[12px]">กลุ่ม {classItem.group} | ห้อง {classItem.room}</span> <br />
+                  <span className="text-[12px]">[{classItem.start_time} - {classItem.end_time}]</span>
                 </div>
               ))}
             </td>

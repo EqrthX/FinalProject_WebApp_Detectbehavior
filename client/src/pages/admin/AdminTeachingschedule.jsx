@@ -237,7 +237,7 @@ const AdminTeachingSchedule = () => {
                     />
                     <label className={`absolute left-4 bg-[#f9fafb] px-1 transition-all pointer-events-none rounded-sm z-10
                         ${filterTeacher || isFilterFocused 
-                            ? "-top-2.5 text-xs text-[#38A738] font-medium" 
+                            ? "-top-2.5 text-xs  text-gray-400 font-medium" 
                             : "top-2.5 text-base text-gray-400"
                         }
                     `}>

@@ -162,7 +162,7 @@ const AdminChart = ({ selectedCategory }) => { // รับ props เผื่�
             name="ตั้งใจเรียน" 
             fill="#38A738"  // สีเขียว
             radius={[4, 4, 0, 0]} 
-            barSize={30}
+            barSize={50}
           />
 
           <Bar 
@@ -170,7 +170,7 @@ const AdminChart = ({ selectedCategory }) => { // รับ props เผื่�
             name="ไม่ตั้งใจ" 
             fill="#FF4D4F"  // สีแดง
             radius={[4, 4, 0, 0]} 
-            barSize={30}
+            barSize={50}
           />
 
         </BarChart>

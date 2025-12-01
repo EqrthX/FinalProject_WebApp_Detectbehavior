@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
-import Navbar from '../../components/Navbar' // นำเข้า Navbar Component
-// นำเข้า Icon ต่างๆ จาก Ant Design
+import Navbar from '../../components/Navbar' 
 import { 
   BarChartOutlined, 
   PieChartOutlined, 
@@ -9,93 +8,75 @@ import {
   CheckOutlined, 
   BookOutlined 
 } from '@ant-design/icons';
-// นำเข้ากราฟและเครื่องมือจาก Recharts
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
-import { supabase } from "../../config/supabase"; // การเชื่อมต่อฐานข้อมูล Supabase
+import { supabase } from "../../config/supabase"; 
+import dayjs from "dayjs"; // แนะนำให้ใช้ dayjs หรือจัดการ Date ด้วย JS native
 
-// --- 1. สร้าง Component Dropdown แบบ Custom (เพื่อให้ UI สวยงามตามดีไซน์) ---
+// --- 1. Custom Select Component (คงเดิม) ---
 const CustomSelect = ({ options, value, onChange, prefixIcon, placeholder }) => {
-  const [isOpen, setIsOpen] = useState(false); // State สำหรับเช็คว่า Dropdown เปิดหรือปิดอยู่
-  const containerRef = useRef(null); // Ref สำหรับอ้างอิง Element ของ Dropdown นี้ (ใช้เช็คการคลิก)
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
 
-  // useEffect: สำหรับจัดการ Event คลิกเมาส์
   useEffect(() => {
-    // ฟังก์ชันเช็คว่าคลิกตรงไหน
     const handleClickOutside = (event) => {
-      // ถ้าคลิกนอกพื้นที่ของ Dropdown นี้ (containerRef) ให้ปิด Dropdown
       if (containerRef.current && !containerRef.current.contains(event.target)) {
         setIsOpen(false);
       }
     };
-    // เพิ่ม Event Listener เมื่อ Component ถูกสร้าง
     document.addEventListener("mousedown", handleClickOutside);
-    // ลบ Event Listener เมื่อ Component ถูกทำลาย (Cleanup)
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Logic: หา Label ของตัวเลือกที่ถูกเลือกอยู่ (เพื่อนำมาแสดงผลแทนค่า value)
   const selectedOption = options.find(opt => 
     (typeof opt === 'object' ? opt.value : opt) === value
   );
   
-  // กำหนดค่าที่จะแสดง: ถ้ามีค่าเลือกไว้ให้แสดง Label, ถ้าเป็น 'all' ให้แสดง Placeholder
   const displayValue = selectedOption 
     ? (typeof selectedOption === 'object' ? selectedOption.label : selectedOption) 
     : (value === 'all' ? placeholder : value);
 
   return (
     <div className="relative group min-w-[160px]" ref={containerRef}>
-      {/* --- ส่วนหัวของ Dropdown (ส่วนที่คลิกเพื่อเปิด) --- */}
       <div 
-        onClick={() => setIsOpen(!isOpen)} // คลิกแล้วสลับสถานะ เปิด/ปิด
+        onClick={() => setIsOpen(!isOpen)} 
         className={`
           flex items-center justify-between w-full p-2 pl-3 pr-3
           bg-white border cursor-pointer transition-all duration-200 shadow-sm
           ${isOpen 
-            ? 'border-blue-500 ring-2 ring-blue-100 rounded-t-2xl rounded-b-none z-50' // สไตล์ตอนเปิด
-            : 'border-gray-300 rounded-full hover:border-blue-400 hover:bg-gray-50'    // สไตล์ตอนปิด
+            ? 'border-blue-500 ring-2 ring-blue-100 rounded-t-2xl rounded-b-none z-50' 
+            : 'border-gray-300 rounded-full hover:border-blue-400 hover:bg-gray-50'
           }
         `}
       >
         <div className="flex items-center gap-2 overflow-hidden">
-          {/* แสดง Icon นำหน้าถ้ามีส่งมา */}
           {prefixIcon && <span className="text-gray-400">{prefixIcon}</span>}
-          {/* แสดงข้อความที่เลือก */}
           <span className={`text-sm truncate ${value === 'all' ? 'text-gray-500' : 'text-gray-700 font-medium'}`}>
             {displayValue}
           </span>
         </div>
-        {/* Icon ลูกศรลง (หมุนเมื่อเปิด) */}
         <DownOutlined className={`text-[10px] text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
-      {/* --- รายการตัวเลือก (Dropdown List) จะแสดงเมื่อ isOpen เป็น true --- */}
       {isOpen && (
         <div className="absolute left-0 w-full bg-white border border-t-0 border-gray-200 rounded-b-2xl shadow-xl z-[999] overflow-hidden">
           <ul className="max-h-[200px] overflow-y-auto py-1 custom-scrollbar">
-            {/* ตัวเลือกที่ 1: เลือกทั้งหมด (Reset) */}
             <li 
               onClick={() => { onChange('all'); setIsOpen(false); }}
               className="px-4 py-2 text-sm text-gray-600 hover:bg-blue-50 cursor-pointer flex justify-between items-center transition-colors"
             >
               <span>{placeholder}</span>
-              {/* ถ้าเลือก 'all' อยู่ ให้แสดงเครื่องหมายถูก */}
               {value === 'all' && <CheckOutlined className="text-green-500" />}
             </li>
-
-            {/* วนลูปแสดงตัวเลือกอื่นๆ จาก props options */}
             {options.map((option, index) => {
               const optLabel = typeof option === 'object' ? option.label : option;
               const optValue = typeof option === 'object' ? option.value : option;
-              
               return (
                 <li 
                   key={index} 
-                  onClick={() => { onChange(optValue); setIsOpen(false); }} // คลิกแล้วส่งค่ากลับไปและปิด Dropdown
+                  onClick={() => { onChange(optValue); setIsOpen(false); }} 
                   className="px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer flex justify-between items-center transition-colors"
                 >
                   <span className='truncate'>{optLabel}</span>
-                  {/* แสดงเครื่องหมายถูกถ้าค่าตรงกัน */}
                   {value === optValue && <CheckOutlined className="text-green-500" />}
                 </li>
               );
@@ -107,36 +88,30 @@ const CustomSelect = ({ options, value, onChange, prefixIcon, placeholder }) => 
   );
 };
 
-// --- 2. Main Component (หน้าแสดงผลหลัก) ---
+// --- 2. Main Component ---
 const ResultsPage = () => {
-  // ดึง teacher_id จาก LocalStorage เพื่อระบุตัวตนครู
   const teacher_id = localStorage.getItem("teacher_id")
 
-  // --- State Variables ---
-  const [result, setResult] = useState([]) // เก็บข้อมูลดิบทั้งหมดที่ดึงมาจาก API
-  const [groupCameras, setGroupCameras] = useState({}); // เก็บข้อมูลที่ถูกจัดกลุ่มตาม Camera ID แล้ว
-  const [uniqueSubjects, setUniqueSubjects] = useState([]); // เก็บรายชื่อวิชาที่ไม่ซ้ำ (สำหรับตัวกรอง)
-  
-  // 🆕 State สำหรับตัวกรองวันที่
-  const [uniqueDates, setUniqueDates] = useState([]); // เก็บรายชื่อวันที่ไม่ซ้ำ
-  const [selectedDate, setSelectedDate] = useState("all"); // ค่าวันที่ที่ถูกเลือกปัจจุบัน
+  const [result, setResult] = useState([]) 
+  const [groupedData, setGroupedData] = useState({}); 
+  const [uniqueSubjects, setUniqueSubjects] = useState([]); 
+  const [uniqueDates, setUniqueDates] = useState([]); 
+  const [selectedDate, setSelectedDate] = useState("all"); 
+  const [selectedSubject, setSelectedSubject] = useState("all"); 
 
-  // State สำหรับตัวกรองวิชา
-  const [selectedSubject, setSelectedSubject] = useState("all"); // ค่าวิชาที่ถูกเลือกปัจจุบัน
-
-  // --- Effect 1: ดึงข้อมูลจาก Supabase เมื่อโหลดหน้าเว็บ ---
+  // --- Effect 1: ดึงข้อมูลจากตาราง camera_logs (ข้อมูลดิบ) ---
   useEffect(() => {
     const fetchData = async () => {
-      if (!teacher_id) return; // ถ้าไม่มี id ครู ให้จบการทำงาน
+      if (!teacher_id) return; 
 
       try {
-        // Query ข้อมูลจากตาราง camera_logs
+        // 🟢 กลับมาใช้ camera_logs เพื่อให้ได้ Time Stamp ละเอียด
         const { data: response, error } = await supabase
-          .from("camera_logs")
+          .from("camera_logs") 
           .select("*")
-          .eq("teacher_id", teacher_id) // กรองเฉพาะของครูคนนี้
-          .order("created_at", { ascending: false }) // เรียงจากล่าสุดไปเก่าสุด
-          .limit(1000); // จำกัด 1000 แถวเพื่อประสิทธิภาพ
+          .eq("teacher_id", teacher_id) 
+          .order("created_at", { ascending: false }) // เอาล่าสุดก่อน
+          .limit(2000); // 🟢 ดึงเยอะหน่อยเพราะ 1 คาบอาจมี log เยอะ (ปรับตามความเหมาะสม)
 
         if (error) {
           console.error("Error loading data:", error);
@@ -144,14 +119,13 @@ const ResultsPage = () => {
         }
 
         if (response) {
-          const sortedResponse = response.reverse(); // กลับลำดับข้อมูล (ถ้าต้องการให้กราฟเรียงจากซ้ายไปขวาตามเวลา)
-          setResult(sortedResponse); // บันทึกข้อมูลดิบลง State
+          // เรียงกลับให้เป็น อดีต -> ปัจจุบัน เพื่อให้กราฟวิ่งซ้ายไปขวา
+          const sortedResponse = response.reverse(); 
+          setResult(sortedResponse); 
 
-          // แยกรายชื่อวิชาทั้งหมดที่ไม่ซ้ำกันออกมา
           const subjects = [...new Set(sortedResponse.map(item => item.subject_id))].filter(Boolean);
           setUniqueSubjects(subjects);
 
-          // 🆕 แยกรายชื่อวันที่ทั้งหมดที่ไม่ซ้ำกันออกมา (แปลงเป็น format วันที่ไทย)
           const dates = [...new Set(sortedResponse.map(item => 
             new Date(item.created_at).toLocaleDateString('th-TH')
           ))];
@@ -164,58 +138,99 @@ const ResultsPage = () => {
     fetchData();
   }, [teacher_id]);
 
-  // --- Effect 2: Logic การกรองข้อมูล (ทำงานเมื่อมีการเปลี่ยนตัวกรอง หรือข้อมูลเปลี่ยน) ---
+  // --- 🟢 ฟังก์ชันจัดกลุ่มข้อมูลเป็นช่วงละ 5 นาที ---
+  const processDataTo5MinIntervals = (logs) => {
+    const buckets = {};
+
+    logs.forEach(log => {
+      const date = new Date(log.created_at);
+      
+      // สูตรปัดเศษเวลาลงให้เป็นล็อคละ 5 นาที
+      // เช่น 10:03 -> 10:00, 10:07 -> 10:05
+      const coeff = 1000 * 60 * 5; 
+      const roundedDate = new Date(Math.floor(date.getTime() / coeff) * coeff);
+      
+      // สร้าง Key เป็นเวลา HH:mm (หรือจะรวมวันที่ด้วยก็ได้ถ้าดูหลายวันพร้อมกัน)
+      // แต่ถ้าดูแยกวันใช้แค่ HH:mm จะดูง่ายกว่า
+      const timeStr = roundedDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+      // ถ้าอยากให้ Key แยกวันด้วย (กรณีเลือก All Days) ให้ใช้แบบนี้แทน:
+      // const timeKey = `${roundedDate.getDate()}/${roundedDate.getMonth()+1} ${timeStr}`;
+      const timeKey = timeStr; // เอาแค่เวลาก่อน เพื่อโชว์ในกราฟ
+
+      if (!buckets[timeKey]) {
+        buckets[timeKey] = {
+          time: timeKey,
+          totalAtt: 0,
+          totalNon: 0,
+          count: 0,
+          fullDate: roundedDate // เก็บไว้อ้างอิง
+        };
+      }
+
+      buckets[timeKey].totalAtt += Number(log.Attention || 0);
+      buckets[timeKey].totalNon += Number(log.Non_Attention || 0);
+      buckets[timeKey].count += 1;
+    });
+
+    // แปลง Buckets กลับเป็น Array แล้วหาค่าเฉลี่ยในแต่ละช่วง 5 นาที
+    return Object.values(buckets).map(b => ({
+      time: b.time,
+      fullDate: b.fullDate,
+      // ค่าเฉลี่ยของช่วง 5 นาทีนั้น * 100 เป็น %
+      ตั้งใจ: ((b.totalAtt / b.count) * 100).toFixed(2),
+      ไม่ตั้งใจ: ((b.totalNon / b.count) * 100).toFixed(2)
+    }));
+  };
+
+  // --- Effect 2: Logic การกรองและจัดกลุ่มข้อมูล ---
   useEffect(() => {
     if (!result) return;
 
-    // 1. เริ่มต้นด้วยข้อมูลทั้งหมด
     let filtered = result;
 
-    // 2. กรองตามวิชา (ถ้าไม่ได้เลือก 'all')
     if (selectedSubject !== "all") {
         filtered = filtered.filter(row => row.subject_id === selectedSubject);
     }
 
-    // 3. กรองตามวันที่ (ถ้าไม่ได้เลือก 'all')
     if (selectedDate !== "all") {
         filtered = filtered.filter(row => 
             new Date(row.created_at).toLocaleDateString('th-TH') === selectedDate
         );
     }
 
-    // 4. จัดกลุ่มข้อมูลตาม Camera ID (เพื่อให้แสดงผลแยกทีละกล้องได้)
+    // Grouping by Subject + Camera + Date
+    // 🟢 แยกตามวันที่ด้วย เพราะกราฟรายนาทีไม่ควรเอาหลายวันมาทับกัน (นอกจากอยากดู Pattern รวม)
+    // แต่ในที่นี้แยกเป็น Subject|Camera ตามเดิม เพื่อให้ Card หนึ่งใบแสดง 1 วิชา/ห้อง
     const grouped = filtered.reduce((acc, row) => {
-      if (!acc[row.camera_id]) acc[row.camera_id] = []; // ถ้ายังไม่มี key นี้ให้สร้าง array ว่าง
-      acc[row.camera_id].push(row); // ยัดข้อมูลลงไป
+      const groupKey = `${row.subject_id}|${row.camera_id}`;
+      if (!acc[groupKey]) acc[groupKey] = [];
+      acc[groupKey].push(row);
       return acc;
     }, {});
     
-    setGroupCameras(grouped); // อัปเดตข้อมูลที่พร้อมแสดงผล
+    setGroupedData(grouped); 
   }, [result, selectedSubject, selectedDate]); 
 
-  // --- Helper Functions (ฟังก์ชันคำนวณ) ---
+  // --- Helper Functions ---
 
-  // คำนวณค่าเฉลี่ยความตั้งใจ (Attention) ของกล้องนั้นๆ
-  const getAvgAttentionPerCamera = (logs) => {
+  const getAvgStats = (logs) => {
     if (!logs || logs.length === 0) return { att: 0, non: 0 }
     let totalAtt = 0, totalNon = 0
     logs.forEach(l => { 
         totalAtt += Number(l.Attention) || 0; 
         totalNon += Number(l.Non_Attention) || 0; 
     })
-    // คืนค่าเป็นค่าเฉลี่ย
     return { att: totalAtt / logs.length, non: totalNon / logs.length }
   }
 
-  // แปลงข้อมูลสำหรับ Pie Chart (รวมยอดพฤติกรรมทั้งหมดของแต่ละกล้อง)
-  const groupCamerasWithPie = Object.fromEntries(
-    Object.entries(groupCameras).map(([camId, logs]) => {
-      // ตัวแปรเก็บผลรวมของแต่ละพฤติกรรม
+  const processedChartData = Object.fromEntries(
+    Object.entries(groupedData).map(([key, logs]) => {
+      const [subjectId, cameraId] = key.split('|');
+
+      // 1. เตรียมข้อมูล Pie Chart (รวมทั้งหมด)
       const totals = { Focused: 0, Looking_at_the_board: 0, Taking_notes: 0, LookingAway: 0, Talking: 0, UsingPhone: 0 };
-      
       logs.forEach(log => {
-        const ratios = log.class_json || {}; // ดึง JSON พฤติกรรมออกมา
-        // บวกค่าสะสม
+        const ratios = log.class_json || {}; 
         totals.Focused += ratios.Focused || 0;
         totals.Looking_at_the_board += ratios.Looking_at_the_board || 0;
         totals.Taking_notes += ratios.Taking_notes || 0;
@@ -224,25 +239,25 @@ const ResultsPage = () => {
         totals.UsingPhone += ratios.UsingPhone || 0;
       });
 
-      const totalCount = logs.length || 1;
-      // สร้าง Array Data สำหรับ Pie Chart ของ Recharts
+      const sumBehaviors = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
       const pieChartData = [
-        { name: "Focused", value: totals.Focused / totalCount },
-        { name: "Look Board", value: totals.Looking_at_the_board / totalCount },
-        { name: "Take Notes", value: totals.Taking_notes / totalCount },
-        { name: "Look Away", value: totals.LookingAway / totalCount },
-        { name: "Phone", value: totals.UsingPhone / totalCount },
-      ].filter(item => item.value > 0); // กรองเอาเฉพาะที่มีค่า > 0
+        { name: "Focused", value: totals.Focused / sumBehaviors },
+        { name: "Look Board", value: totals.Looking_at_the_board / sumBehaviors },
+        { name: "Take Notes", value: totals.Taking_notes / sumBehaviors },
+        { name: "Look Away", value: totals.LookingAway / sumBehaviors },
+        { name: "Phone", value: totals.UsingPhone / sumBehaviors },
+      ].filter(item => item.value > 0);
 
-      return [camId, { logs, pieChartData }];
+      // 🟢 2. เตรียมข้อมูล Line Chart (แบบ 5 นาที)
+      const lineChartData = processDataTo5MinIntervals(logs);
+
+      return [key, { logs, pieChartData, lineChartData, subjectId, cameraId }];
     })
   );
 
-  // ค่าคงที่สำหรับ Pie Chart
+  const COLORS = ['#0068c9','#fe2b2b', '#8622FF', '#739206ff', '#FE0056', '#00B7EB', '#FF8000', '#00FFCE', '#FFFF00'];
   const RADIAN = Math.PI / 180;
-  const COLORS = ['#0068c9', '#00B7EB', '#8622FF', '#FF8000', '#FE0056', '#FFFF00']; // ชุดสีของกราฟ
   
-  // ฟังก์ชัน Custom Label สำหรับ Pie Chart (แสดง %)
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
     const x = cx + radius * Math.cos(-(midAngle ?? 0) * RADIAN);
@@ -254,31 +269,25 @@ const ResultsPage = () => {
     );
   };
 
-  // --- ส่วน Render JSX ---
   return (
     <div className="flex flex-col h-screen bg-[#F6F6F4] overflow-hidden">
       
-      <Navbar /> {/* แถบเมนูด้านบน */}
+      <Navbar /> 
       
       <div className="flex-1 p-6 overflow-hidden">
         
-        {/* Layout Grid แบ่งหน้าจอ: ซ้าย 2 ส่วน (Line Chart), ขวา 1 ส่วน (Pie Chart) */}
         <div className="grid grid-cols-3 gap-4 h-full">
 
           {/* --- ฝั่งซ้าย: แสดงกราฟเส้นและตัวกรอง --- */}
           <div className="col-span-2 bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] flex flex-col h-full overflow-hidden">
             
-            {/* Header ของฝั่งซ้าย */}
-            <div className="p-6 border-b border-[#f0f0f0] flex flex-col md:flex-row md:items-center justify-between gap-4 flex-shrink-0 z-20 relative">
+            <div className="p-4 border-b border-[#f0f0f0] flex flex-col md:flex-row md:items-center justify-between gap-4 flex-shrink-0 z-30 relative">
               <div className='flex items-center gap-2'>
                   <BarChartOutlined className="text-2xl text-blue-500" />
-                  <h2 className="text-xl font-semibold text-gray-700">ผลรวมการสอน (ล่าสุด)</h2>
+                  <h2 className="text-xl font-semibold text-gray-700">Timeline การเรียน (ทุก 5 นาที)</h2>
               </div>
               
-              {/* --- 🆕 ส่วน Dropdown UI ใหม่ (เรียกใช้ Component CustomSelect) --- */}
               <div className="flex flex-wrap items-center gap-3">
-                  
-                  {/* Dropdown เลือกวันที่ */}
                   <CustomSelect 
                     placeholder="-- ทุกวัน --"
                     options={uniqueDates}
@@ -286,75 +295,64 @@ const ResultsPage = () => {
                     onChange={setSelectedDate}
                     prefixIcon={<CalendarOutlined />}
                   />
-
-                  {/* Dropdown เลือกวิชา */}
                   <CustomSelect 
                     placeholder="-- ทุกวิชา --"
-                    options={uniqueSubjects.map(sub => ({ value: sub, label: `วิชา ${sub}` }))} // แปลง format ให้มีคำว่า "วิชา"
+                    options={uniqueSubjects.map(sub => ({ value: sub, label: `วิชา ${sub}` }))}
                     value={selectedSubject}
                     onChange={setSelectedSubject}
                     prefixIcon={<BookOutlined />}
                   />
               </div>
-
             </div>
 
-            {/* ส่วนแสดงรายการกราฟ (Scroll ได้) */}
             <div className="p-6 overflow-y-auto flex-1 scrollbar-hide z-10">
               <div className="w-full">
-                {/* เช็คว่ามีข้อมูลหรือไม่ */}
-                {Object.entries(groupCameras).length > 0 ? (
-                  // วนลูปแสดงข้อมูลทีละกล้อง
-                  Object.entries(groupCameras).map(([camId, logs]) => {
-                    const avg = getAvgAttentionPerCamera(logs); // คำนวณค่าเฉลี่ย
-                    const lastLogDate = new Date(logs[logs.length-1].created_at).toLocaleDateString('th-TH');
-
+                {Object.entries(processedChartData).length > 0 ? (
+                  Object.entries(processedChartData).map(([key, data]) => {
+                    const avg = getAvgStats(data.logs);
+                    
                     return (
-                      <div key={camId} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 last:mb-0">
-                        {/* หัวข้อของแต่ละ Card กราฟ */}
+                      <div key={key} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 last:mb-0">
+                        
                         <div className='flex justify-between items-center mb-4'>
                           <div className="flex flex-col gap-1">
                               <div className="flex items-center gap-2">
-                                  <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">CAM {camId}</span>
-                                  <h3 className="text-lg font-semibold text-gray-700">วิชา {logs[0].subject_id}</h3>
+                                  <h3 className="text-lg font-bold text-gray-800">วิชา {data.subjectId}</h3>
+                                  <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">CAM {data.cameraId}</span>
                               </div>
-                              <span className="text-xs text-gray-400 ml-1">วันที่: {lastLogDate}</span>
+                              <span className="text-xs text-gray-400 ml-1">
+                                {selectedDate !== 'all' ? `วันที่ ${selectedDate}` : `ข้อมูลรวม ${data.logs.length} จุด`}
+                              </span>
                           </div>
-                          {/* Badge แสดง % ความตั้งใจ */}
+                          
                           <div className="text-sm flex gap-3">
                             <span className="bg-green-50 text-green-700 px-2 py-1 rounded border border-green-100 font-bold">
-                              ตั้งใจ: {(avg.att * 100).toFixed(1)}%
-                            </span>
-                            <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-100 font-bold">
-                              ไม่ตั้งใจ: {(avg.non * 100).toFixed(1)}%
+                              เฉลี่ยรวม: {(avg.att * 100).toFixed(1)}%
                             </span>
                           </div>
                         </div>
 
-                        {/* ตัวกราฟเส้น (Line Chart) */}
+                        {/* กราฟเส้น แสดงราย 5 นาที */}
                         <ResponsiveContainer width="100%" height={200}>
-                          <LineChart data={logs.map(l => ({
-                            time: new Date(l.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
-                            ตั้งใจ: (Number(l.Attention) * 100).toFixed(2),
-                            ไม่ตั้งใจ: (Number(l.Non_Attention) * 100).toFixed(2),
-                          }))}>
+                          {/* 🟢 ใช้ lineChartData ที่ผ่านการ bucket 5 นาทีแล้ว */}
+                          <LineChart data={data.lineChartData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            {/* แกน X เป็น เวลา (HH:mm) */}
                             <XAxis dataKey="time" tick={{ fontSize: 12 }} />
                             <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
                             <Tooltip contentStyle={{ borderRadius: '8px' }} />
                             <Legend wrapperStyle={{ paddingTop: '10px' }}/>
-                            <Line type="monotone" dataKey="ตั้งใจ" stroke="#38A738" strokeWidth={2} dot={false} />
-                            <Line type="monotone" dataKey="ไม่ตั้งใจ" stroke="#FF3300" strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="ตั้งใจ" stroke="#38A738" strokeWidth={2} dot={true} activeDot={{ r: 6 }} />
+                            <Line type="monotone" dataKey="ไม่ตั้งใจ" stroke="#FF3300" strokeWidth={2} dot={true} />
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
                     );
                   })
                 ) : (
-                  // กรณีไม่พบข้อมูล
                   <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-gray-400 bg-gray-50 rounded-xl border-dashed border-2 border-gray-200">
                       <BarChartOutlined className="text-4xl mb-2 opacity-50" />
-                      <p>ไม่พบข้อมูล (ลองเปลี่ยนตัวกรอง)</p>
+                      <p>ไม่พบข้อมูล (ลองเปลี่ยนตัวกรอง หรือเลือกวันที่)</p>
                   </div>
                 )}
               </div>
@@ -365,31 +363,29 @@ const ResultsPage = () => {
           <div className="col-span-1 h-full flex flex-col space-y-4 overflow-hidden">
             <div className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] flex flex-col h-full overflow-hidden">
               
-              <div className="p-6 border-b border-[#f0f0f0] flex-shrink-0">
+              <div className="p-5.5 border-b border-[#f0f0f0] flex-shrink-0">
                 <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
                    <PieChartOutlined className="text-2xl text-purple-500" />
-                   พฤติกรรมรวม 
-                   {selectedSubject !== "all" && <span className="text-sm font-normal text-gray-500">({selectedSubject})</span>}
+                   พฤติกรรมรวม
                 </h2>
               </div>
 
               <div className="p-6 flex flex-col gap-4 overflow-y-auto flex-1 scrollbar-hide">
-                {/* เช็คว่ามีข้อมูล Pie Chart หรือไม่ */}
-                {Object.entries(groupCamerasWithPie).length > 0 ? (
-                  Object.entries(groupCamerasWithPie).map(([camId, logs]) => (
-                    <div key={camId} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm relative">
-                      <div className="absolute top-3 left-3 z-10">
-                            <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
-                            CAM {Number(camId)}
+                {Object.entries(processedChartData).length > 0 ? (
+                  Object.entries(processedChartData).map(([key, data]) => (
+                    <div key={key} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm relative">
+                      <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
+                           <span className="font-bold text-gray-700 text-sm">วิชา {data.subjectId}</span>
+                           <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm w-fit">
+                            CAM {data.cameraId}
                           </span>
                       </div>
 
-                      {/* ตัวกราฟวงกลม (Pie Chart) */}
-                      <div className="h-[250px] w-full">
+                      <div className="h-[250px] w-full mt-4">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
-                              data={logs.pieChartData}
+                              data={data.pieChartData}
                               cx="50%"
                               cy="50%"
                               outerRadius={80}
@@ -399,7 +395,7 @@ const ResultsPage = () => {
                               labelLine={false}
                               label={renderCustomizedLabel}
                             >
-                              {logs.pieChartData.map((entry, index) => (
+                              {data.pieChartData.map((entry, index) => (
                                 <Cell key={index} fill={COLORS[index % COLORS.length]} stroke="none" />
                               ))}
                             </Pie>

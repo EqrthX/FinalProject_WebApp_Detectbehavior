@@ -250,7 +250,7 @@ const Schedule = () => {
                 <p className="font-semibold mb-1">* หมายเหตุ</p>
                 <ul className="list-disc list-inside space-y-1">
                     <li>คลิกที่แถบวิชาเพื่อทำการ <b>บันทึกการสอน (Record)</b></li>
-                    <li>ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุุกภาคเทอม</li>
+                    <li>ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุกภาคเทอม</li>
                 </ul>
             </div>
         </div>

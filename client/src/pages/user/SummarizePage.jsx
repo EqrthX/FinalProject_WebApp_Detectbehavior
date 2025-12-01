@@ -1,48 +1,37 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import Navbar from '../../components/Navbar.jsx'
 import MyBreadcrumb from '../../components/MyBreadcrumb.jsx'
-import { Link } from 'react-router-dom';
 import { 
   BarChartOutlined, 
   LoadingOutlined, 
-  SearchOutlined, // เพิ่ม
-  PieChartOutlined // เพิ่ม
+  PieChartOutlined 
 } from '@ant-design/icons';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import { supabase } from "../../config/supabase.js"
-import Flex from 'antd/es/flex'; // แก้ไข path import ให้ถูกต้อง (ถ้าจำเป็น) หรือใช้ import { Flex, Spin } from 'antd'; ตามเดิม
 import { Spin } from 'antd';
-
 
 const SummarizePage = () => {
   const teacher_id = localStorage.getItem("teacher_id")
-  // const [groupCameras, setGroupCameras] = useState({}); // ไม่จำเป็นต้องใช้ State นี้แล้ว เพราะเราจะคำนวณจาก result โดยตรง
 
   const [result, setResult] = useState([])
   const [loading, setLoading] = useState(true);
   
-  // เพิ่ม State สำหรับ Search และ Select
+  // State สำหรับ Search และ Select
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("all");
 
   const [queryDate, setQueryDate] = useState(null);  
   const [displayDate, setDisplayDate] = useState("");
 
-  
   // Date setup
   useEffect(() => {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
-
-    const utc = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-      .toISOString();
-
+    const utc = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString();
     setQueryDate(utc);
 
     const formattedDate = date.toLocaleDateString("th-TH", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
+      year: "numeric", month: "long", day: "numeric",
     });
     setDisplayDate(formattedDate);
   }, []);
@@ -57,7 +46,7 @@ const SummarizePage = () => {
         const { data: response, error: errResponse } = await supabase
           .from("camera_logs")
           .select("*")
-          .limit(500) // เพิ่ม limit หน่อยเผื่อข้อมูลเยอะ
+          .limit(2000) // เพิ่ม limit ให้เยอะขึ้นเพราะต้องดึงมาสรุป
           .gte("created_at", queryDate)
           .eq("teacher_id", teacher_id)
           .order("created_at", { ascending: true })
@@ -67,12 +56,6 @@ const SummarizePage = () => {
           setResult([])
           return
         }
-
-        if (!response || response.length === 0) {
-          setResult([])
-          return
-        }
-
         setResult(response || [])
       } catch (error) {
         console.error("Error fetching:", error)
@@ -83,16 +66,13 @@ const SummarizePage = () => {
     fetechResult();
   }, [teacher_id, queryDate]);
 
-  // --- Logic การกรองข้อมูล (Filter) ---
-  
-  // 1. ดึงรายชื่อวิชาทั้งหมดเพื่อใส่ใน Dropdown
+  // --- Logic การกรองข้อมูล ---
   const uniqueSubjects = useMemo(() => {
     if (!result) return [];
     const subjects = result.map(item => item.subject_id).filter(item => item);
     return [...new Set(subjects)];
   }, [result]);
 
-  // 2. กรองข้อมูลตาม Search และ Dropdown selection
   const filteredResult = useMemo(() => {
     return result.filter(log => {
         const subject = log.subject_id || "";
@@ -102,7 +82,6 @@ const SummarizePage = () => {
     });
   }, [result, searchTerm, selectedSubject]);
 
-  // 3. จัดกลุ่มตาม Camera ID (ใช้ข้อมูลที่กรองแล้ว)
   const groupCameras = useMemo(() => {
     return filteredResult.reduce((acc, row) => {
       if (!acc[row.camera_id]) acc[row.camera_id] = [];
@@ -110,6 +89,42 @@ const SummarizePage = () => {
       return acc;
     }, {});
   }, [filteredResult]);
+
+  // --- 🟢 ฟังก์ชันใหม่: จัดกลุ่มข้อมูลเป็นช่วงละ 5 นาที ---
+  const processDataTo5MinIntervals = (logs) => {
+    const buckets = {};
+
+    logs.forEach(log => {
+      const date = new Date(log.created_at);
+      
+      // สูตรปัดเศษเวลาลงให้เป็นล็อคละ 5 นาที (1000ms * 60s * 5min)
+      const coeff = 1000 * 60 * 5; 
+      const roundedDate = new Date(Math.floor(date.getTime() / coeff) * coeff);
+      
+      // สร้าง Key เป็นเวลา HH:mm
+      const timeStr = roundedDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+
+      if (!buckets[timeStr]) {
+        buckets[timeStr] = {
+          time: timeStr,
+          totalAtt: 0,
+          totalNon: 0,
+          count: 0
+        };
+      }
+
+      buckets[timeStr].totalAtt += Number(log.Attention || 0);
+      buckets[timeStr].totalNon += Number(log.Non_Attention || 0);
+      buckets[timeStr].count += 1;
+    });
+
+    // แปลง Buckets กลับเป็น Array แล้วหาค่าเฉลี่ย
+    return Object.values(buckets).map(b => ({
+      time: b.time,
+      ตั้งใจ: ((b.totalAtt / b.count) * 100).toFixed(2),
+      ไม่ตั้งใจ: ((b.totalNon / b.count) * 100).toFixed(2)
+    }));
+  };
 
   // --- Helper Functions ---
   const getAvgAttentionPerCamera = (logs) => {
@@ -147,22 +162,25 @@ const SummarizePage = () => {
       const totalCount = logs.length || 1;
       const pieChartData = [
         { name: "Focused", value: totals.Focused / totalCount },
-        { name: "Looking Board", value: totals.Looking_at_the_board / totalCount }, // ย่อชื่อให้แสดงผลสวยขึ้น
+        { name: "Looking Board", value: totals.Looking_at_the_board / totalCount },
         { name: "Taking Notes", value: totals.Taking_notes / totalCount },
         { name: "Looking Away", value: totals.LookingAway / totalCount },
         { name: "Using Phone", value: totals.UsingPhone / totalCount },
-      ].filter(d => d.value > 0); // กรองอันที่เป็น 0 ออกจะได้ไม่รก
+      ].filter(d => d.value > 0);
 
-      return { camId, logs, pieChartData };
+      // 🟢 เรียกใช้ฟังก์ชัน 5 นาที ตรงนี้เพื่อเตรียมข้อมูลกราฟเส้น
+      const lineChartData = processDataTo5MinIntervals(logs);
+
+      return { camId, logs, pieChartData, lineChartData };
     });
   }, [groupCameras]);
 
 
+  const COLORS = ['#0068c9','#fe2b2b', '#8622FF', '#739206ff', '#FE0056', '#00B7EB', '#FF8000', '#00FFCE', '#FFFF00'];
   const RADIAN = Math.PI / 180;
-  const COLORS = ['#0068c9', '#fe2b2b', '#780cdf', '#00B7EB', '#00FFCE', '#FF00FF', '#000'];
 
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-    if (percent < 0.05) return null; // ไม่โชว์เลขถ้า % น้อยเกินไป
+    if (percent < 0.05) return null;
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
     const x = cx + radius * Math.cos(-(midAngle ?? 0) * RADIAN);
     const y = cy + radius * Math.sin(-(midAngle ?? 0) * RADIAN);
@@ -183,15 +201,14 @@ const SummarizePage = () => {
   }
 
   return (
-        <div className="flex flex-col h-screen bg-[#F6F6F4] overflow-hidden">
-
+    <div className="flex flex-col h-screen bg-[#F6F6F4] overflow-hidden">
       <Navbar />
       <div style={{ padding: 24, height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <MyBreadcrumb />
         
         {/* Main Content Area */}
         <div className="flex-1 pt-6 overflow-hidden">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4  h-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-auto">
 
             {/* --- Left Column (Line Charts) --- */}
             <div className="col-span-2 bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] flex flex-col h-full overflow-hidden">
@@ -204,43 +221,14 @@ const SummarizePage = () => {
                     ผลรวมรายวัน {displayDate}
                   </h2>
                 </div>
-                
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Search */}
-                  {/* <div className="relative w-40">
-                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                      <SearchOutlined className="text-gray-400" />
-                    </div>
-                    <input 
-                      type="text" 
-                      className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-full focus:ring-blue-500 block w-full pl-10 p-2 outline-none" 
-                      placeholder="ค้นหาวิชา..." 
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div> */}
-
-                  {/* Dropdown */}
-                  {/* <div className="relative group">
-                    <select 
-                      className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-full focus:ring-blue-500 block p-2 outline-none cursor-pointer hover:bg-gray-100 transition-colors min-w-[150px]"
-                      value={selectedSubject}
-                      onChange={(e) => setSelectedSubject(e.target.value)}
-                    >
-                      <option value="all">-- ทุกวิชา --</option>
-                      {uniqueSubjects.map((subject, index) => (
-                        <option key={index} value={subject}>{subject}</option>
-                      ))}
-                    </select>
-                  </div> */}
-                </div>
               </div>
 
               {/* Scrollable Content */}
               <div className="p-6 overflow-y-auto flex-1 scrollbar-hide ">
                 <div className="w-full">
-                  {Object.entries(groupCameras).length > 0 ? (
-                    Object.entries(groupCameras).map(([camId, logs]) => {
+                  {groupCamerasWithPie.length > 0 ? (
+                    // 🟢 เปลี่ยนจาก Object.entries เป็น map จาก groupCamerasWithPie เพราะเราเตรียม lineChartData ไว้แล้ว
+                    groupCamerasWithPie.map(({ camId, logs, lineChartData }) => {
                       const avg = getAvgAttentionPerCamera(logs);
                       const lastLogDate = new Date(logs[logs.length-1].created_at).toLocaleDateString('th-TH');
 
@@ -265,18 +253,16 @@ const SummarizePage = () => {
                           </div>
 
                           <ResponsiveContainer width="100%" height={200}>
-                            <LineChart data={logs.map(l => ({
-                              time: new Date(l.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
-                              ตั้งใจ: (Number(l.Attention) * 100).toFixed(2),
-                              ไม่ตั้งใจ: (Number(l.Non_Attention) * 100).toFixed(2),
-                            }))}>
+                            {/* 🟢 ใช้ lineChartData ที่จัดกลุ่ม 5 นาทีแล้ว */}
+                            <LineChart data={lineChartData}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                               <XAxis dataKey="time" tick={{ fontSize: 12 }} />
                               <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
                               <Tooltip contentStyle={{ borderRadius: '8px' }} />
                               <Legend wrapperStyle={{ paddingTop: '10px' }}/>
-                              <Line type="monotone" dataKey="ตั้งใจ" stroke="#38A738" strokeWidth={2} dot={false} />
-                              <Line type="monotone" dataKey="ไม่ตั้งใจ" stroke="#FF3300" strokeWidth={2} dot={false} />
+                              {/* 🟢 เพิ่ม activeDot เพื่อความสวยงาม */}
+                              <Line type="monotone" dataKey="ตั้งใจ" stroke="#38A738" strokeWidth={2} dot={true} activeDot={{ r: 6 }} />
+                              <Line type="monotone" dataKey="ไม่ตั้งใจ" stroke="#FF3300" strokeWidth={2} dot={true} />
                             </LineChart>
                           </ResponsiveContainer>
                         </div>
@@ -300,14 +286,14 @@ const SummarizePage = () => {
                 <div className="p-6 border-b border-[#f0f0f0] flex-shrink-0">
                   <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
                      <PieChartOutlined className="text-2xl text-purple-500" />
-                     พฤติกรรมรวม {selectedSubject !== "all" && <span className="text-sm font-normal text-gray-500">({selectedSubject})</span>}
+                     พฤติกรรมรวม
                   </h2>
                 </div>
 
                 {/* Scrollable Content */}
                 <div className="p-6 flex flex-col gap-4 overflow-y-auto flex-1 scrollbar-hide">
                   {groupCamerasWithPie.length > 0 ? (
-                    groupCamerasWithPie.map(({ camId, logs, pieChartData }) => (
+                    groupCamerasWithPie.map(({ camId, pieChartData }) => (
                       <div key={camId} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm relative">
                         <div className="absolute top-3 left-3 z-10">
                              <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">

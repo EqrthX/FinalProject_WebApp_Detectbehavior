@@ -130,7 +130,7 @@ const Schedule = () => {
                                             
                                             {/* 🟢 ส่วนที่เพิ่มเวลากลับมา */}
                                             {totalOverlaps <= 2 && (
-                                                <div className="text-[11px] leading-tight mt-0.5 opacity-90 hidden sm:block">
+                                                <div className="text-[11px] leading-tight mt-0.5 opacity-90 hidden sm:block ">
                                                     <div>กลุ่ม {item.group} | {item.room}</div>
                                                     <div>[{item.start_time} - {item.end_time}]</div>
                                                 </div>

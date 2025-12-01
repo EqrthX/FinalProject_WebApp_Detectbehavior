@@ -141,7 +141,7 @@ class CameraThread(threading.Thread):
         self.main_lost_frames = 0
 
         # ให้หายไปได้สูงสุดกี่เฟรมก่อนจะยอม reset main_track_id
-        self.main_max_lost_frames = 90    # สมมติประมาณ ~0.5 วินาที ถ้า 30fps
+        self.main_max_lost_frames = 30    # สมมติประมาณ ~0.5 วินาที ถ้า 30fps
         self.last_detect_time = 0
         
     # ----------------------------------------------------------------------
@@ -386,33 +386,26 @@ class CameraThread(threading.Thread):
         """
         ประมวลผล behavior โดยใช้ผลลัพธ์จาก YOLO track.
 
-        แนวคิด:
-        - YOLO track ให้ boxes พร้อม track_id (box.id)
-        - เราเลือกเฉพาะ class ที่อยู่ใน ATTENDENCE + NON_ATTENDENCE
-        - ถ้ายังไม่มี main_track_id:
-            - เลือก box ที่ conf สูงสุด → ตั้งเป็น main_track_id
-        - ถ้ามี main_track_id แล้ว:
-            - หาดูว่ามี box.id == main_track_id ไหม
-            - ถ้ามี → ใช้กล่องนั้นเป็นคนหลัก → update_class_state(label)
-            - ถ้าไม่มี → เพิ่ม main_lost_frames
-                - ถ้า main_lost_frames >= main_max_lost_frames:
-                    - reset main_track_id = None (ยอมเลือกคนใหม่รอบหน้า)
-        - เมื่อได้ label สำหรับคนหลัก → เรียก update_class_state()
-        - ทุก ๆ 5 วินาที จะมีการเรียก handle_interval() (อยู่ท้ายฟังก์ชันนี้)
+        Concept :
+        - สนใจเฉพาะคลาสใน ATTENDENCE + NON_ATTENDENCE
+        - ใช้ main_track_id เลือก "คนหลักคนแรก"
+        - เฟรมต่อ ๆ ไป: ใช้เฉพาะ box ที่ track_id == main_track_id
+        - คนอื่นที่เดินผ่าน (track_id อื่น) → print log ว่า ignore
+        - ถ้าไม่เจอคนหลักติด ๆ กันหลายเฟรม → reset main_track_id
+        - ทุก ๆ 5 วินาที → เรียก handle_interval() ตามเวลา
         """
-        # ดึง boxes ทั้งหมดจาก YOLO result
+        
         boxes = result.boxes
 
         # ถ้าไม่มี box เลยในเฟรมนี้
         if boxes is None or len(boxes) == 0:
-            # ถือว่า "ไม่เจอคนหลักในเฟรมนี้เลย" → main_lost_frames +1
-            self.main_lost_frames += 1
+            if self.main_track_id is not None:
+                self.main_lost_frames += 1
 
-            # ถ้าหายเกิน limit → ยอม reset main_track_id
-            if self.main_lost_frames >= self.main_max_lost_frames:
-                self.main_track_id = None
-
-            # ไม่ต้องอัปเดต behavior เพิ่ม (เพราะไม่มีคนหลัก)
+                # ถ้าหายเกิน limit → ยอม reset main_track_id
+                if self.main_lost_frames >= self.main_max_lost_frames:
+                    self.main_track_id = None
+                    self.main_lost_frames  = 0
             return
 
         # list เก็บ detection ที่ "เกี่ยวข้อง" (เฉพาะคลาสที่เราสนใจ)
@@ -420,9 +413,8 @@ class CameraThread(threading.Thread):
 
         # วนดูทุก box ที่ detect ได้
         for box in boxes:
-            # class index (ตัวเลข)
+            # index class → ชื่อคลาส
             cls_idx = int(box.cls)
-            # ชื่อคลาส (string) จาก model.names
             label = self.model.names[cls_idx]
 
             # สนใจเฉพาะ class ที่อยู่ใน list ATTENDENCE + NON_ATTENDENCE
@@ -450,95 +442,79 @@ class CameraThread(threading.Thread):
 
         # ถ้าไม่มี detection ที่เข้าเงื่อนไขเลย
         if not detections:
-            # เหมือนด้านบน → main_lost_frames + 1
-            self.main_lost_frames += 1
-            # main_lost_frames >= 15 ปรับ track id เป็น None
-            if self.main_lost_frames >= self.main_max_lost_frames:
-                self.main_track_id = None
+            # นับว่าไม่เจอคนหลักในเฟรมนี้
+            if self.main_track_id is not None:
+                self.main_lost_frames += 1
+                if self.main_lost_frames >= self.main_max_lost_frames:
+                    print(f"❌ [Cam {self.camera_id}] Target Lost too long (no valid det). Resetting ID.")
+                    self.main_track_id = None
+                    self.main_lost_frames = 0
             return
 
         # ----------------- เลือก / ติดตาม main_track_id -----------------
         
         # ถ้ายังไม่มีคนหลักมาก่อนเลย → เลือกจาก detection ที่ conf สูงสุดในเฟรมนี้
         if self.main_track_id is None:
-            # ใช้ max ด้วย key เป็น conf
             best = max(detections, key=lambda d: d["conf"])
-            # ตั้ง main_track_id เป็น track_id ของ box นี้
             self.main_track_id = best["track_id"]
-            # reset main_lost_frames เพราะเพิ่งเจอคนนี้
             self.main_lost_frames = 0
-            # เก็บ conf ล่าสุด
             self.last_target_conf = best["conf"]
+
+            print(
+                f"🎯 [Cam {self.camera_id}] New Target ID={self.main_track_id} "
+                f"({best['label']} conf={best['conf']:.2f})"
+            )
 
             # ถ้า conf สูงพอ (เช่น > 0.6) → อัปเดต behavior ทันที
             if best["conf"] > 0.60:
                 self.update_class_state(best["label"])
 
         else:
-            found_target = False
+            target_det = None
 
-            # วนลูปดูทุกคนที่ Detect เจอในเฟรมนี้ (ไม่ใช้ break เพื่อให้ Log ครบทุกคน)
             for d in detections:
-                curr_id = d["track_id"]
-                curr_conf = d["conf"]
-                curr_label = d["label"]
-
-                if curr_id == self.main_track_id:
-                    # ✅ เจอคนหลัก (Target)
-                    # Print บอกว่ากำลังนับคะแนนคนนี้
-                    # print(f"✅ [Cam {self.camera_id}] Counting Target ID: {curr_id} | {curr_label} ({curr_conf:.2f})")
-                    
-                    # Mark ว่าเจอแล้ว (เพื่อไม่ให้ไปนับ lost_frames ตอนจบลูป)
-                    found_target = True
-                    self.last_target_conf = curr_conf
-
-                    # (Logic เดิม) ถ้า conf สูงพอ ให้ update พฤติกรรม
-                    if curr_conf > 0.60:
-                        self.update_class_state(curr_label)
-
+                if d["track_id"] == self.main_track_id:
+                    target_det = d
                 else:
-                    # 🚫 เจอคนแปลกหน้า (Stranger)
-                    # Print บอกว่าคนนี้ถูกเมิน
-                    print(f"🚫 [Cam {self.camera_id}] Ignoring Stranger ID: {curr_id} (conf: {curr_conf:.2f})")
-            if found_target:
-                # เจอ: Reset ตัวนับการหาย
-                self.main_lost_frames = 0
-            else:
-                # ไม่เจอเลยซักคนที่เป็น Target: เพิ่มตัวนับการหาย
-                self.main_lost_frames += 1
-                
-                # (Optional) Log เตือนว่าคนหาย
-                # print(f"⚠️ [Cam {self.camera_id}] Target Lost... ({self.main_lost_frames}/{self.main_max_lost_frames})")
+                    # คนอื่นที่เดินผ่าน → เมิน
+                    print(
+                        f"🚫 [Cam {self.camera_id}] Ignoring Stranger ID={d['track_id']} "
+                        f"({d['label']} conf={d['conf']:.2f})"
+                    )
 
-                # ถ้าหายไปนานเกินกำหนด → Reset ID ทิ้ง (ยอมหาคนใหม่ในเฟรมหน้า)
+            if target_det is not None:
+                # เจอคนหลักในเฟรมนี้
+                self.main_lost_frames = 0
+                self.last_target_conf = target_det["conf"]
+
+                if target_det["conf"] >= 0.6:
+                    self.update_class_state(target_det["label"])
+
+                # debug log
+                # print(
+                #     f"✅ [Cam {self.camera_id}] Target ID={self.main_track_id} "
+                #     f"{target_det['label']} ({target_det['conf']:.2f})"
+                # )
+
+            else:
+                # ไม่เจอคนหลักเลยในเฟรมนี้
+                self.main_lost_frames += 1
+                print(
+                    f"⚠️ [Cam {self.camera_id}] Target ID={self.main_track_id} lost "
+                    f"({self.main_lost_frames}/{self.main_max_lost_frames})"
+                )
+
                 if self.main_lost_frames >= self.main_max_lost_frames:
                     print(f"❌ [Cam {self.camera_id}] Target Lost too long. Resetting ID.")
                     self.main_track_id = None
-            # ------------------------------------------------------------------
-            # สรุปผลหลังจบลูป: ตกลงเฟรมนี้เจอคนหลักไหม?
-            # ------------------------------------------------------------------
-            if found_target:
-                # เจอ: Reset ตัวนับการหาย
-                self.main_lost_frames = 0
-            else:
-                # ไม่เจอเลยซักคนที่เป็น Target: เพิ่มตัวนับการหาย
-                self.main_lost_frames += 1
-                
-                # (Optional) Log เตือนว่าคนหาย
-                # print(f"⚠️ [Cam {self.camera_id}] Target Lost... ({self.main_lost_frames}/{self.main_max_lost_frames})")
+                    self.main_lost_frames = 0
 
-                # ถ้าหายไปนานเกินกำหนด → Reset ID ทิ้ง (ยอมหาคนใหม่ในเฟรมหน้า)
-                if self.main_lost_frames >= self.main_max_lost_frames:
-                    print(f"❌ [Cam {self.camera_id}] Target Lost too long. Resetting ID.")
-                    self.main_track_id = None
-
-        # ----------------- เรียก handle_interval() ทุก ๆ 5 วินาที -----------------
-        # เช็คว่าจากครั้งสุดท้ายที่ handle_interval() ถูกเรียกผ่านมาเกิน 5 วินาทีหรือยัง
-        if now - self.last_interval_time >= self.interval_seconds:
-            # อัปเดตเวลา last_interval_time เป็นตอนนี้
-            self.last_interval_time = now
-            # ทำงานสรุป class ใน interval นี้
-            self.handle_interval()
+            # ----------------- เรียก handle_interval() ทุก ๆ 5 วินาที -----------------
+            # เช็คว่าจากครั้งสุดท้ายที่ handle_interval() ถูกเรียกผ่านมาเกิน 5 วินาทีหรือยัง
+            if now - self.last_interval_time >= self.interval_seconds:
+                # อัปเดตเวลา last_interval_time เป็นตอนนี้
+                self.last_interval_time = now
+                self.handle_interval()
 
     # ----------------------------------------------------------------------
     # ฟังก์ชัน handle_interval — ถูกเรียกทุก ๆ 5 วินาที
@@ -558,16 +534,12 @@ class CameraThread(threading.Thread):
         """
         # ดึง current_class ที่คำนวณล่าสุด
         cls = self.class_timer["current_class"]
-
-        # ค่าเริ่มต้น mapped = class เดิม
         mapped = cls
 
         # ถ้า current_class เป็น "LookingAway" → ใช้ duration แปลเป็น 3 level
         if cls == "LookingAway":
             # เพิ่มเวลา duration = duration เดิม + 5 วินาที
             self.class_timer["duration"] += self.interval_seconds
-
-            # เอา duration มาเก็บในตัวแปร dur เพื่ออ่านง่าย
             dur = self.class_timer["duration"]
 
             # ถ้า duration <= 15 วิ → mapped = "LookingAway"
@@ -597,12 +569,9 @@ class CameraThread(threading.Thread):
         if len(self.interval_results) > self.max_intervals:
             self.interval_results.pop(0)
 
-        # เพิ่มตัวนับ interval_count ทีละ 1
         self.interval_count += 1
-
         # ถ้าเกินหรือเท่ากับ max_intervals (12 ครั้ง = 1 นาที)
         if self.interval_count >= self.max_intervals:
-            # สรุปผลและบันทึก summary 1 นาที
             self.save_summary()
 
             # reset ตัวนับ interval, interval_results, miss, duration
@@ -717,6 +686,7 @@ async def list_camera():
                     "name": f"กล้องตัวที่ {i}",
                     "status": "ใช้ได้",
                 })
+                available_cameras.append({"id": i})
         except Exception as e:
             print(f"quick_scan_camera index {i} error: {e}")
             cap.release()
@@ -764,11 +734,8 @@ async def start_all_detections(
     started = []
 
     # ถ้ามี available_cameras ที่ scan ไว้แล้ว → ใช้ id จากตรงนั้น
-    # ถ้าไม่มี (ยังไม่เคย scan) → default ใช้ [0, 1]
     cam_ids = (
         [str(cam["id"]) for cam in available_cameras]
-        if available_cameras
-        else [str(i) for i in range(2)]
     )
 
     # วนทุก camera id ที่จะใช้

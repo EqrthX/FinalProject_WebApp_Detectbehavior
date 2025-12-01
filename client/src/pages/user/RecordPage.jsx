@@ -635,24 +635,6 @@ const RecordPage = () => {
                                         />
                                     </div>
 
-                                    {/* ปุ่มควบคุมกล้องแต่ละตัว */}
-                                    <div className="flex gap-2 w-full">
-                                        {/* ปุ่มเชื่อมต่อใหม่ */}
-                                        <button
-                                            className="flex-1 py-2 rounded-lg bg-blue-500 text-white font-semibold hover:bg-blue-600 text-sm"
-                                            onClick={() => handleReconnect(cam.id)}
-                                        >
-                                            เชื่อมต่อใหม่
-                                        </button>
-
-                                        {/* ปุ่มปิดเฉพาะกล้องนี้ */}
-                                        <button
-                                            className="flex-1 py-2 rounded-lg bg-red-500 text-white font-semibold hover:bg-red-600 text-sm"
-                                            onClick={() => handleCloseCamera(cam.id)}
-                                        >
-                                            ปิดตัวนี้
-                                        </button>
-                                    </div>
                                 </div>
                             ))}
                         </div>

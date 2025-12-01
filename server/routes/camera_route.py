@@ -138,7 +138,7 @@ class CameraThread(threading.Thread):
         self.main_lost_frames = 0
 
         # ให้หายไปได้สูงสุดกี่เฟรมก่อนจะยอม reset main_track_id
-        self.main_max_lost_frames = 30    
+        self.main_max_lost_frames = 5   
         self.last_detect_time = 0
         
     # ----------------------------------------------------------------------

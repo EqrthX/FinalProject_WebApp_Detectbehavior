@@ -43,8 +43,6 @@ scan_lock = asyncio.Lock()
 
 model_path = get_model_path()
 
-TARGET_FPS = 30
-DETECT_INTERVEL = 1 / TARGET_FPS
 
 # ==============================================================================
 #  Class: CameraThread — กล้อง 1 ตัว = 1 Thread
@@ -92,7 +90,7 @@ class CameraThread(threading.Thread):
         # ----------------- YOLO Model -----------------
         # ตอน __init__ ยังไม่โหลด model เพื่อให้การสร้าง object เร็วขึ้น
         # จะไปโหลดใน run() อีกที (ต่อ Thread)
-        self.model = YOLO(model_path)
+        self.model = None
 
         # device ที่จะใช้ (ถ้ามี GPU → cuda, ถ้าไม่มี → cpu)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -135,11 +133,6 @@ class CameraThread(threading.Thread):
         # เก็บภาพ annotated ล่าสุด (จะใช้เวลาไม่ detect frame นั้น)
         self.last_annotated = None
 
-        # จำนวน frame ที่จะ skip ก่อน detect/track อีกครั้ง (ลดโหลด)
-        # เช่น skip_frames=3 → detect ทุก ๆ frame ที่ 3
-        self.skip_frames = 3
-        self.frame_counter = 0      # นับจำนวน frame ทั้งหมดที่อ่านจากกล้อง
-
         # ----------------- ตัวแปรสำหรับ Tracking ด้วย track_id -----------------
         # track_id ของ "คนหลัก" คนแรกที่กล้องเจอ
         self.main_track_id = None
@@ -148,9 +141,9 @@ class CameraThread(threading.Thread):
         self.main_lost_frames = 0
 
         # ให้หายไปได้สูงสุดกี่เฟรมก่อนจะยอม reset main_track_id
-        self.main_max_lost_frames = 15    # สมมติประมาณ ~0.5 วินาที ถ้า 30fps
-
+        self.main_max_lost_frames = 90    # สมมติประมาณ ~0.5 วินาที ถ้า 30fps
         self.last_detect_time = 0
+        
     # ----------------------------------------------------------------------
     # ฟังก์ชันเปิดกล้อง (พยายามหลาย backend)
     # ----------------------------------------------------------------------
@@ -181,13 +174,13 @@ class CameraThread(threading.Thread):
                     # ตั้งค่าความสูงของเฟรม (pixel)
                     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
                     # ตั้งค่า FPS เป้าหมาย
-                    cap.set(cv2.CAP_PROP_FPS, 60)
+                    cap.set(cv2.CAP_PROP_FPS, 30)
                     # ตั้งค่ารูปแบบ fourcc (รูปแบบ encode video ที่ driver ชอบ)
                     cap.set(
                         cv2.CAP_PROP_FOURCC,
                         cv2.VideoWriter_fourcc(*"MJPG"),
                     )
-
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1) 
                     # บันทึก VideoCapture นี้ลง self.cap
                     self.cap = cap
 
@@ -230,7 +223,7 @@ class CameraThread(threading.Thread):
         # ----------------- 2) โหลด YOLO Model -----------------
         try:
             print(f"⏳ กำลังโหลดโมเดลของกล้อง {self.camera_id} ...")
-
+            self.model = YOLO(model_path)
             print(f"✅ โหลด Model Yolo ของกล้อง {self.camera_id}")
         except Exception as e:
             # ถ้าโหลดโมเดลไม่สำเร็จ → print error แล้วจบ Thread
@@ -253,18 +246,6 @@ class CameraThread(threading.Thread):
                     break
 
                 # อัปเดตตัวนับเฟรม
-                self.frame_counter += 1
-
-                # เวลา timestamp ตอนนี้ (ใช้กับ interval summary)
-                now = time.time()
-                elapsed = now - self.last_detect_time
-
-                if elapsed < DETECT_INTERVEL:
-                    # ถ้า detect ถึงเร็วเกินไป ให้หน่วงเฉพาะเวลาที่ขาดจริง ๆ
-                    time.sleep(DETECT_INTERVEL - elapsed)
-                else:
-                    # ถ้าถึงรอบ detect แล้ว → อัปเดตเวลา detect
-                    self.last_detect_time = time.time()
 
                 # เริ่มจากใช้ภาพดิบจากกล้องก่อน
                 annotated = frame
@@ -272,15 +253,15 @@ class CameraThread(threading.Thread):
                 # ----------------- 4) ถ้าต้องการ detect / track -----------------
                 # เงื่อนไข:
                 # - self.detecting == True → กำลัง detect อยู่
-                # - self.frame_counter % self.skip_frames == 0 → ถึงรอบที่จะ track แล้ว
-                if self.detecting and self.frame_counter % self.skip_frames == 0:
+                if self.detecting:
                     try:
                         # ข้อสำคัญ:
                         # - persist=True → ใช้ track_id ต่อเนื่องระหว่างเฟรม
                         # - tracker="bytetrack.yaml" → ใช้ ByteTrack เป็น tracker
                         results = self.model.track(
                             source=frame,           # เฟรมปัจจุบันจากกล้อง
-                            conf=0.45,              # ค่าความมั่นใจขั้นต่ำในการ detect
+                            conf=0.20,              # ค่าความมั่นใจขั้นต่ำในการ detect
+                            iou=0.45,               # ค่า IOU ขั้นต่ำในการจับคู่ box กับ track
                             device=self.device,     # "cuda" หรือ "cpu"
                             verbose=False,          # ไม่ต้อง print log จาก ultralytics
                             persist=True,           # ให้ YOLO จำ track_id ต่อเนื่อง
@@ -294,37 +275,15 @@ class CameraThread(threading.Thread):
                         annotated = result.plot()
 
                         # เก็บ annotated frame ล่าสุดไว้ (เผื่อเฟรมอื่นที่ไม่ track)
-                        self.last_annotated = annotated.copy()
+                        self.last_annotated = annotated
 
                         # ประมวลผล behavior โดยใช้ข้อมูล track (track_id, class)
-                        self.process_behavior_track(result, now)
+                        self.process_behavior_track(result, now=time.time())
 
                     except Exception as e:
                         # ถ้า YOLO หรือ track พัง → print error, หน่วงเวลาเล็กน้อยแล้วข้ามเฟรมนี้
                         print(f"❌ YOLO track error camera {self.camera_id}: {e}")
-                        
-                        print("➡ fallback ไปใช้ model.predict() แทน")
-
-                        # --------------- Fallback detect-only (แก้พังทันที) -----------------
-                        try:
-                            results = self.model.predict(
-                                source=frame,
-                                conf=0.45,
-                                device=self.device,
-                                verbose=False,
-                            )
-                            result = results[0]
-
-                            # วาดกล่องปกติ
-                            annotated = result.plot()
-                            self.last_annotated = annotated.copy()
-
-                        except Exception as e2:
-                            print(f"❌ fallback predict ก็พังอีก camera {self.camera_id}: {e2}")
-
-                            # ถ้าวาดไม่ได้เลย → เอาภาพเดิมไปก่อน
-                            annotated = frame
-                            self.last_annotated = frame.copy()
+                        self.last_annotated = frame
                         continue
 
                 else:
@@ -351,7 +310,7 @@ class CameraThread(threading.Thread):
         except Exception as e:
             # ถ้าเกิด error ใด ๆ ที่หลุดมานอก try ด้านใน → log ไว้ก่อนปิดกล้อง
             print(f"Thread กล้อง {self.camera_id} crash: {e}")
-
+            
         # ----------------- 7) cleanup เมื่อออกจากลูปหลัก -----------------
         self.running = False
 
@@ -493,12 +452,13 @@ class CameraThread(threading.Thread):
         if not detections:
             # เหมือนด้านบน → main_lost_frames + 1
             self.main_lost_frames += 1
+            # main_lost_frames >= 15 ปรับ track id เป็น None
             if self.main_lost_frames >= self.main_max_lost_frames:
                 self.main_track_id = None
             return
 
         # ----------------- เลือก / ติดตาม main_track_id -----------------
-
+        
         # ถ้ายังไม่มีคนหลักมาก่อนเลย → เลือกจาก detection ที่ conf สูงสุดในเฟรมนี้
         if self.main_track_id is None:
             # ใช้ max ด้วย key เป็น conf
@@ -515,27 +475,61 @@ class CameraThread(threading.Thread):
                 self.update_class_state(best["label"])
 
         else:
-            # ถ้ามี main_track_id อยู่แล้ว → หาว่าใน detections มี box ไหนที่ track_id ตรงกันไหม
-            main_det = None
+            found_target = False
+
+            # วนลูปดูทุกคนที่ Detect เจอในเฟรมนี้ (ไม่ใช้ break เพื่อให้ Log ครบทุกคน)
             for d in detections:
-                if d["track_id"] == self.main_track_id:
-                    main_det = d
-                    break
+                curr_id = d["track_id"]
+                curr_conf = d["conf"]
+                curr_label = d["label"]
 
-            if main_det is not None:
-                # เจอคนหลักในเฟรมนี้
+                if curr_id == self.main_track_id:
+                    # ✅ เจอคนหลัก (Target)
+                    # Print บอกว่ากำลังนับคะแนนคนนี้
+                    # print(f"✅ [Cam {self.camera_id}] Counting Target ID: {curr_id} | {curr_label} ({curr_conf:.2f})")
+                    
+                    # Mark ว่าเจอแล้ว (เพื่อไม่ให้ไปนับ lost_frames ตอนจบลูป)
+                    found_target = True
+                    self.last_target_conf = curr_conf
+
+                    # (Logic เดิม) ถ้า conf สูงพอ ให้ update พฤติกรรม
+                    if curr_conf > 0.60:
+                        self.update_class_state(curr_label)
+
+                else:
+                    # 🚫 เจอคนแปลกหน้า (Stranger)
+                    # Print บอกว่าคนนี้ถูกเมิน
+                    print(f"🚫 [Cam {self.camera_id}] Ignoring Stranger ID: {curr_id} (conf: {curr_conf:.2f})")
+            if found_target:
+                # เจอ: Reset ตัวนับการหาย
                 self.main_lost_frames = 0
-                self.last_target_conf = main_det["conf"]
-
-                # ถ้า conf สูงพอ → อัปเดต behavior
-                if main_det["conf"] > 0.60:
-                    self.update_class_state(main_det["label"])
             else:
-                # ถ้าไม่เจอคนหลักเลยในเฟรมนี้ → เพิ่ม main_lost_frames
+                # ไม่เจอเลยซักคนที่เป็น Target: เพิ่มตัวนับการหาย
                 self.main_lost_frames += 1
+                
+                # (Optional) Log เตือนว่าคนหาย
+                # print(f"⚠️ [Cam {self.camera_id}] Target Lost... ({self.main_lost_frames}/{self.main_max_lost_frames})")
 
-                # ถ้าหายไปนานเกิน main_max_lost_frames → reset main_track_id
+                # ถ้าหายไปนานเกินกำหนด → Reset ID ทิ้ง (ยอมหาคนใหม่ในเฟรมหน้า)
                 if self.main_lost_frames >= self.main_max_lost_frames:
+                    print(f"❌ [Cam {self.camera_id}] Target Lost too long. Resetting ID.")
+                    self.main_track_id = None
+            # ------------------------------------------------------------------
+            # สรุปผลหลังจบลูป: ตกลงเฟรมนี้เจอคนหลักไหม?
+            # ------------------------------------------------------------------
+            if found_target:
+                # เจอ: Reset ตัวนับการหาย
+                self.main_lost_frames = 0
+            else:
+                # ไม่เจอเลยซักคนที่เป็น Target: เพิ่มตัวนับการหาย
+                self.main_lost_frames += 1
+                
+                # (Optional) Log เตือนว่าคนหาย
+                # print(f"⚠️ [Cam {self.camera_id}] Target Lost... ({self.main_lost_frames}/{self.main_max_lost_frames})")
+
+                # ถ้าหายไปนานเกินกำหนด → Reset ID ทิ้ง (ยอมหาคนใหม่ในเฟรมหน้า)
+                if self.main_lost_frames >= self.main_max_lost_frames:
+                    print(f"❌ [Cam {self.camera_id}] Target Lost too long. Resetting ID.")
                     self.main_track_id = None
 
         # ----------------- เรียก handle_interval() ทุก ๆ 5 วินาที -----------------
@@ -699,31 +693,6 @@ class CameraThread(threading.Thread):
 # ==============================================================================
 # ฟังก์ชันช่วย scan กล้องอย่างรวดเร็ว (ไม่เกี่ยวกับ track)
 # ==============================================================================
-def quick_scan_camera(index: int) -> bool:
-    """
-    ฟังก์ชันนี้ลองเปิดกล้อง index ที่ระบุด้วย backend ต่าง ๆ
-    ใช้แค่เช็คว่า "มีอะไรเสียบอยู่ไหม" (ไม่เก็บ VideoCapture ไว้)
-    """
-    # ลองเปิดด้วย CAP_DSHOW
-    cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-    if cap.isOpened():
-        cap.release()
-        return True
-
-    # ถ้าไม่สำเร็จ ลองเปิดด้วย CAP_MSMF
-    cap = cv2.VideoCapture(index, cv2.CAP_MSMF)
-    if cap.isOpened():
-        cap.release()
-        return True
-
-    # ถ้าไม่สำเร็จอีก ลอง CAP_ANY (ให้ OpenCV เลือกเอง)
-    cap = cv2.VideoCapture(index, cv2.CAP_ANY)
-    if cap.isOpened():
-        cap.release()
-        return True
-
-    # ถ้าเปิดไม่ได้ทุก backend → return False
-    return False
 
 
 @camera_router.get("/list-camera")
@@ -740,14 +709,20 @@ async def list_camera():
 
     # ลอง index 0 ถึง 9
     for i in range(10):
-        ok = quick_scan_camera(i)
-        if ok:
-            cams.append({
-                "id": i,
-                "name": f"กล้องตัวที่ {i}",
-                "status": "ใช้ได้",
-            })
-
+        try:
+            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+            if cap.isOpened():
+                cams.append({
+                    "id": i,
+                    "name": f"กล้องตัวที่ {i}",
+                    "status": "ใช้ได้",
+                })
+        except Exception as e:
+            print(f"quick_scan_camera index {i} error: {e}")
+            cap.release()
+        finally:
+            if cap and cap.isOpened():
+                cap.release()
     if not cams:
         # ถ้าไม่เจอกล้องเลย → ส่ง message อย่างเดียว
         return {"message": "ไม่เจอ USB ที่กำลังเชื่อมต่อกล้อง"}

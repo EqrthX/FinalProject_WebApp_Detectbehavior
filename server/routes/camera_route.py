@@ -665,9 +665,10 @@ async def list_camera():
     - ถ้าไม่มีเลย → ส่ง message ว่าไม่เจอ
     """
     cams = []
-
+    available_cameras.clear()
     # ลอง index 0 ถึง 9
     for i in range(10):
+        cap = None
         try:
             cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
             if cap.isOpened():
@@ -679,7 +680,6 @@ async def list_camera():
                 available_cameras.append({"id": i})
         except Exception as e:
             print(f"quick_scan_camera index {i} error: {e}")
-            cap.release()
         finally:
             if cap and cap.isOpened():
                 cap.release()

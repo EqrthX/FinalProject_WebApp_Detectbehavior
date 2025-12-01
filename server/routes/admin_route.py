@@ -17,6 +17,10 @@ async def create_teacher(
         print("teacher_id", teacher_id)
         print("fullname", fullname)
         print("major", major)
+        try:
+            supabase_client.auth.sign_out() 
+        except:
+            pass
         auth_response = supabase_client.auth.admin.create_user(
             attributes={
                 "email": email,

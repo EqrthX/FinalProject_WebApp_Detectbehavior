@@ -157,7 +157,7 @@ const HomePage = () => {
         <div className="space-y-6 max-w-screen-2xl mx-auto">
           
           {/* --- Section 1: การ์ดเปอร์เซ็นต์ (ข้อมูลจริง) --- */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className={cardStyle}>
               <span className="text-4xl font-bold text-[#1D971D]">{todayStats.avgFocused}%</span>
               <span className="text-gray-700 mt-2 font-medium">ตั้งใจเรียน</span>
@@ -166,10 +166,7 @@ const HomePage = () => {
               <span className="text-4xl font-bold text-[#FF3300]">{todayStats.avgNonFocused}%</span>
               <span className="text-gray-700 mt-2 font-medium">ไม่ตั้งใจเรียน</span>
             </div>
-            <div className={cardStyle}>
-              <span className="text-4xl font-bold text-[#0900FF]">{todayStats.dayAverage}%</span>
-              <span className="text-gray-700 mt-2 font-medium">ค่าเฉลี่ยของวันนี้</span>
-            </div>
+
           </div>
 
           {/* --- Section 2: ตารางสอน และ กราฟ --- */}

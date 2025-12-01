@@ -138,7 +138,7 @@ class CameraThread(threading.Thread):
         self.main_lost_frames = 0
 
         # ให้หายไปได้สูงสุดกี่เฟรมก่อนจะยอม reset main_track_id
-        self.main_max_lost_frames = 30    # สมมติประมาณ ~0.5 วินาที ถ้า 30fps
+        self.main_max_lost_frames = 30    
         self.last_detect_time = 0
         
     # ----------------------------------------------------------------------
@@ -241,8 +241,6 @@ class CameraThread(threading.Thread):
                 if not ret:
                     print(f"⚠️ กล้อง {self.camera_id} อ่านเฟรมไม่เจอ")
                     break
-
-                # อัปเดตตัวนับเฟรม
 
                 # เริ่มจากใช้ภาพดิบจากกล้องก่อน
                 annotated = frame

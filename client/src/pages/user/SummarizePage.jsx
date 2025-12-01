@@ -138,10 +138,9 @@ const SummarizePage = () => {
       fetchLatestSession();
     }
   }, [teacher_id]);
-
-  // --- Styles & UI Components ---
+  
+  const COLORS = ['#0068c9','#fe2b2b', '#8622FF', '#739206ff', '#FE0056', '#00B7EB', '#FF8000', '#00FFCE', '#FFFF00'];
   const RADIAN = Math.PI / 180;
-  const COLORS = ['#0068c9', '#fe2b2b', '#780cdf', '#00B7EB', '#00FFCE', '#FF00FF', '#000'];
 
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
     if (percent < 0.05) return null;

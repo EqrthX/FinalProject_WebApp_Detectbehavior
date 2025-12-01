@@ -253,7 +253,6 @@ const ResultsPage = () => {
     setGroupedData(finalData); 
   }, [rawLogs, summaries, selectedSubject, selectedDate]); 
 
-  // --- Constants & Render ---
   const COLORS = ['#0068c9','#fe2b2b', '#8622FF', '#739206ff', '#FE0056', '#00B7EB', '#FF8000', '#00FFCE', '#FFFF00'];
   const RADIAN = Math.PI / 180;
   

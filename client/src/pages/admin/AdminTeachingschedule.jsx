@@ -68,7 +68,7 @@ const AdminTeachingSchedule = () => {
       const { data, error } = await supabase.from("class_schedule").select(`*`);
 
       if (error) {
-        toast.error("เกิดข้อผิดพลาดในการดึงข้อมูลตารางสอน ⚠️");
+        toast.error("เกิดข้อผิดพลาดในการดึงข้อมูลตารางสอน");
         setSchedules([]);
         return;
       }
@@ -112,11 +112,11 @@ const AdminTeachingSchedule = () => {
   };
 
   const handleDeleteClick = async (id) => {
-    if (window.confirm("คุณต้องการลบตารางสอนนี้ใช่หรือไม่? ⚠️")) {
+    if (window.confirm("คุณต้องการลบตารางสอนนี้ใช่หรือไม่?")) {
         const { error } = await supabase.from("class_schedule").delete().eq("class_schedule_id", id);
-        if (error) toast.error("ลบข้อมูลไม่สำเร็จ ❌");
+        if (error) toast.error("ลบข้อมูลไม่สำเร็จ");
         else {
-            toast.success("ลบข้อมูลเรียบร้อย ✅");
+            toast.success("ลบข้อมูลเรียบร้อย");
             fetchSchedules(); 
         }
     }

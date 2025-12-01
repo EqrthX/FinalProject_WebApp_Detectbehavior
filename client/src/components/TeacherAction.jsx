@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from "react";
 import toast from "react-hot-toast";
-import axios from "../util/axios"; // ตรวจสอบ path ให้ถูกต้อง
-import { supabase } from "../config/supabase"; // ตรวจสอบ path ให้ถูกต้อง
+import axios from "../util/axios"; 
+import { supabase } from "../config/supabase"; 
 
 export const TeacherActionModal = ({ 
   isOpen, 
   onClose, 
   onSuccess, 
-  teacherData = null, // ถ้ามีค่า = แก้ไข, ไม่มี = เพิ่มใหม่
+  teacherData = null, 
   facultyList = [] 
 }) => {
   // Form States
@@ -27,7 +27,9 @@ export const TeacherActionModal = ({
     if (isOpen) {
       if (teacherData) {
         setFormData({
-          email: teacherData.email || "", // อาจจะว่างถ้าไม่มี field ใน DB
+          // 🟢 ถ้า teacherData มี email ให้ดึงมาใส่ ถ้าไม่มีให้เป็นค่าว่าง
+          // หมายเหตุ: ปกติการแก้ไข email อาจจะยุ่งยากเพราะผูกกับ Auth แต่อันนี้โชว์ไว้ก่อน
+          email: teacherData.email || "", 
           password: "",
           teacherId: teacherData.teacherId,
           fullname: teacherData.fullname,
@@ -48,7 +50,6 @@ export const TeacherActionModal = ({
     }
   }, [isOpen, teacherData]);
 
-  // Handle Input Change
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.id]: e.target.value });
   };
@@ -57,14 +58,12 @@ export const TeacherActionModal = ({
     setFormData(prev => ({
         ...prev, 
         [field]: value,
-        ...(field === "facultyId" ? { majorId: "" } : {}) // Reset major if faculty changes
+        ...(field === "facultyId" ? { majorId: "" } : {}) 
     }));
   };
 
-  // Filter majors based on selected faculty
   const majorsToShow = facultyList.find(f => f.faculty_id === formData.facultyId)?.majors || [];
 
-  // Handle Submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     const { email, password, teacherId, fullname, facultyId, majorId } = formData;
@@ -97,21 +96,20 @@ export const TeacherActionModal = ({
         // --- CREATE ---
         if (!email || !password) return toast.error("กรุณากรอกอีเมลและรหัสผ่าน");
 
-        const payload = new FormData();
-        payload.append("email", email);
-        payload.append("password", password);
-        payload.append("teacher_id", teacherId);
-        payload.append("fullname", fullname);
-        payload.append("majorId", majorId);
+        const payload = {
+          email: email,
+          password: password,
+          teacher_id: teacherId,
+          fullname: fullname,
+          major_id: majorId 
+        };
 
-        const response = await axios.post(`admin/create-teacher`, payload, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        const response = await axios.post(`admin/create-teacher`, payload);
         toast.success(response.data.detail || "เพิ่มข้อมูลสำเร็จ");
       }
 
-      onSuccess(); // Refresh data in parent
-      onClose();   // Close modal
+      onSuccess(); 
+      onClose();   
 
     } catch (error) {
       console.error(isEditMode ? "Update Error:" : "Create Error:", error);
@@ -131,8 +129,21 @@ export const TeacherActionModal = ({
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           
-          
-          
+          {/* 🟢 Email Field (เพิ่มกลับมาแล้ว) */}
+          <div className={`relative mt-2 ${isEditMode ? "opacity-60 pointer-events-none" : ""}`}>
+            <input
+              type="text"
+              id="email"
+              value={formData.email}
+              disabled={isEditMode} // ห้ามแก้ไขอีเมลในโหมด Edit (เพราะเป็น ID หลักใน Auth)
+              onChange={handleChange}
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
+              placeholder="อีเมล"
+            />
+            <label htmlFor="email" className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">
+              อีเมล {isEditMode ? "(แก้ไขไม่ได้)" : <span className="text-red-500">*</span>}
+            </label>
+          </div>
 
           {/* Password (Create Only) */}
           {!isEditMode && (
@@ -152,24 +163,24 @@ export const TeacherActionModal = ({
           )}
 
           {/* Teacher ID */}
-          <div className="relative mt-2">
+          <div className={`relative mt-2 ${isEditMode ? "opacity-60 pointer-events-none" : ""}`}>
             <input
               type="text"
               id="teacherId"
               inputMode="numeric"
               value={formData.teacherId}
-              /* 🟢 2. สั่ง disable เมื่อเป็นโหมดแก้ไข */
               disabled={isEditMode}
               onChange={(e) => setFormData({...formData, teacherId: e.target.value.replace(/[^0-9]/g, "")})}
               className="peer w-full px-4 py-2 border border-gray-300 rounded-md text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
               placeholder="รหัสประจำตัว"
             />
             <label htmlFor="teacherId" className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">
-              {/* 🟢 3. เปลี่ยนข้อความ Label ให้ผู้ใช้รู้ */}
               รหัสประจำตัว {isEditMode ? "(แก้ไขไม่ได้)" : <span className="text-red-500">*</span>}
             </label>
           </div>
 
+          {/* ... (ส่วนอื่นๆ เหมือนเดิม) ... */}
+          
           {/* Full Name */}
           <div className="relative mt-2">
             <input

@@ -176,7 +176,7 @@ const ResultsPage = () => {
       { name: "Look Board", value: totals.Looking_at_the_board / grandTotal },
       { name: "Take Notes", value: totals.Taking_notes / grandTotal },
       { name: "Look Away", value: totals.LookingAway / grandTotal },
-      { name: "Phone", value: totals.UsingPhone / grandTotal },
+      { name: "Using Phone", value: totals.UsingPhone / grandTotal },
       { name: "Talking", value: totals.Talking / grandTotal },
     ].filter(item => item.value > 0);
 

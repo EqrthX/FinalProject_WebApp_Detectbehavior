@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from "react";
 import toast from "react-hot-toast";
-import axios from "../util/axios"; 
-import { supabase } from "../config/supabase"; 
+import axios from "../util/axios"; // ตรวจสอบ path ให้ถูกต้อง
+import { supabase } from "../config/supabase"; // ตรวจสอบ path ให้ถูกต้อง
 
 export const TeacherActionModal = ({ 
   isOpen, 
   onClose, 
   onSuccess, 
-  teacherData = null, 
+  teacherData = null, // ถ้ามีค่า = แก้ไข, ไม่มี = เพิ่มใหม่
   facultyList = [] 
 }) => {
   // Form States
@@ -27,9 +27,7 @@ export const TeacherActionModal = ({
     if (isOpen) {
       if (teacherData) {
         setFormData({
-          // 🟢 ถ้า teacherData มี email ให้ดึงมาใส่ ถ้าไม่มีให้เป็นค่าว่าง
-          // หมายเหตุ: ปกติการแก้ไข email อาจจะยุ่งยากเพราะผูกกับ Auth แต่อันนี้โชว์ไว้ก่อน
-          email: teacherData.email || "", 
+          email: teacherData.email || "", // อาจจะว่างถ้าไม่มี field ใน DB
           password: "",
           teacherId: teacherData.teacherId,
           fullname: teacherData.fullname,
@@ -50,6 +48,7 @@ export const TeacherActionModal = ({
     }
   }, [isOpen, teacherData]);
 
+  // Handle Input Change
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.id]: e.target.value });
   };
@@ -58,12 +57,14 @@ export const TeacherActionModal = ({
     setFormData(prev => ({
         ...prev, 
         [field]: value,
-        ...(field === "facultyId" ? { majorId: "" } : {}) 
+        ...(field === "facultyId" ? { majorId: "" } : {}) // Reset major if faculty changes
     }));
   };
 
+  // Filter majors based on selected faculty
   const majorsToShow = facultyList.find(f => f.faculty_id === formData.facultyId)?.majors || [];
 
+  // Handle Submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     const { email, password, teacherId, fullname, facultyId, majorId } = formData;
@@ -96,24 +97,52 @@ export const TeacherActionModal = ({
         // --- CREATE ---
         if (!email || !password) return toast.error("กรุณากรอกอีเมลและรหัสผ่าน");
 
+        // ✅ 1. แก้เป็น JSON Object (แบบนี้ถูกต้อง)
         const payload = {
           email: email,
           password: password,
           teacher_id: teacherId,
           fullname: fullname,
-          major_id: majorId 
+          major_id: majorId // ต้องใช้ major_id ตาม Backend
         };
 
+        console.log("Sending JSON Payload:", payload);
+
+        // ✅ 2. ส่งด้วย axios แบบปกติ (ลบ headers ทิ้งไปเลย)
         const response = await axios.post(`admin/create-teacher`, payload);
+        
         toast.success(response.data.detail || "เพิ่มข้อมูลสำเร็จ");
       }
 
-      onSuccess(); 
-      onClose();   
+      onSuccess(); // Refresh data in parent
+      onClose();   // Close modal
 
     } catch (error) {
       console.error(isEditMode ? "Update Error:" : "Create Error:", error);
-      const msg = error.response?.data?.detail || error.message || "เกิดข้อผิดพลาด";
+      
+      let msg = "เกิดข้อผิดพลาดในการดำเนินการ";
+
+      // ตรวจสอบว่า Backend ส่งรายละเอียด error มาไหม
+      if (error.response?.data?.detail) {
+          const detail = error.response.data.detail;
+
+          // กรณี 1: FastAPI ส่งมาเป็น Array (Validation Error)
+          if (Array.isArray(detail)) {
+              // ดึงเฉพาะข้อความ msg ออกมาต่อกัน
+              msg = detail.map(item => item.msg).join(", ");
+          } 
+          // กรณี 2: ส่งมาเป็น String ปกติ
+          else if (typeof detail === "string") {
+              msg = detail;
+          }
+          // กรณี 3: เป็น Object อื่นๆ
+          else {
+              msg = JSON.stringify(detail);
+          }
+      } else if (error.message) {
+          msg = error.message;
+      }
+
       toast.error(msg);
     }
   };
@@ -129,13 +158,13 @@ export const TeacherActionModal = ({
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           
-          {/* 🟢 Email Field (เพิ่มกลับมาแล้ว) */}
+          {/* Email */}
           <div className={`relative mt-2 ${isEditMode ? "opacity-60 pointer-events-none" : ""}`}>
             <input
               type="text"
               id="email"
               value={formData.email}
-              disabled={isEditMode} // ห้ามแก้ไขอีเมลในโหมด Edit (เพราะเป็น ID หลักใน Auth)
+              disabled={isEditMode}
               onChange={handleChange}
               className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
               placeholder="อีเมล"
@@ -179,8 +208,6 @@ export const TeacherActionModal = ({
             </label>
           </div>
 
-          {/* ... (ส่วนอื่นๆ เหมือนเดิม) ... */}
-          
           {/* Full Name */}
           <div className="relative mt-2">
             <input

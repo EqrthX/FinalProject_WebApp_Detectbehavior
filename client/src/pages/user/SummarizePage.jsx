@@ -154,14 +154,6 @@ const SummarizePage = () => {
     );
   };
 
-  if (loading) {
-    return (
-      <div className="w-full h-screen flex items-center justify-center">
-        <Spin indicator={<LoadingOutlined style={{ fontSize: 90 }} spin />} />
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col h-screen bg-[#F6F6F4] overflow-hidden">
       <Navbar />

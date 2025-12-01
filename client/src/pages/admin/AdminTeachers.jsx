@@ -2,528 +2,281 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AdminNavbar from "../../components/AdminNavbar";
 import { supabase } from "../../config/supabase";
-import toast from "react-hot-toast";
-import axios from "../../util/axios";
+import toast, { Toaster } from "react-hot-toast"; 
 import { Pagination } from "antd";
 import Breadcrumbs from "../../components/AdminBreadcrumbs";
 
-const AdminTeachingschedule = () => {
-     const navigate = useNavigate();
-     const [showModal, setShowModal] = useState(false);
-     const [searchTerm, setSearchTerm] = useState("");
+// นำเข้าไฟล์ที่แยกไว้
+import { TeacherActionModal, deleteTeacher } from "../../components/TeacherAction"; 
 
-     const [faculty, setFaculty] = useState([]);
-     const [teachers, setTeachers] = useState([]);
-     const [selectedFacultyId, setSelectedFacultyId] = useState("");
-     const [selectedMajor, setSelectedMajor] = useState("");
-     const [fullname, setFullname] = useState("");
-     const [email, setEmail] = useState("");
-     const [password, setPassword] = useState("");
-     const [teacherId, setTeacherId] = useState("");
+const AdminTeachers = () => {
+  const navigate = useNavigate();
+  
+  // States
+  const [showModal, setShowModal] = useState(false);
+  const [selectedTeacher, setSelectedTeacher] = useState(null);
+  
+  const [searchTerm, setSearchTerm] = useState("");
+  const [faculty, setFaculty] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  
+  const [filterFacultyId, setFilterFacultyId] = useState("");
+  const [filterMajorId, setFilterMajorId] = useState("");
 
-     const [currentPage, setCurrentPage] = useState(1);
-     const [pageSize, setPageSize] = useState(10);
+  // --- Fetch Data ---
+  const fetchFacultyAndMajor = async () => {
+    try {
+      const { data, error } = await supabase.from("faculty").select(`*, majors (*)`);
+      if (error) throw error;
+      setFaculty(data);
+    } catch (error) {
+      console.error("Fetch Faculty error:", error);
+    }
+  };
 
-     const [filterFacultyId, setFilterFacultyId] = useState("");
-     const [filterMajorId, setFilterMajorId] = useState("");
+  const fetchTeachers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("teacher")
+        .select(`
+            id, teacher_id, first_name, last_name,
+            majors ( major_id, major_name, faculty ( faculty_name, faculty_id ) )
+        `);
 
-     useEffect(() => {
-          const fetchFacultyAndMajor = async () => {
-               try {
-                    const { data, error } = await supabase
-                         .from("faculty")
-                         .select(`*, majors (*)`);
+      if (error) {
+        console.error("Supabase Error:", error);
+        toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
+        return;
+      }
 
-                    if (error) {
-                         throw error;
-                    }
+      if (data) {
+        const formatted = data.map((t) => ({
+          id: t.id,
+          teacherId: t.teacher_id,
+          fullname: `${t.first_name} ${t.last_name}`,
+          faculty: t.majors?.faculty?.faculty_name || "-",
+          faculty_id: t.majors?.faculty?.faculty_id || "",
+          major: t.majors?.major_name || "-",
+          major_id: t.majors?.major_id || "",
+          email: "", 
+        }));
+        setTeachers(formatted);
+      }
+    } catch (error) {
+      console.error("Fetch Error:", error);
+      toast.error("เกิดข้อผิดพลาดในการดึงข้อมูล");
+    }
+  };
 
-                    setFaculty(data);
-               } catch (error) {
-                    console.error("Fetch Faculty and Major error:", error);
-               }
-          };
-          fetchFacultyAndMajor();
-     }, []);
+  useEffect(() => {
+    fetchFacultyAndMajor();
+    fetchTeachers();
+  }, []);
 
-     useEffect(() => {
-          const fetchTeachers = async () => {
-               try {
-                    console.log("🔍 กำลังดึงข้อมูลอาจารย์...");
+  // --- Handlers ---
+  const handleEditClick = (e, teacher) => {
+    e.stopPropagation();
+    setSelectedTeacher(teacher);
+    setShowModal(true);
+  };
 
-                    const { data, error } = await supabase
-                         .from("teacher")
-                         .select(
-                              `
-            id,
-            teacher_id,
-            first_name,
-            last_name,
-            majors (
-              major_id, 
-              major_name,
-              faculty (
-                faculty_name,
-                faculty_id 
-              )
-            )
-          `
-                         );
+  const handleDeleteClick = async (e, id) => {
+    e.stopPropagation();
+    const success = await deleteTeacher(id);
+    if (success) fetchTeachers();
+  };
 
-                    console.log("📊 Response:", { data, error });
+  const handleClick = (t) => {
+    navigate(`/admin/AdminClassRoom/${t.id}`, { state: { teacher: t } });
+  };
 
-                    if (error) {
-                         console.error("❌ Supabase Error:", error);
-                         toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
-                         throw error;
-                    }
+  // --- Filter & Pagination Logic ---
+  const filteredTeachers = teachers.filter((t) => {
+    const lowerSearch = searchTerm.toLowerCase();
+    const facultyMatch = !filterFacultyId || t.faculty_id === filterFacultyId;
+    const majorMatch = !filterMajorId || t.major_id === filterMajorId;
+    const searchMatch = !searchTerm || 
+        t.teacherId.toLowerCase().includes(lowerSearch) ||
+        t.fullname.toLowerCase().includes(lowerSearch) ||
+        t.faculty.toLowerCase().includes(lowerSearch) ||
+        t.major.toLowerCase().includes(lowerSearch);
+    
+    return facultyMatch && majorMatch && searchMatch;
+  });
 
-                    if (!data || data.length === 0) {
-                         console.warn("⚠️ ไม่พบข้อมูลอาจารย์ในฐานข้อมูล");
-                         setTeachers([]);
-                         return;
-                    }
+  const filterMajorsToShow = faculty.find((f) => f.faculty_id === filterFacultyId)?.majors || [];
+  const currentTeachers = filteredTeachers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-                    const formattedTeachers = data.map((teacher) => {
-                         console.log("👨‍🏫 Teacher:", teacher);
-                         return {
-                              id: teacher.id,
-                              teacherId: teacher.teacher_id,
-                              fullname: `${teacher.first_name} ${teacher.last_name}`,
-                              faculty: teacher.majors?.faculty?.faculty_name || "-",
-                              faculty_id: teacher.majors?.faculty?.faculty_id || null,
-                              major: teacher.majors?.major_name || "-",
-                              major_id: teacher.majors?.major_id || null,
-                         };
-                    });
+  // Pagination Handler
+  const handlePaginationChange = (page, size) => {
+    setCurrentPage(page);
+    setPageSize(size);
+  };
 
-                    console.log("✅ Teachers formatted:", formattedTeachers);
-                    setTeachers(formattedTeachers);
-               } catch (error) {
-                    console.error("❌ Fetch Teachers error:", error);
-                    toast.error("เกิดข้อผิดพลาดในการดึงข้อมูลอาจารย์");
-               }
-          };
+  return (
+    // 🟢 Container หลัก: ใช้ h-screen และ overflow-hidden เพื่อกำหนดกรอบตายตัว
+    <div className="h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-1 p-4 overflow-hidden">
+      <Toaster />
+      <aside className="w-full md:w-64"> <AdminNavbar /> </aside>
 
-          fetchTeachers();
-     }, []);
+      {/* 🟢 Main Content: ใช้ flex flex-col และ h-full เพื่อให้เนื้อหาข้างในขยายเต็ม */}
+      <main className="flex-1 transition-all lg:pl-[0rem] md:pl-0 sm:pl-0 h-full flex flex-col">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-4 w-full h-full flex flex-col">
+          
+          <div className="mt-5 shrink-0"> <Breadcrumbs /> </div>
 
-     // ฟังก์ชันเมื่อคลิกแถว
-     const handleClick = (t) => {
-          navigate(`/admin/AdminClassRoom/${t.id}`, {
-               state: { teacher: t },
-          });
-     };
-
-     const closeModal = () => setShowModal(false);
-
-     const majorsToShow =
-          faculty.find((f) => f.faculty_id === selectedFacultyId)?.majors || [];
-
-     const filterMajorsToShow =
-          faculty.find((f) => f.faculty_id === filterFacultyId)?.majors || [];
-
-     const onCreateTeacher = async (event) => {
-          event.preventDefault();
-          try {
-               if (
-                    !email ||
-                    !password ||
-                    !teacherId ||
-                    !fullname ||
-                    !selectedFacultyId ||
-                    !selectedMajor
-               )
-                    return toast.error("กรุณากรอกข้อมูลให้ครบ");
-
-               const formData = new FormData();
-
-               formData.append("email", email);
-               formData.append("password", password);
-               formData.append("teacher_id", teacherId);
-               formData.append("fullname", fullname);
-               formData.append("major", selectedMajor);
-
-               const response = await axios.post(`admin/create-teacher`, formData, {
-                    headers: { "Content-Type": "multipart/form-data" },
-               });
-
-               toast.success(response.data.detail || "เพิ่มข้อมูลอาจารย์เสร็จสิ้น ✅");
-
-               closeModal();
-
-               const { data: teachersData, error: fetchError } = await supabase
-                    .from("teacher")
-                    .select(
-                         `
-            id,
-            teacher_id,
-            first_name,
-            last_name,
-            majors (
-              major_id, 
-              major_name,
-              faculty (
-                faculty_name,
-                faculty_id 
-              )
-            )
-          `
-                    );
-
-               if (!fetchError && teachersData) {
-                    const formattedTeachers = teachersData.map((teacher) => ({
-                         id: teacher.id,
-                         teacherId: teacher.teacher_id,
-                         fullname: `${teacher.first_name} ${teacher.last_name}`,
-                         faculty: teacher.majors?.faculty?.faculty_name || "-",
-                         faculty_id: teacher.majors?.faculty?.faculty_id || null,
-                         major: teacher.majors?.major_name || "-",
-                         major_id: teacher.majors?.major_id || null,
-                    }));
-                    setTeachers(formattedTeachers);
-                    setCurrentPage(1);
-               }
-          } catch (error) {
-               const message =
-                    error.response?.data?.detail || "เกิดข้อผิดพลาดในการเพิ่มข้อมูล ❌";
-               console.error("Error to create teacher", error);
-               toast.error(message);
-          }
-     };
-
-     const filteredTeachers = teachers.filter((teacher) => {
-          const lowerSearchTerm = searchTerm.toLowerCase();
-          const facultyMatch =
-               !filterFacultyId || teacher.faculty_id === filterFacultyId;
-          const majorMatch = !filterMajorId || teacher.major_id === filterMajorId;
-          const searchMatch =
-               !searchTerm ||
-               teacher.teacherId.toLowerCase().includes(lowerSearchTerm) ||
-               teacher.fullname.toLowerCase().includes(lowerSearchTerm) ||
-               teacher.faculty.toLowerCase().includes(lowerSearchTerm) ||
-               teacher.major.toLowerCase().includes(lowerSearchTerm);
-          return facultyMatch && majorMatch && searchMatch;
-     });
-
-     const indexOfLastItem = currentPage * pageSize;
-     const indexOfFirstItem = indexOfLastItem - pageSize;
-     const currentTeachers = filteredTeachers.slice(
-          indexOfFirstItem,
-          indexOfLastItem
-     );
-
-     const handlePaginationChange = (page, size) => {
-          setCurrentPage(page);
-          setPageSize(size);
-     };
-
-     return (
-          <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4">
-               <aside className="w-full md:w-64">
-                    <AdminNavbar />
-               </aside>
-
-               <main className="flex-1 transition-all lg:pl-[0rem] md:pl-0 sm:pl-0">
-                    <div className="max-w-screen-2xl mx-auto px-6 md:px-4">
-                         <div className="mt-5">
-                              <Breadcrumbs />
-                         </div>
-
-          <div className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 flex items-center justify-between sticky top-[20px] z-30">
-                              <h1 className="text-[22px] md:text-[18px] font-semibold text-black">
-                                   อาจารย์
-                              </h1>
-                         </div>
-
-                         <div className="bg-white mt-4 p-4 rounded-[20px] shadow-sm border border-[#e9e9e9]">
-            <div className="flex justify-between items-center mb-4 flex-wrap gap-2 sticky top-[90px] z-20 bg-white pb-4 border-b border-gray-100 ml-3">
-                                   <div className="flex items-center gap-3 flex-wrap">
-                                        <div className="p-2 font-bold text-gray-800">
-                                             รายชื่ออาจารย์
-                                        </div>
-                                        <input
-                                             type="text"
-                                             placeholder="🔍 ค้นหา"
-                                             className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-full 
-                            focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-[#F6F6F4] text-black"
-                                             value={searchTerm}
-                                             onChange={(e) => {
-                                                  setSearchTerm(e.target.value);
-                                                  setCurrentPage(1);
-                                             }}
-                                        />
-
-                                        <select
-                                             className="w-full md:w-56 px-5 py-2 border border-gray-300 rounded-full 
-                                  focus:outline-none focus:ring-2 focus:ring-[#b6b6b6] bg-[#F6F6F4] text-black"
-                                             value={filterFacultyId}
-                                             onChange={(e) => {
-                                                  setFilterFacultyId(e.target.value);
-                                                  setFilterMajorId("");
-                                                  setCurrentPage(1);
-                                             }}
-                                        >
-                                             <option value="">-- คณะทั้งหมด --</option>
-                                             {faculty.map((f) => (
-                                                  <option key={f.faculty_id} value={f.faculty_id}>
-                                                       {f.faculty_name}
-                                                  </option>
-                                             ))}
-                                        </select>
-
-                                        <select
-                                             className="w-full md:w-56 px-5 py-2 border border-gray-300 rounded-full 
-                                  focus:outline-none focus:ring-2 focus:ring-[#b6b6b6] bg-[#F6F6F4] text-black
-                                  disabled:bg-gray-100 disabled:text-gray-400"
-                                             value={filterMajorId}
-                                             onChange={(e) => {
-                                                  setFilterMajorId(e.target.value);
-                                                  setCurrentPage(1);
-                                             }}
-                                             disabled={!filterFacultyId}
-                                        >
-                                             <option value="">-- สาขาทั้งหมด --</option>
-                                             {filterMajorsToShow.map((major) => (
-                                                  <option key={major.major_id} value={major.major_id}>
-                                                       {major.major_name}
-                                                  </option>
-                                             ))}
-                                        </select>
-                                   </div>
-
-                                   <button
-                                        onClick={() => setShowModal(true)}
-                                        className="bg-[#3D42D3] hover:bg-[#2b28a0] text-white px-4 py-2 
-                              rounded-lg text-sm font-medium"
-                                   >
-                                        อัพโหลดรายชื่อ
-                                   </button>
-                              </div>
-
-                              <div className="overflow-x-auto">
-                                   <table className="min-w-full border border-gray-200">
-                                        <thead className="bg-[#f2f2f2]">
-                                             <tr>
-                                                  <th className="text-left px-4 py-2 border border-gray-300">
-                                                       รหัสประจำตัว
-                                                  </th>
-                                                  <th className="text-left px-4 py-2 border border-gray-300">
-                                                       ชื่อ - นามสกุล
-                                                  </th>
-                                                  <th className="text-left px-4 py-2 border border-gray-300">
-                                                       คณะ
-                                                  </th>
-                                                  <th className="text-left px-4 py-2 border border-gray-300">
-                                                       สาขา
-                                                  </th>
-                                             </tr>
-                                        </thead>
-                                        <tbody>
-                                             {currentTeachers.length === 0 ? (
-                                                  <tr>
-                                                       <td
-                                                            colSpan="4"
-                                                            className="px-4 py-8 text-center text-gray-500"
-                                                       >
-                                                            {searchTerm || filterFacultyId || filterMajorId
-                                                                 ? "ไม่พบข้อมูลที่ค้นหา"
-                                                                 : "ไม่พบข้อมูลอาจารย์"}
-                                                       </td>
-                                                  </tr>
-                                             ) : (
-                                                  currentTeachers.map((t) => (
-                                                       <tr
-                                                            key={t.id}
-                                                            onClick={() => handleClick(t)}
-                                                            className="hover:bg-gray-100 cursor-pointer transition-colors duration-150"
-                                                       >
-                                                            <td className="px-4 py-2 border border-gray-300">
-                                                                 {t.teacherId}
-                                                            </td>
-                                                            <td className="px-4 py-2 border border-gray-300">
-                                                                 {t.fullname}
-                                                            </td>
-                                                            <td className="px-4 py-2 border border-gray-300">
-                                                                 {t.faculty}
-                                                            </td>
-                                                            <td className="px-4 py-2 border border-gray-300">
-                                                                 {t.major}
-                                                            </td>
-                                                       </tr>
-                                                  ))
-                                             )}
-                                        </tbody>
-                                   </table>
-                              </div>
-
-                              <div className="flex justify-center mt-4 pb-2">
-                                   <Pagination
-                                        current={currentPage}
-                                        pageSize={pageSize}
-                                        total={filteredTeachers.length}
-                                        showSizeChanger
-                                        pageSizeOptions={["5", "10", "20", "50", "100"]}
-                                        onChange={handlePaginationChange}
-                                        showTotal={(total) => `ทั้งหมด ${total} รายการ`}
-                                   />
-                              </div>
-                         </div>
-                    </div>
-               </main>
-
-               {/* ... (Modal code remains the same) ... */}
-               {showModal && (
-                    <div
-                         className="fixed inset-0 flex items-center justify-center z-50 
-               bg-black/60 backdrop-blur-sm"
-                    >
-                         <div className="bg-[#f8f8f8] p-8 rounded-lg shadow-lg w-[90%] max-w-md border border-gray-300">
-                              <h2 className="text-2xl font-bold mb-6">อัพโหลดรายชื่อ</h2>
-
-                              <form
-                                   className="space-y-4"
-                                   method="POST"
-                                   onSubmit={onCreateTeacher}
-                              >
-                                   <div className="relative mt-2">
-                                        <input
-                                             type="text"
-                                             id="email"
-                                             value={email}
-                                             onChange={(e) => setEmail(e.target.value)}
-                                             className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent"
-                                             placeholder="อีเมล"
-                                        />
-                                        <label
-                                             htmlFor="email"
-                                             className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all
-                    peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400
-                    peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
-                                        >
-                                             อีเมล <span className="text-red-500">*</span>
-                                        </label>
-                                   </div>
-
-                                   <div className="relative mt-2">
-                                        <input
-                                             type="text"
-                                             id="password"
-                                             value={password}
-                                             onChange={(e) => setPassword(e.target.value)}
-                                             className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent"
-                                             placeholder="รหัสผ่าน"
-                                        />
-                                        <label
-                                             htmlFor="password"
-                                             className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all
-                    peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400
-                    peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
-                                        >
-                                             รหัสผ่าน <span className="text-red-500">*</span>
-                                        </label>
-                                   </div>
-
-                                   <div className="relative mt-2">
-                                        <input
-                                             type="text"
-                                             id="teacherId"
-                                             inputMode="numeric"
-                                             pattern="[0-9]*"
-                                             value={teacherId}
-                                             onChange={(e) => {
-                                                  setTeacherId(e.target.value.replace(/[^0-9]/g, ""));
-                                             }}
-                                             className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent"
-                                             placeholder="รหัสประจำตัว"
-                                        />
-                                        <label
-                                             htmlFor="teacherId"
-                                             className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all
-                    peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400
-                    peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
-                                        >
-                                             รหัสประจำตัว <span className="text-red-500">*</span>
-                                        </label>
-                                   </div>
-
-                                   <div className="relative mt-2">
-                                        <input
-                                             type="text"
-                                             id="fullname"
-                                             value={fullname}
-                                             onChange={(e) => setFullname(e.target.value)}
-                                             className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent"
-                                             placeholder="ชื่อ - นามสกุล"
-                                        />
-                                        <label
-                                             htmlFor="fullname"
-                                             className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all
-                    peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400
-                    peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
-                                        >
-                                             ชื่อ - นามสกุล <span className="text-red-500">*</span>
-                                        </label>
-                                   </div>
-
-                                   <select
-                                        type="text"
-                                        placeholder="คณะ"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738]"
-                                        value={selectedFacultyId}
-                                        onChange={(e) => {
-                                             setSelectedFacultyId(e.target.value);
-                                             setSelectedMajor("");
-                                        }}
-                                   >
-                                        <option value="" disabled>
-                                             กรุณาเลือกคณะ
-                                        </option>
-
-                                        {faculty.map((item) => (
-                                             <option key={item.faculty_id} value={item.faculty_id}>
-                                                  {item.faculty_name}
-                                             </option>
-                                        ))}
-                                   </select>
-
-                                   <select
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-md"
-                                        disabled={!selectedFacultyId}
-                                        value={selectedMajor}
-                                        onChange={(e) => setSelectedMajor(e.target.value)}
-                                   >
-                                        <option value="" disabled>
-                                             กรุณาเลือกสาขา
-                                        </option>
-                                        {majorsToShow.map((major) => (
-                                             <option key={major.major_id} value={major.major_id}>
-                                                  {major.major_name}
-                                             </option>
-                                        ))}
-                                   </select>
-
-                                   <div className="flex justify-end mt-6 gap-2">
-                                        <button
-                                             type="button"
-                                             onClick={closeModal}
-                                             className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 transition"
-                                        >
-                                             ยกเลิก
-                                        </button>
-                                        <button
-                                             type="submit"
-                                             className="px-5 py-2 bg-[#3F37C9] text-white rounded-md hover:bg-[#2b28a0] transition"
-                                        >
-                                             ยืนยัน
-                                        </button>
-                                   </div>
-                              </form>
-                         </div>
-                    </div>
-               )}
+          <div className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 flex items-center justify-between sticky top-[20px] z-30 shrink-0">
+            <h1 className="text-[18px] font-semibold text-black">อาจารย์</h1>
           </div>
-     );
+
+          {/* 🟢 Card Container: ใช้ flex-1 และ overflow-hidden เพื่อให้ส่วนนี้กินพื้นที่ที่เหลือทั้งหมด */}
+          <div className="bg-white mt-4 p-4 rounded-[20px] shadow-sm border border-[#e9e9e9] flex flex-col flex-1 overflow-hidden">
+            
+            {/* Toolbar Filter (ส่วนหัว) */}
+            <div className="flex justify-between items-center mb-4 flex-wrap gap-2 shrink-0">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="p-2 font-bold text-gray-800">รายชื่ออาจารย์</div>
+                <input
+                  type="text" placeholder="🔍 ค้นหา"
+                  className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-[#F6F6F4] text-black"
+                  value={searchTerm} 
+                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                />
+                
+                <select
+                  className="w-full md:w-56 px-5 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#b6b6b6] bg-[#F6F6F4] text-black"
+                  value={filterFacultyId}
+                  onChange={(e) => { setFilterFacultyId(e.target.value); setFilterMajorId(""); setCurrentPage(1); }}
+                >
+                  <option value="">-- คณะทั้งหมด --</option>
+                  {faculty.map((f) => <option key={f.faculty_id} value={f.faculty_id}>{f.faculty_name}</option>)}
+                </select>
+
+                <select
+                  className="w-full md:w-56 px-5 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#b6b6b6] bg-[#F6F6F4] text-black disabled:bg-gray-100 disabled:text-gray-400"
+                  value={filterMajorId}
+                  disabled={!filterFacultyId}
+                  onChange={(e) => { setFilterMajorId(e.target.value); setCurrentPage(1); }}
+                >
+                  <option value="">-- สาขาทั้งหมด --</option>
+                  {filterMajorsToShow.map((m) => <option key={m.major_id} value={m.major_id}>{m.major_name}</option>)}
+                </select>
+              </div>
+
+              <button
+                onClick={() => { setSelectedTeacher(null); setShowModal(true); }}
+                className="bg-[#3D42D3] hover:bg-[#2b28a0] text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                อัพโหลดรายชื่อ
+              </button>
+            </div>
+
+            {/* 🟢 Table Wrapper: ใช้ flex-1 และ overflow-auto เพื่อให้ตารางเลื่อนได้ในกรอบที่เหลือ */}
+            <div className="h-[560px] overflow-y-auto overflow-x-auto relative shadow-inner border border-gray-300 rounded-lg"> {/* 🟢 เพิ่ม border รอบนอก */}
+              <table className="min-w-full border-separate border-spacing-0 text-sm">
+                <thead className="bg-[#f2f2f2] sticky top-0 z-[30] text-gray-700 font-semibold">
+                  <tr>
+                    {/* 1. รหัสประจำตัว (Sticky ซ้ายสุด) */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 whitespace-nowrap sticky left-0 z-40 bg-[#f2f2f2] w-[140px] min-w-[140px]">
+                      รหัสประจำตัว
+                    </th>
+                    
+                    {/* 2. ชื่อ - นามสกุล (Sticky ถัดมา) */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[220px] sticky left-[140px] z-40 bg-[#f2f2f2]">
+                      ชื่อ - นามสกุล
+                    </th>
+
+                    {/* คอลัมน์ทั่วไป */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[200px]">คณะ</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[200px]">สาขา</th>
+                    
+                    {/* 3. จัดการ (Sticky ขวาสุด) */}
+                    <th className="text-center px-4 py-3 border-b border-gray-300 w-[120px] sticky right-0 z-40 bg-[#f2f2f2]">
+                      จัดการ
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentTeachers.length === 0 ? (
+                    <tr>
+                        <td colSpan="5" className="px-4 py-8 text-center text-gray-500 border-b border-gray-300">
+                            {searchTerm || filterFacultyId || filterMajorId
+                                ? "ไม่พบข้อมูลที่ค้นหา"
+                                : "ไม่พบข้อมูลอาจารย์"}
+                        </td>
+                    </tr>
+                  ) : (
+                    currentTeachers.map((t) => (
+                      <tr key={t.id} onClick={() => handleClick(t)} className="hover:bg-gray-50 cursor-pointer transition-colors duration-150 group">
+                        
+                        {/* 1. รหัสประจำตัว (Sticky Body) */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 font-semibold text-gray-700">
+                          {t.teacherId}
+                        </td>
+
+                        {/* 2. ชื่อ (Sticky Body) */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 font-semibold text-gray-900">
+                          {t.fullname}
+                        </td>
+
+                        {/* ข้อมูลทั่วไป */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300">{t.faculty}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300">{t.major}</td>
+
+                        {/* 3. จัดการ (Sticky Body) */}
+                        <td className="px-4 py-3 border-b border-gray-300 text-center]">
+                          <div className="flex items-center justify-center gap-2">
+                            <button 
+                                onClick={(e) => handleEditClick(e, t)} 
+                                className="text-blue-600 hover:text-blue-800 p-1.5 rounded-md hover:bg-blue-100 transition-all duration-200 hover:scale-110"
+                                title="แก้ไขข้อมูล"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            </button>
+                            <button 
+                                onClick={(e) => handleDeleteClick(e, t.id)} 
+                                className="text-red-600 hover:text-red-800 p-1.5 rounded-md hover:bg-red-100 transition-all duration-200 hover:scale-110"
+                                title="ลบข้อมูล"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination (Shrink เพื่อไม่ให้ดันตาราง) */}
+            <div className="flex justify-center mt-4 pb-2 shrink-0">
+              <Pagination
+                current={currentPage}
+                pageSize={pageSize}
+                total={filteredTeachers.length}
+                showSizeChanger
+                pageSizeOptions={["5", "10", "20", "50", "100"]}
+                onChange={handlePaginationChange}
+                showTotal={(total) => `ทั้งหมด ${total} รายการ`}
+              />
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <TeacherActionModal 
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        onSuccess={() => fetchTeachers()} 
+        teacherData={selectedTeacher}
+        facultyList={faculty}
+      />
+    </div>
+  );
 };
 
-export default AdminTeachingschedule;
+export default AdminTeachers;

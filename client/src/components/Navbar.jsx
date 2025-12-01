@@ -65,7 +65,7 @@ const Navbar = () => {
   return (
     <>
       {/* 🔹 Navbar Container */}
-      <nav className="relative bg-[#F6F6F4] px-4 sm:px-6 py-3 flex items-center justify-between border-b border-gray-200">
+      <nav className="sticky top-0 bg-[#F6F6F4] px-4 sm:px-6 py-3 flex items-center justify-between border-b border-gray-200">
 
         {/* 🔹 Left: Hamburger (เฉพาะมือถือ) */}
         <button
@@ -76,7 +76,7 @@ const Navbar = () => {
         </button>
 
         {/* 🔹 Center: เมนูหลัก */}
-        <div className="hidden lg:flex bg-white border border-[#E9E9E9] rounded-full p-2 px-3 space-x-3 mx-auto ml-150">
+        <div className="hidden lg:flex bg-white border border-[#E9E9E9] rounded-full p-2 px-3 space-x-3 mx-auto ml-130">
           <NavLink
             to="/user/Homepage"
             className={({ isActive }) =>

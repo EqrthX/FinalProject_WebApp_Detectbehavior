@@ -1,93 +1,103 @@
 import React, { useState, useEffect } from "react"; 
 import { Search, ChevronDown, ChevronUp } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "../config/supabase.js";
+import { SubjectDetailModal } from "../components/SubjectDetailModal"; // 🟢 อย่าลืม Import Modal
 
-// 🔑 หมวดหมู่หลัก (ใช้เป็น Title) - ชื่อที่ใช้ในโค้ด
+// ==========================================
+// 1. Constants & Helpers
+// ==========================================
+
 const BASE_CATEGORIES = [
   "หมวดวิชาศึกษาทั่วไป",
   "หมวดวิชาเฉพาะ",
   "หมวดวิชาเสรี",
 ];
 
-// 💡 ฟังก์ชันแปลงชื่อหมวดหมู่จาก DB ให้เข้ากับ BASE_CATEGORIES
+// ฟังก์ชันจัดกลุ่มหมวดหมู่ (Mapping ชื่อจาก DB ให้เข้ากลุ่มหลัก)
 const normalizeCategory = (dbCategory) => {
-    if (!dbCategory) return null; // จัดการ NULL หรือค่าว่าง
-    const lowerCaseCategory = dbCategory.toLowerCase().trim();
+    if (!dbCategory) return null;
+    const lower = dbCategory.toLowerCase().trim();
 
-    // 🔑 แก้ไข: ให้ครอบคลุม 'ทั่วไป' (แบบสั้น)
-    if (lowerCaseCategory === 'ทั่วไป' || lowerCaseCategory.includes('ทั่วไป')) {
-        return "หมวดวิชาศึกษาทั่วไป";
-    }
-    // 🔑 แก้ไข: ให้ครอบคลุม 'วิชาเฉพาะ'
-    if (lowerCaseCategory.includes('เฉพาะ')) {
-        return "หมวดวิชาเฉพาะ";
-    }
-    // 🔑 แก้ไข: ให้ครอบคลุม 'วิชาเสรี'
-    if (lowerCaseCategory.includes('เสรี')) {
-        return "หมวดวิชาเสรี";
-    }
-    return null; 
+    if (lower.includes('ทั่วไป')) return "หมวดวิชาศึกษาทั่วไป";
+    if (lower.includes('เฉพาะ') || lower.includes('เอก')) return "หมวดวิชาเฉพาะ";
+    if (lower.includes('เสรี')) return "หมวดวิชาเสรี";
+    
+    return "หมวดวิชาศึกษาทั่วไป"; // Default Fallback
 }
 
-// 🔑 ฟังก์ชันบรรยายหมวด
 const getCategoryDescription = (title) => {
   switch (title) {
-    case "หมวดวิชาศึกษาทั่วไป":
-      return "วิชาทั่วไป เช่น GE ต่างๆ";
-    case "หมวดวิชาเฉพาะ":
-      return "วิชาเฉพาะตามคณะ";
-    case "หมวดวิชาเสรี":
-      return "วิชาเลือกเสรี";
-    default:
-      return "";
+    case "หมวดวิชาศึกษาทั่วไป": return "วิชาพื้นฐานที่นักศึกษาทุกคณะต้องเรียน (GE)";
+    case "หมวดวิชาเฉพาะ": return "วิชาบังคับและวิชาเลือกในสาขาวิชา";
+    case "หมวดวิชาเสรี": return "วิชาที่นักศึกษาสามารถเลือกเรียนได้ตามความสนใจ";
+    default: return "";
   }
 };
 
-// 🔹 หน่วยย่อยของหมวดหมู่
-const CategoryItem = ({ title, subjects = [], description }) => {
-  const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
+// ==========================================
+// 2. Sub-Component: CategoryItem
+// ==========================================
+const CategoryItem = ({ title, subjects = [], description, onSubjectClick }) => {
+  // ถ้ามีการค้นหา (subjects ถูก filter มาแล้ว) ให้เปิดอัตโนมัติ
+  const [isOpen, setIsOpen] = useState(false);
 
-  const handleClick = (subject) => {
-    console.log("open subject:", subject);
-  };
+  // Effect: ถ้ามีวิชาข้างในน้อยกว่า 10 ตัว (ผลจากการค้นหา) ให้เปิดรอเลย
+  useEffect(() => {
+     // Logic นี้ช่วยให้ตอนค้นหา User ไม่ต้องมากดเปิดเอง
+     if (subjects.length > 0 && subjects.length < 5) { 
+         setIsOpen(true);
+     }
+  }, [subjects.length]);
 
   return (
-    <div className="border-b border-gray-200">
+    <div className="border-b border-gray-200 last:border-0">
       <button
-        onClick={() => setOpen(!open)}
-        className={`flex justify-between items-center w-full py-2 text-left text-[15px] font-semibold text-gray-900 
-                    hover:bg-gray-50 transition ${
-                      open ? "sticky top-0 bg-white z-10 shadow-sm" : ""
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex justify-between items-center w-full py-3 px-2 text-left text-[15px] font-semibold text-gray-800 
+                    hover:bg-gray-50 rounded-lg transition-colors duration-200 ${
+                      isOpen ? "bg-gray-50" : ""
                     }`}
       >
-        {title}
-        {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        <span className="flex items-center gap-2">
+            {title}
+            <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                {subjects.length}
+            </span>
+        </span>
+        {isOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
       </button>
 
-      {open && (
-        <div className="pl-4 pb-3 text-sm">
-          <p className="text-gray-500 mb-2">{description}</p>
+      {isOpen && (
+        <div className="pl-4 pb-3 pt-1 animate-fadeIn">
+          <p className="text-xs text-gray-500 mb-2 pl-2 border-l-2 border-gray-200">
+            {description}
+          </p>
 
           {subjects.length > 0 ? (
-            <ul className="space-y-1">
+            <ul className="grid grid-cols-1 md:grid-cols-1 mt-1">
               {subjects.map((s) => (
                 <li
-                  // 🔑 แก้ไข: ใช้ s.code (subject_id) เป็น Key แทน s.id 
-                  // เนื่องจาก s.code ไม่ซ้ำกันและถูกดึงมาใน Query
                   key={s.code}
-                  onClick={() => handleClick(s)}
-                  className="cursor-pointer hover:bg-gray-100 p-1 rounded-md"
+                  onClick={() => onSubjectClick(s)} // 🟢 ส่ง event กลับไปหน้าหลัก
+                  className="cursor-pointer group flex items-center justify-between p-2 rounded-md hover:bg-[#EEF2FF] border border-transparent hover:border-[#3D42D3]/20 transition-all duration-200"
                 >
-                  {s.code} - {s.name}
+                  <div className="flex flex-col">
+                      <span className="font-bold text-[#3D42D3] text-sm group-hover:underline">
+                          {s.code}
+                      </span>
+                      <span className="text-sm text-gray-700 truncate w-full max-w-[200px] md:max-w-[180px]" title={s.name}>
+                          {s.name}
+                      </span>
+                  </div>
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Search className="w-4 h-4 text-[#3D42D3]" />
+                  </div>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-gray-400 italic">
-                {/* ข้อความนี้จะแสดงเมื่อมีการกดขยาย แต่ไม่มีวิชาในหมวดหมู่นั้น */}
-                ไม่พบวิชาที่ค้นหาในหมวดหมู่นี้
+            <p className="text-gray-400 italic text-sm pl-2">
+                - ไม่พบรายวิชาในหมวดนี้ -
             </p>
           )}
         </div>
@@ -96,166 +106,140 @@ const CategoryItem = ({ title, subjects = [], description }) => {
   );
 };
 
-// 🔥 คอมโพเนนต์หลัก
+// ==========================================
+// 3. Main Component: Adminsubject
+// ==========================================
 const Adminsubject = () => {
+  // State Data
   const [searchTerm, setSearchTerm] = useState("");
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState(null); 
-  const [hasData, setHasData] = useState(false); 
+  
+  // State Modal
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedSubject, setSelectedSubject] = useState(null);
 
-  // --------------------
-  // 🔥 ดึงข้อมูลจาก Supabase
-  // --------------------
+  // --- Fetch Data ---
   const fetchSubjects = async () => {
     setLoading(true);
-    setFetchError(null);
+    try {
+      const { data, error } = await supabase
+        .from("subjects")
+        .select("subject_id, subject_name, category"); 
 
-    const { data, error } = await supabase
-      .from("subjects")
-      // 🔑 แก้ไข: ใช้ subject_id เป็น Key หลักและตรวจสอบว่าคอลัมน์นี้มีอยู่ในตารางจริง
-      .select("subject_id, subject_name, category"); 
+      if (error) throw error;
 
-    if (error) {
-      console.error("Supabase error:", error);
-      setFetchError("เกิดข้อผิดพลาดในการดึงข้อมูลวิชา (Bad Request / RLS Error)"); 
-      setHasData(false);
-      setLoading(false);
-      
-      // 🔑 ต้องตั้งค่า Categories เป็นโครงสร้างหลัก 3 อัน แม้ Error
-      setCategories(BASE_CATEGORIES.map((cat) => ({
+      // เตรียมโครงสร้าง Category ว่างๆ
+      const grouped = BASE_CATEGORIES.map((cat) => ({
         title: cat,
         description: getCategoryDescription(cat),
         subjects: [],
-      })));
-      return;
-    }
+      }));
 
-    const subjectsFetched = data && data.length > 0;
-    setHasData(subjectsFetched);
-    
-    // สร้างฐานหมวดหมู่ว่างก่อนเสมอ
-    const grouped = BASE_CATEGORIES.map((cat) => ({
-      title: cat,
-      description: getCategoryDescription(cat),
-      subjects: [],
-    }));
-
-    // จัดกลุ่มวิชาเข้าหมวดหมู่
-    if (subjectsFetched) {
+      // Map Data เข้า Category
+      if (data) {
         data.forEach((item) => {
-          const normalizedTitle = normalizeCategory(item.category);
+          const categoryTitle = normalizeCategory(item.category);
+          const group = grouped.find((g) => g.title === categoryTitle);
           
-          if (normalizedTitle) {
-            const group = grouped.find((g) => g.title === normalizedTitle);
-            
-            if (group) {
-              group.subjects.push({
-                // 🔑 แก้ไข: ใช้ subject_id เป็นทั้ง id และ code
-                id: item.subject_id, 
-                code: item.subject_id,
-                name: item.subject_name,
-              });
-            }
+          if (group) {
+            group.subjects.push({
+              code: item.subject_id, 
+              name: item.subject_name,
+              category: categoryTitle
+            });
           }
         });
-    }
+      }
 
-    setCategories(grouped);
-    setLoading(false);
+      setCategories(grouped);
+    } catch (err) {
+      console.error("Error fetching subjects:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchSubjects();
   }, []);
 
-  // --------------------
-  // 🔎 ระบบค้นหา
-  // --------------------
-  const filtered = categories.map((cat) => ({
+  // --- Handlers ---
+  const handleSubjectClick = (subject) => {
+    setSelectedSubject(subject);
+    setShowDetailModal(true);
+  };
+
+  // --- Search Logic ---
+  const filteredCategories = categories.map((cat) => ({
     ...cat,
     subjects: cat.subjects.filter((s) =>
       (s.name + s.code).toLowerCase().includes(searchTerm.toLowerCase())
     ),
   }));
 
-  // --------------------
-  // 🔄 Rendering Logic
-  // --------------------
-  const renderCategories = () => {
-      // 1. ถ้าไม่มีคำค้นหา (searchTerm เป็นค่าว่าง)
-      if (searchTerm === "") {
-          return filtered.map((cat) => (
-              <CategoryItem
-                key={cat.title}
-                title={cat.title}
-                description={cat.description}
-                subjects={cat.subjects}
-              />
-          ));
-      }
-      
-      // 2. ถ้ามีคำค้นหา (searchTerm ไม่เป็นค่าว่าง)
-      let foundMatch = false;
-      const categoryItems = filtered.map((cat) => {
-          // แสดงเฉพาะหมวดหมู่ที่มีวิชาที่ตรงกับการค้นหาอยู่ภายใน
-          if (cat.subjects.length > 0) {
-              foundMatch = true;
-              return (
-                  <CategoryItem
-                    key={cat.title}
-                    title={cat.title}
-                    description={cat.description}
-                    // 🔑 สำคัญ: ตั้งค่า open เป็น true เพื่อเปิดหมวดหมู่ที่ค้นหาเจอทันที
-                    subjects={cat.subjects}
-                  />
-              );
-          }
-          return null;
-      }).filter(Boolean); // กรองเอาค่า null ออก
-
-      // 3. ถ้าค้นหาแล้วไม่พบหมวดหมู่ใดๆ เลย
-      if (!foundMatch) {
-          return (
-              <p className="text-center text-gray-500 py-10">
-                  ไม่พบวิชาที่ตรงกับคำค้นหาในทุกหมวดหมู่
-              </p>
-          );
-      }
-      
-      return categoryItems;
-  };
-  
+  // --- Render ---
   return (
-    <div className="w-full bg-white rounded-[20px] border border-[#e9e9e9] shadow-sm p-6 h-[350px] flex flex-col">
-      <h2 className="text-[16px] font-semibold mb-3">หมวดหมู่วิชา</h2>
+    <>
+        {/* Container หลัก */}
+        <div className="w-full bg-white rounded-[20px] border border-[#e9e9e9] shadow-sm p-6 h-[560px] flex flex-col">
+        <div className="flex justify-between items-center mb-4">
+            <h2 className="text-[18px] font-semibold text-gray-800">หมวดหมู่วิชา</h2>
+            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-md">
+                รวม {categories.reduce((acc, curr) => acc + curr.subjects.length, 0)} วิชา
+            </span>
+        </div>
 
-      {/* ช่องค้นหา */}
-      <div className="relative mb-4 shrink-0">
-        <input
-          type="text"
-          placeholder="ค้นหา"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg pl-8 pr-3 py-1.5 text-sm focus:ring-2 focus:ring-gray-200 outline-none"
+        {/* ช่องค้นหา */}
+        <div className="relative mb-4 shrink-0">
+            <input
+            type="text"
+            placeholder="ค้นหารหัสวิชา หรือ ชื่อวิชา..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full border border-gray-300 rounded-full pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-[#38A738] focus:border-transparent outline-none transition-all bg-[#F6F6F4]"
+            />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        </div>
+
+        {/* รายการหมวดหมู่ (Scrollable Area) */}
+        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+            {loading ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#3D42D3]"></div>
+                <p className="text-sm">กำลังโหลดข้อมูล...</p>
+            </div>
+            ) : filteredCategories.every(c => c.subjects.length === 0) ? (
+                <div className="text-center py-10 text-gray-400">
+                    <p>ไม่พบรายวิชาที่ค้นหา</p>
+                </div>
+            ) : (
+                filteredCategories.map((cat) => (
+                    // แสดงหมวดหมู่เฉพาะที่มีวิชาข้างใน (ถ้าค้นหาแล้วไม่เจอวิชาในหมวดนั้น ก็ซ่อนหมวดนั้นไปเลย)
+                    (searchTerm === "" || cat.subjects.length > 0) && (
+                        <CategoryItem
+                            key={cat.title}
+                            title={cat.title}
+                            description={cat.description}
+                            subjects={cat.subjects}
+                            onSubjectClick={handleSubjectClick} // 🟢 ส่ง Function ไปให้ลูกใช้
+                        />
+                    )
+                ))
+            )}
+        </div>
+        </div>
+
+        {/* 🟢 Modal จะแสดงเมื่อ State เป็น true */}
+        <SubjectDetailModal 
+            isOpen={showDetailModal}
+            onClose={() => {
+                setShowDetailModal(false);
+                setSelectedSubject(null);
+            }}
+            subject={selectedSubject}
         />
-        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-      </div>
-
-      {/* รายการหมวดหมู่ */}
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <p className="text-center text-gray-500 py-10">กำลังโหลดข้อมูล...</p>
-        ) : fetchError && searchTerm === "" ? (
-             <p className="text-center text-red-500 py-10 font-medium border-t border-gray-200 mt-2">
-                {fetchError} ❌ <br/>
-                กรุณาตรวจสอบ RLS Policy และชื่อคอลัมน์ในตาราง 'subjects'
-             </p>
-        ) : (
-          renderCategories()
-        )}
-      </div>
-    </div>
+    </>
   );
 };
 

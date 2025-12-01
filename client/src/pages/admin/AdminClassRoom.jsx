@@ -4,6 +4,7 @@ import AdminNavbar from "../../components/AdminNavbar";
 import Classroom from "../../components/Classroom";
 import Breadcrumbs from "../../components/AdminBreadcrumbs";
 import { supabase } from "../../config/supabase";
+import Schedule from "../../components/schedule";
 
 const AdminClassRoom = () => {
   const location = useLocation();
@@ -129,8 +130,7 @@ const AdminClassRoom = () => {
             <div className="mt-4 p-3 text-sm text-gray-600">
               <p className="italic">*หมายเหตุ</p>
               <p className="mt-1">
-                ข้อมูลตารางสอนอาจมีการเปลี่ยนแปลงทุก 3 เดือน
-                และไม่สามารถเพิ่ม ลบ หรือแก้ไขข้อมูลได้ระหว่างภาคเรียน
+                ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุุกภาคเทอม
               </p>
             </div>
           </div>

@@ -1,99 +1,41 @@
-import React, { useState, useEffect } from "react";
-import AdminNavbar from "../../components/AdminNavbar";
-import { TimePicker, Pagination, Select } from "antd";
-import dayjs from "dayjs";
-import toast, { Toaster } from "react-hot-toast";
+import React, { useState, useEffect, useMemo } from "react";
+import AdminNavbar from "../../components/AdminNavbar"; 
+import { Pagination, Select } from "antd"; // 🟢 เพิ่ม Select ของ Antd
+import toast, { Toaster } from "react-hot-toast"; 
+import { supabase } from "../../config/supabase.js"; 
 
-import { supabase } from "../../config/supabase.js";
+import { UploadScheduleAction, EditScheduleAction } from "../../components/ScheduleAction.jsx";
+import { AddSubjectAction } from "../../components/AddSubjectAction.jsx";
 
-const AdminTeachers = () => {
+const AdminTeachingSchedule = () => {
+  // --- State Management ---
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [subjectList, setSubjectList] = useState([]);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedSchedule, setSelectedSchedule] = useState(null);
 
-  // 🔑 NEW: State สำหรับเก็บข้อมูลวิชาที่จัดกลุ่มตาม Category
-  const [groupedSubjects, setGroupedSubjects] = useState({});
+  const [schedules, setSchedules] = useState([]);      
+  const [subjectList, setSubjectList] = useState([]);  
+  const [teacherList, setTeacherList] = useState([]);  
+  const [groupedSubjects, setGroupedSubjects] = useState({}); 
+  const [isLoading, setIsLoading] = useState(false);   
 
-  // 1. State สำหรับตารางสอนจริง (แทน teachers)
-  const [schedules, setSchedules] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);   
+  const [pageSize, setPageSize] = useState(10);        
+  const [searchTerm, setSearchTerm] = useState("");    
 
-  // States สำหรับ Modal อัพโหลดตารางสอน
-  const [selectedCode, setSelectedCode] = useState("");
-  const [subjectName, setSubjectName] = useState("");
-  const [subjectcredit, setSubjectcredit] = useState("");
+  // 🟢 Filter State
+  const [filterTeacher, setFilterTeacher] = useState(null); // เปลี่ยนเป็น null เพื่อรองรับการ clear
+  const [isFilterFocused, setIsFilterFocused] = useState(false); // 🟢 State สำหรับ Animation Label
 
-  // 🔑 State ใหม่สำหรับรายชื่ออาจารย์ทั้งหมด
-  const [teacherList, setTeacherList] = useState([]);
-
-  // 🔑 State Properties ที่ใช้ชื่อคอลัมน์ใน DB (year, semester, group, day)
-  const [classSchedule, setClassSchedule] = useState({
-    year: "", // DB column name: year
-    semester: "", // DB column name: semester
-    group: "", // DB column name: group
-    day: "", // DB column name: day
-    room: "",
-    building: "",
-    teacher_id: "", // ⬅️ teacher_id (varchar)
-    teacher_name: "", // ⬅️ teacher_name (varchar)
-    classTimes: null,
-  });
-
-  // States สำหรับ Modal เพิ่มรายวิชา
-  const [newSubject, setNewSubject] = useState({
-    subject_id: "",
-    subject_name: "",
-    credit: "",
-    category: "",
-  });
-
-  // 2. State สำหรับ Pagination และ Search
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const format = "HH:mm:ss";
-
-  const disabledRangeTime = (_, type) => {
-    // ฟังก์ชันนี้จะกำหนดชั่วโมงที่ห้ามเลือก
-    const disabledHours = () => {
-      let hours = [];
-      // ปิดใช้งานชั่วโมงตั้งแต่ 00:00 ถึง 04:00
-      for (let i = 0; i < 8; i++) {
-        hours.push(i);
-      }
-      // ปิดใช้งานชั่วโมงตั้งแต่ 18:00 ถึง 23:00
-      for (let i = 18; i < 24; i++) {
-        hours.push(i);
-      }
-      return hours;
-    };
-
-    // เราไม่จำเป็นต้องปิดนาที/วินาทีเฉพาะเจาะจงที่ 05:00 หรือ 17:00
-    // เพราะเรากำหนดเป็น RangePicker ทั้งคู่จะถูกจำกัดด้วยชั่วโมง
-    return {
-      disabledHours,
-      disabledMinutes: () => [],
-      disabledSeconds: () => [],
-    };
-  };
-
-  // --- FETCHING DATA ---
-
+  // --- FETCHING DATA FUNCTIONS ---
   const fetchTeachers = async () => {
-    const { data, error } = await supabase
-      .from("teacher")
-      // ดึง ID (uuid) และ teacher_id (varchar/text) พร้อมชื่อ
-      .select(`id, first_name, last_name, teacher_id`);
-
-    if (error) {
-      console.error("Error fetching teachers:", error);
-    } else {
+    const { data, error } = await supabase.from("teacher").select(`id, first_name, last_name, teacher_id`);
+    if (error) console.error("Error fetching teachers:", error);
+    else {
       const formattedTeachers = data.map((t) => ({
-        // 🔑 ใช้ teacher_id (varchar) เป็น value สำหรับ Foreign Key
         value: t.teacher_id,
-        // 🔑 ใช้ชื่อเต็มพร้อมรหัสอาจารย์สำหรับการแสดงผลและการค้นหา
-        label: `${t.first_name} ${t.last_name} (${t.teacher_id})`,
+        label: `${t.first_name} ${t.last_name} (${t.teacher_id})`, // search จากชื่อหรือรหัสได้
         fullName: `${t.first_name} ${t.last_name}`,
         teacherId: t.teacher_id,
       }));
@@ -102,26 +44,18 @@ const AdminTeachers = () => {
   };
 
   const fetchSubjects = async () => {
-    const { data, error } = await supabase
-      .from("subjects")
-      // 🔑 แก้ไข: เพิ่ม category เข้ามาในการ select
-      .select("subject_id, subject_name, credit, category"); 
-
+    const { data, error } = await supabase.from("subjects").select("subject_id, subject_name, credit, category");
     if (error) console.error("Error fetching subjects:", error);
     else {
-      setSubjectList(data);
-      // 🔑 เรียกใช้ฟังก์ชันจัดกลุ่มทันที
+      setSubjectList(data); 
       groupSubjectsByCategory(data); 
     }
   };
 
-  // 🔑 NEW: ฟังก์ชันสำหรับจัดกลุ่มวิชาตาม Category
   const groupSubjectsByCategory = (subjects) => {
     const grouped = subjects.reduce((acc, subject) => {
-      const category = subject.category || "ไม่ระบุหมวดหมู่"; // จัดการกรณีที่ไม่มี category
-      if (!acc[category]) {
-        acc[category] = [];
-      }
+      const category = subject.category || "ไม่ระบุหมวดหมู่";
+      if (!acc[category]) acc[category] = [];
       acc[category].push(subject);
       return acc;
     }, {});
@@ -129,40 +63,18 @@ const AdminTeachers = () => {
   };
 
   const fetchSchedules = async () => {
-    setIsLoading(true);
+    setIsLoading(true); 
     try {
-      // 🔑 ดึงข้อมูลทั้งหมดจาก class_schedule โดยไม่ Join (เพราะข้อมูลซ้ำซ้อนถูกเก็บไว้ในตารางนี้แล้ว)
-      const { data, error } = await supabase.from("class_schedule").select(`
-    class_schedule_id, 
-    subject_id, 
-    subject_name, 
-    year, 
-    semester, 
-    "group", 
-    day, 
-    start_time, 
-    end_time, 
-    room, 
-    building, 
-    credit, 
-    teacher_id, 
-    teacher_name
-  `);
+      const { data, error } = await supabase.from("class_schedule").select(`*`);
 
       if (error) {
-        console.error("Supabase Error fetching schedules:", error);
-        // 🚨 แสดง Error พร้อมคำแนะนำ RLS
-        toast.error(
-          "เกิดข้อผิดพลาดในการดึงข้อมูลตารางสอน (ตรวจสอบ RLS Policy) ⚠️"
-        );
+        toast.error("เกิดข้อผิดพลาดในการดึงข้อมูลตารางสอน ⚠️");
         setSchedules([]);
         return;
       }
 
       const formattedSchedules = data.map((schedule) => {
-        const teacherDisplay =
-          schedule.teacher_name || schedule.teacher_id || "- ไม่พบอาจารย์ -";
-
+        const teacherDisplay = schedule.teacher_name || schedule.teacher_id || "- ไม่พบอาจารย์ -";
         return {
           id: schedule.class_schedule_id,
           code: schedule.subject_id,
@@ -171,13 +83,16 @@ const AdminTeachers = () => {
           semester: schedule.semester,
           group: schedule.group,
           day: schedule.day,
-          time: `${
-            schedule.start_time ? schedule.start_time.substring(0, 5) : ""
-          } - ${schedule.end_time ? schedule.end_time.substring(0, 5) : ""}`,
+          time: `${schedule.start_time ? schedule.start_time.substring(0, 5) : ""} - ${
+            schedule.end_time ? schedule.end_time.substring(0, 5) : ""
+          }`,
           room: schedule.room,
           building: schedule.building,
           credit: schedule.credit,
           teacher: teacherDisplay,
+          teacherIdRaw: schedule.teacher_id, 
+          startTimeStr: schedule.start_time,
+          endTimeStr: schedule.end_time,
         };
       });
 
@@ -186,7 +101,24 @@ const AdminTeachers = () => {
       console.error("Fetch Schedules error:", error);
       toast.error("เกิดข้อผิดพลาดในการประมวลผลข้อมูล");
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); 
+    }
+  };
+
+  // --- ACTION HANDLERS ---
+  const handleEditClick = (schedule) => {
+    setSelectedSchedule(schedule);
+    setShowEditModal(true);
+  };
+
+  const handleDeleteClick = async (id) => {
+    if (window.confirm("คุณต้องการลบตารางสอนนี้ใช่หรือไม่? ⚠️")) {
+        const { error } = await supabase.from("class_schedule").delete().eq("class_schedule_id", id);
+        if (error) toast.error("ลบข้อมูลไม่สำเร็จ ❌");
+        else {
+            toast.success("ลบข้อมูลเรียบร้อย ✅");
+            fetchSchedules(); 
+        }
     }
   };
 
@@ -196,166 +128,33 @@ const AdminTeachers = () => {
     fetchSchedules();
   }, []);
 
-  // 🔑 ลบ useEffect ที่เชื่อมกับ teacherList ออก เพราะตอนนี้เราดึงข้อมูลแบบแยกจากกัน
-
   useEffect(() => {
-    const isModalOpen = showAddModal || showUploadModal;
+    const isModalOpen = showAddModal || showUploadModal || showEditModal;
     document.body.style.overflow = isModalOpen ? "hidden" : "unset";
     return () => (document.body.style.overflow = "unset");
-  }, [showAddModal, showUploadModal]);
+  }, [showAddModal, showUploadModal, showEditModal]);
 
-  // --- HANDLERS ---
 
-  const handleAddSubject = async (e) => {
-    e.preventDefault();
-
-    if (
-      !newSubject.subject_id ||
-      !newSubject.subject_name ||
-      !newSubject.credit ||
-      !newSubject.category
-    ) {
-      toast.error("กรุณากรอกข้อมูลให้ครบ ⚠️");
-      return;
-    }
-
-    // 🔑 NEW: ขั้นตอนที่ 1: ตรวจสอบ Subject ID ซ้ำก่อนเพิ่ม 
-    const { data: existingSubjects, error: selectError } = await supabase
-      .from("subjects")
-      .select("subject_id")
-      .eq("subject_id", newSubject.subject_id);
-
-    if (selectError) {
-      console.error("Supabase Select Error:", selectError);
-      toast.error("เกิดข้อผิดพลาดในการตรวจสอบข้อมูล ❌");
-      return;
-    }
-
-    if (existingSubjects && existingSubjects.length > 0) {
-      // 🔑 ถ้าพบข้อมูลซ้ำ ให้แสดงข้อความเตือนและหยุดการทำงาน
-      toast.error(`ไม่สามารถเพิ่มได้: รหัสวิชา ${newSubject.subject_id} มีอยู่ในระบบแล้ว ⚠️`);
-      return; 
-    }
-    
-    // 🔑 ขั้นตอนที่ 2: ถ้าไม่พบข้อมูลซ้ำ จึงทำการ Insert
-    const { error: insertError } = await supabase.from("subjects").insert([
-      {
-        subject_id: newSubject.subject_id,
-        subject_name: newSubject.subject_name,
-        credit: newSubject.credit,
-        category: newSubject.category,
-      },
-    ]);
-
-    if (insertError) {
-      toast.error("เกิดข้อผิดพลาดในการเพิ่มรายวิชา ❌");
-      console.error(insertError);
-    } else {
-      toast.success("เพิ่มรายวิชาสำเร็จ! ✅");
-      setNewSubject({
-        subject_id: "",
-        subject_name: "",
-        credit: "",
-        category: "",
-      });
-      setShowAddModal(false);
-      fetchSubjects();
-    }
-  };
-
-  const handleUploadSchedule = async (e) => {
-    e.preventDefault();
-
-    // 🔑 ตรวจสอบ teacher_id และ subjectName
-    if (
-      !selectedCode ||
-      !subjectName ||
-      !classSchedule.year ||
-      !classSchedule.semester ||
-      !classSchedule.group ||
-      !classSchedule.day ||
-      !classSchedule.room ||
-      !classSchedule.building ||
-      !classSchedule.teacher_id || // ⬅️ ตรวจสอบ teacher_id
-      !classSchedule.teacher_name || // ⬅️ ตรวจสอบ teacher_name
-      !classSchedule.classTimes ||
-      !classSchedule.classTimes[0] ||
-      !classSchedule.classTimes[1]
-    ) {
-      toast.error("กรุณากรอกข้อมูลตารางสอนให้ครบถ้วน ⚠️");
-      return;
-    }
-
-    // เตรียมข้อมูลสำหรับ Supabase (ตาราง class_schedule)
-    const dataToInsert = {
-      subject_id: selectedCode,
-      subject_name: subjectName,
-      year: classSchedule.year,
-      semester: classSchedule.semester,
-      group: classSchedule.group,
-      day: classSchedule.day,
-      room: classSchedule.room,
-      building: classSchedule.building,
-      teacher_id: classSchedule.teacher_id, // ⬅️ ส่ง teacher_id (รหัสอาจารย์)
-      teacher_name: classSchedule.teacher_name, // ⬅️ ส่ง teacher_name
-      credit: subjectcredit, // ⬅️ ส่งหน่วยกิต
-
-      start_time: classSchedule.classTimes[0].format(format),
-      end_time: classSchedule.classTimes[1].format(format),
-    };
-
-    const { error } = await supabase
-      .from("class_schedule")
-      .insert([dataToInsert]);
-
-    if (error) {
-      // 🚨 แสดงข้อความ Error ที่ละเอียดขึ้น
-      toast.error(
-        `เกิดข้อผิดพลาดในการอัพโหลดตารางสอน: ตรวจสอบ Foreign Key หรือ RLS ❌`
-      );
-      console.error("Supabase insert error:", error);
-    } else {
-      toast.success("อัพโหลดตารางสอนสำเร็จ! ✅");
-
-      // รีเซ็ตฟอร์ม
-      setSelectedCode("");
-      setSubjectName("");
-      setSubjectcredit("");
-      setClassSchedule({
-        year: "",
-        semester: "",
-        group: "",
-        day: "",
-        room: "",
-        building: "",
-        teacher_id: "",
-        teacher_name: "",
-        classTimes: null,
-      });
-      setShowUploadModal(false);
-      fetchSchedules();
-    }
-  };
-
-  // --- FILTERING & PAGINATION LOGIC ---
+  // --- FILTERING LOGIC ---
   const filteredSchedules = schedules.filter((schedule) => {
     const lowerSearchTerm = searchTerm.toLowerCase();
 
-    // ค้นหาจาก รหัสวิชา, ชื่อวิชา, อาจารย์ผู้สอน
-    return (
+    // 1. กรองคำค้นหา
+    const searchMatch = 
       !searchTerm ||
       schedule.code.toLowerCase().includes(lowerSearchTerm) ||
       schedule.name.toLowerCase().includes(lowerSearchTerm) ||
-      schedule.teacher.toLowerCase().includes(lowerSearchTerm)
-    );
+      schedule.teacher.toLowerCase().includes(lowerSearchTerm);
+
+    // 2. กรองอาจารย์ (จาก Dropdown ใหม่)
+    const teacherMatch = !filterTeacher || schedule.teacherIdRaw === filterTeacher;
+
+    return searchMatch && teacherMatch;
   });
 
   const indexOfLastItem = currentPage * pageSize;
   const indexOfFirstItem = indexOfLastItem - pageSize;
-  const currentSchedules = filteredSchedules.slice(
-    indexOfFirstItem,
-    indexOfLastItem
-  );
+  const currentSchedules = filteredSchedules.slice(indexOfFirstItem, indexOfLastItem);
 
   const handlePaginationChange = (page, size) => {
     setCurrentPage(page);
@@ -365,158 +164,218 @@ const AdminTeachers = () => {
   // --- RENDERING ---
 
   return (
-    // 🔑 1. กำหนด h-screen และ overflow-hidden ให้กับ Container ใหญ่สุด เพื่อล็อกจอ
-    <div className="h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4 overflow-hidden">
-      <Toaster />
+    <div className="h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-1 p-4 overflow-hidden">
+      <Toaster /> 
+
+      {/* 🟢 Inject CSS สำหรับ Ant Design Select ให้หน้าตาเหมือนหน้า Upload */}
+      <style>{`
+            .ant-select-custom .ant-select-selector {
+                background-color: #f9fafb !important; /* bg-gray-50 */
+                border-color: #d1d5db !important; /* border-gray-300 */
+                border-radius: 9999px !important; /* rounded-full ให้เข้ากับช่องค้นหา */
+                height: 42px !important;
+                display: flex !important;
+                align-items: center !important;
+                padding-left: 1rem !important;
+            }
+            .ant-select-custom .ant-select-selector input {
+                height: 100% !important;
+            }
+            .ant-select-custom .ant-select-selection-item {
+                line-height: 40px !important;
+            }
+      `}</style>
 
       <aside className="w-full md:w-64">
         <AdminNavbar />
       </aside>
 
-      {/* --------- MAIN CONTENT --------- */}
-      {/* 🔑 2. กำหนด h-full และ overflow-y-auto ให้กับ Main Content เพื่อให้มี Scrollbar ของตัวเอง ถ้าจำเป็น */}
-      <div className="flex-1 transition-all lg:pl-[0rem] md:pl-0 sm:pl-0 h-full overflow-y-auto">
+      <div className="flex-1 transition-all lg:pl-[0rem] h-full overflow-y-auto">
         <div className="max-w-screen-2xl mx-auto px-6 md:px-4">
-          {/* Header */}
           <div className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 flex items-center justify-between sticky top-[20px] z-30">
-            <h1 className="text-[22px] md:text-[18px] font-semibold">
-              รายวิชา
-            </h1>
+            <h1 className="text-[22px] md:text-[18px] font-semibold">รายวิชา</h1>
           </div>
 
-          {/* Main Table Container - เพิ่ม h-full และ flex flex-col เพื่อควบคุมความสูงภายใน */}
           <div className="bg-white mt-9 p-4 rounded-[20px] shadow-sm border border-[#e9e9e9] flex flex-col h-full">
-            {/* TOP BAR */}
+            
             <div className="flex justify-between items-center mb-4 flex-wrap gap-2 sticky top-[90px] z-20 bg-white pb-4 border-b border-gray-100 ml-3">
-              <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap w-full xl:w-auto">
                 <div className="p-2 font-bold text-gray-800">วิชาสอน</div>
+                
+                {/* 1. ช่องค้นหา */}
                 <input
                   type="text"
                   placeholder="🔍 ค้นหา"
-                  className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-full bg-[#F6F6F4] focus:outline-none focus:ring-2 focus:ring-[#38A738]"
+                  className="w-full md:w-48 px-3 py-2 border border-gray-300 rounded-full bg-[#F6F6F4] focus:outline-none focus:ring-2 focus:ring-[#38A738] h-[42px]"
                   value={searchTerm}
                   onChange={(e) => {
                     setSearchTerm(e.target.value);
-                    setCurrentPage(1);
+                    setCurrentPage(1); 
                   }}
                 />
+
+                {/* 🟢 2. Dropdown อาจารย์ แบบ Searchable + Floating Label */}
+                <div className="relative w-full md:w-64">
+                    <Select
+                        showSearch
+                        allowClear
+                        placeholder=" "
+                        optionFilterProp="label"
+                        value={filterTeacher}
+                        onFocus={() => setIsFilterFocused(true)}
+                        onBlur={() => setIsFilterFocused(false)}
+                        onChange={(val) => {
+                            setFilterTeacher(val);
+                            setCurrentPage(1);
+                        }}
+                        options={teacherList}
+                        className="ant-select-custom w-full"
+                        style={{ height: "42px" }}
+                        filterOption={(input, option) =>
+                            (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                        }
+                    />
+                    <label className={`absolute left-4 bg-[#f9fafb] px-1 transition-all pointer-events-none rounded-sm z-10
+                        ${filterTeacher || isFilterFocused 
+                            ? "-top-2.5 text-xs text-[#38A738] font-medium" 
+                            : "top-2.5 text-base text-gray-400"
+                        }
+                    `}>
+                        อาจารย์ผู้สอน
+                    </label>
+                </div>
+
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 mt-2 xl:mt-0">
                 <button
-                  onClick={() => setShowAddModal(true)}
-                  className="bg-[#38A738] hover:bg-[#2d7c2d] text-white px-4 py-2 rounded-lg text-sm font-medium"
+                  onClick={() => setShowAddModal(true)} 
+                  className="bg-[#38A738] hover:bg-[#2d7c2d] text-white px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap"
                 >
                   เพิ่มรายวิชา
                 </button>
 
                 <button
-                  onClick={() => setShowUploadModal(true)}
-                  className="bg-[#3D42D3] hover:bg-[#2b28a0] text-white px-4 py-2 rounded-lg text-sm font-medium"
+                  onClick={() => setShowUploadModal(true)} 
+                  className="bg-[#3D42D3] hover:bg-[#2b28a0] text-white px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap"
                 >
                   อัพโหลดตารางสอน
                 </button>
               </div>
             </div>
 
-            {/* TABLE - ใช้ flex-1 เพื่อใช้พื้นที่ที่เหลือทั้งหมด และมี scrollbar ในตัวมันเอง */}
-            <div className="flex-1 max-h-[560px] overflow-y-auto overflow-x-auto relative">
-              <table className="min-w-full border border-gray-200">
-                <thead className="bg-[#f2f2f2] sticky top-0 z-[5]">
+            {/* เพิ่ม relative ที่ container หลักเพื่อให้ sticky ทำงานเทียบกับกรอบนี้ */}
+            <div className="h-[567px] overflow-y-auto overflow-x-auto relative shadow-inner border border-gray-300 rounded-lg"> {/* 🟢 เพิ่ม border รอบนอก */}
+              <table className="min-w-full border-separate border-spacing-0 text-sm"> {/* 🟢 เพิ่ม text-sm เพื่อความสวยงาม */}
+                <thead className="bg-[#f2f2f2] sticky top-0 z-[30] text-gray-700 font-semibold"> 
                   <tr>
-                    <th className="text-left px-4 py-2 border border-gray-300">
+                    {/* 🟢 1. รหัสวิชา (Sticky ซ้ายสุด) - เพิ่ม border-r */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 whitespace-nowrap sticky left-0 z-40 bg-[#f2f2f2] w-[120px] min-w-[120px]">
                       รหัสวิชา
                     </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
+
+                    {/* 🟢 2. ชื่อวิชา (Sticky ซ้าย) - เพิ่ม border-r */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[250px] sticky left-[120px] z-40 bg-[#f2f2f2] shadow-[4px_0_5px_-2px_rgba(0,0,0,0.1)]">
                       ชื่อวิชา
                     </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      ปีการศึกษา
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      ภาคการศึกษา
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      กลุ่ม
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      วัน
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      เวลาเรียน
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      ห้องเรียน
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      ตึก
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      หน่วยกิต
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      อาจารย์ผู้สอน
+                    
+                    {/* --- คอลัมน์ทั่วไป (เพิ่ม border-r ให้ทุกอันเพื่อเป็นตาราง) --- */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[40px]">ปี</th>
+                    
+                    {/* 🎯 แก้ไข: จัดกึ่งกลาง เทอม */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[40px]">เทอม</th>
+                    
+                    {/* 🎯 แก้ไข: จัดกึ่งกลาง กลุ่ม */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[40px]">กลุ่ม</th>
+                    
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[80px]">วัน</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[120px] whitespace-nowrap">เวลา</th>
+                    
+                    {/* 🎯 แก้ไข: จัดกึ่งกลาง ห้อง */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[100px]">ห้อง</th>
+                    
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[60px]">ตึก</th>
+                    
+                    {/* 🎯 แก้ไข: จัดกึ่งกลาง หน่วยกิต */}
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[80px]">หน่วยกิต</th>
+                    
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[200px] whitespace-nowrap">ผู้สอน</th>
+
+                    {/* 🟢 3. จัดการ (Sticky ขวาสุด) */}
+                    <th className="text-center px-4 py-3 border-b border-gray-300 w-[100px] sticky right-0 z-40 bg-[#f2f2f2] shadow-[-4px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                      จัดการ
                     </th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {/* แสดง Loading หรือ ตาราง */}
                   {isLoading ? (
                     <tr>
-                      <td
-                        colSpan="11"
-                        className="px-4 py-8 text-center text-gray-500"
-                      >
+                      <td colSpan="12" className="px-4 py-8 text-center text-gray-500 border-b border-gray-300">
                         กำลังดึงข้อมูล...
                       </td>
                     </tr>
                   ) : currentSchedules.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan="11"
-                        className="px-4 py-8 text-center text-gray-500"
-                      >
-                        {searchTerm
-                          ? "ไม่พบข้อมูลรายวิชาที่ค้นหา"
-                          : "ไม่พบข้อมูลรายวิชา"}
+                      <td colSpan="12" className="px-4 py-8 text-center text-gray-500 border-b border-gray-300">
+                        {searchTerm || filterTeacher
+                             ? "ไม่พบข้อมูลตามเงื่อนไข" 
+                             : "ไม่พบข้อมูลรายวิชา"}
                       </td>
                     </tr>
                   ) : (
                     currentSchedules.map((t) => (
-                      <tr key={t.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 border border-gray-300">
+                      <tr key={t.id} className="hover:bg-gray-50 group transition-colors">
+                        {/* 🟢 1. รหัสวิชา (Sticky Body) - เพิ่ม border-r */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 sticky left-0 z-20 bg-white group-hover:bg-gray-50 font-semibold text-gray-700">
                           {t.code}
                         </td>
-                        <td className="px-4 py-2 border border-gray-300">
+
+                        {/* 🟢 2. ชื่อวิชา (Sticky Body) - เพิ่ม border-r */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 sticky left-[120px] z-20 bg-white group-hover:bg-gray-50 shadow-[4px_0_5px_-2px_rgba(0,0,0,0.1)] font-semibold text-gray-700">
                           {t.name}
                         </td>
-                        <td className="px-4 py-2 border border-gray-300">
-                          {t.year}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-300">
-                          {t.semester}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-300">
-                          {t.group}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-300">
-                          {t.day}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-300">
-                          {t.time}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-300">
-                          {t.room}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-300">
-                          {t.building}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-300">
-                          {t.credit}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-300">
-                          {t.teacher}
+
+                        {/* --- ข้อมูล --- */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.year}</td>
+                        
+                        {/* 🎯 แก้ไข: จัดกึ่งกลาง เนื้อหาเทอม */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.semester}</td>
+                        
+                        {/* 🎯 แก้ไข: จัดกึ่งกลาง เนื้อหากลุ่ม */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.group}</td>
+                        
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.day}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center font-semibold text-gray-700">{t.time}</td>
+                        
+                        {/* 🎯 แก้ไข: จัดกึ่งกลาง เนื้อหาห้อง */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center font-semibold text-gray-700">{t.room}</td>
+                        
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.building}</td>
+                        
+                        {/* 🎯 แก้ไข: จัดกึ่งกลาง เนื้อหาหน่วยกิต */}
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.credit}</td>
+                        
+                        <td className="px-4 py-3 border-b border-r border-gray-300 font-semibold text-gray-700">{t.teacher}</td>
+                        
+                        {/* 🟢 3. จัดการ (Sticky Body ขวาสุด) */}
+                        <td className="px-4 py-3 border-b border-gray-300 text-center sticky right-0 z-20 bg-white group-hover:bg-gray-50 shadow-[-4px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                          <div className="flex items-center justify-center gap-2">
+                            <button 
+                                onClick={() => handleEditClick(t)}
+                                className="text-blue-600 hover:text-blue-800 p-1.5 rounded-md hover:bg-blue-100 transition-all hover:scale-110"
+                                title="แก้ไขข้อมูล"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            </button>
+                            <button 
+                                onClick={() => handleDeleteClick(t.id)}
+                                className="text-red-600 hover:text-red-800 p-1.5 rounded-md hover:bg-red-100 transition-all hover:scale-110"
+                                title="ลบข้อมูล"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -525,7 +384,6 @@ const AdminTeachers = () => {
               </table>
             </div>
 
-            {/* 5. Pagination Component */}
             <div className="flex justify-center mt-4 pb-2">
               <Pagination
                 current={currentPage}
@@ -541,495 +399,35 @@ const AdminTeachers = () => {
         </div>
       </div>
 
-      {/* ---------------------------------------------------------- */}
-      {/* MODAL: เพิ่มรายวิชา                     */}
-      {/* ---------------------------------------------------------- */}
-      {showAddModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#f8f8f8] p-8 rounded-lg shadow-lg w-[90%] max-w-xl border border-gray-300">
-            <h2 className="text-2xl font-bold mb-6">เพิ่มรายวิชา</h2>
+      <AddSubjectAction
+        isOpen={showAddModal} 
+        onClose={() => setShowAddModal(false)}
+        onSuccess={() => fetchSubjects()}
+      />
 
-            <form onSubmit={handleAddSubject} className="space-y-4">
-              {/* รหัสวิชา (Floating Label Style) */}
-              <div className="relative mt-2">
-                <input
-                  type="text"
-                  id="subject_id"
-                  required
-                  value={newSubject.subject_id}
-                  onChange={(e) =>
-                    setNewSubject({ ...newSubject, subject_id: e.target.value })
-                  }
-                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
-                  placeholder="รหัสวิชา"
-                />
-                <label
-                  htmlFor="subject_id"
-                  className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all
-                    peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400
-                    peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
-                >
-                  รหัสวิชา <span className="text-red-500">*</span>
-                </label>
-              </div>
+      <UploadScheduleAction
+        isOpen={showUploadModal} 
+        onClose={() => setShowUploadModal(false)}
+        onSuccess={() => fetchSchedules()}
+        subjectList={subjectList}
+        groupedSubjects={groupedSubjects}
+        teacherList={teacherList}
+      />
 
-              {/* ชื่อวิชา (Floating Label Style) */}
-              <div className="relative mt-2">
-                <input
-                  type="text"
-                  id="subject_name"
-                  required
-                  value={newSubject.subject_name}
-                  onChange={(e) =>
-                    setNewSubject({
-                      ...newSubject,
-                      subject_name: e.target.value,
-                    })
-                  }
-                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
-                  placeholder="ชื่อวิชา"
-                />
-                <label
-                  htmlFor="subject_name"
-                  className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all
-                    peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400
-                    peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
-                >
-                  ชื่อวิชา <span className="text-red-500">*</span>
-                </label>
-              </div>
-
-              {/* หน่วยกิต (Floating Label Style) */}
-              <div className="relative mt-2">
-                <input
-                  type="number"
-                  id="credit"
-                  required
-                  value={newSubject.credit}
-                  onChange={(e) =>
-                    setNewSubject({ ...newSubject, credit: e.target.value })
-                  }
-                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
-                  placeholder="หน่วยกิต"
-                />
-                <label
-                  htmlFor="credit"
-                  className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all
-                    peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400
-                    peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
-                >
-                  หน่วยกิต <span className="text-red-500">*</span>
-                </label>
-              </div>
-
-              <div className="relative">
-                <select
-                  id="category"
-                  required
-                  value={newSubject.category}
-                  onChange={(e) =>
-                    setNewSubject({ ...newSubject, category: e.target.value })
-                  }
-                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md 
-             focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-gray-50 
-             appearance-none placeholder-transparent"
-                >
-                  <option value="" disabled></option>
-                  <option value="วิชาทั่วไป">วิชาทั่วไป</option>
-                  <option value="วิชาเฉพาะ">วิชาเฉพาะ</option>
-                  <option value="วิชาเสรี">วิชาเสรี</option>
-                </select>
-                <label
-                  htmlFor="category"
-                  className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none
-      ${
-        // 🔑 แก้ไข: ให้เช็คค่าของ newSubject.category แทน
-        newSubject.category 
-          ? "-top-2.5 text-gray-400"
-          : "top-2.5 text-gray-400"
-      }`}
-                >
-                  เลือกหมวดหมู่ <span className="text-red-500">*</span>
-                </label>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-700">
-                  <svg
-                    className="fill-current h-4 w-4"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                  >
-                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                  </svg>
-                </div>
-              </div>
-
-              <div className="flex justify-end mt-6 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setNewSubject({
-                      subject_id: "",
-                      subject_name: "",
-                      credit: "",
-                      category: "",
-                    });
-                  }}
-                  className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
-                >
-                  ยกเลิก
-                </button>
-
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#38A738] text-white rounded-md hover:bg-[#2d7c2d]"
-                >
-                  เพิ่ม
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showUploadModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#f8f8f8] p-8 rounded-lg shadow-lg w-[90%] max-w-2xl border border-gray-300">
-            <h2 className="text-2xl font-bold mb-6">อัพโหลดตารางสอน</h2>
-
-            {/* 🔑 แก้ไข: เพิ่ม onSubmit ให้กับ form */}
-            <form
-              className="grid grid-cols-1 md:grid-cols-2 gap-4"
-              onSubmit={handleUploadSchedule}
-            >
-              {/* 🔑 แก้ไขส่วนนี้เพื่อใช้ groupedSubjects */}
-    <select
-        className="w-full px-4 py-2 border border-gray-300 rounded-md"
-        value={selectedCode}
-        onChange={(e) => {
-            const code = e.target.value;
-            setSelectedCode(code);
-
-            const selected = subjectList.find(
-                (item) => item.subject_id === code
-            );
-            setSubjectName(selected?.subject_name || "");
-            setSubjectcredit(selected?.credit || "");
+      <EditScheduleAction
+        isOpen={showEditModal}
+        onClose={() => {
+            setShowEditModal(false);
+            setSelectedSchedule(null);
         }}
-    >
-        <option value="">เลือกรหัสวิชา</option>
-
-        {/* 🔑 NEW: วนลูปผ่าน groupedSubjects เพื่อสร้าง optgroup */}
-        {Object.keys(groupedSubjects).map((category) => (
-            <optgroup key={category} label={category}>
-                {groupedSubjects[category].map((sub) => (
-                    <option key={sub.subject_id} value={sub.subject_id}>
-                        {sub.subject_id} - {sub.subject_name}
-                    </option>
-                ))}
-            </optgroup>
-        ))}
-
-    </select>
-
-              {/* ชื่อวิชา (แสดงผล) */}
-              <input
-                type="text"
-                placeholder="ชื่อวิชา"
-                value={subjectName}
-                readOnly
-                className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200"
-              />
-
-              {/* หน่วยกิต (แสดงผล) */}
-              <input
-                type="text"
-                placeholder="หน่วยกิต"
-                value={subjectcredit}
-                readOnly
-                className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200"
-              />
-
-              {/* 🔑 Select ของ Ant Design สำหรับการค้นหาอาจารย์ */}
-              <div className="relative">
-                <Select
-                  showSearch
-                  placeholder=" "
-                  optionFilterProp="children"
-                  value={classSchedule.teacher_id || undefined}
-                  onChange={(selectedId, option) => {
-                    const selectedTeacher = teacherList.find(
-                      (t) => t.value === selectedId
-                    );
-
-                    setClassSchedule({
-                      ...classSchedule,
-                      teacher_id: selectedId,
-                      teacher_name: selectedTeacher
-                        ? selectedTeacher.fullName
-                        : "",
-                    });
-                  }}
-                  filterOption={(input, option) =>
-                    (option?.label ?? "")
-                      .toLowerCase()
-                      .includes(input.toLowerCase())
-                  }
-                  options={teacherList.map((t) => ({
-                    value: t.teacherId,
-                    label: t.label,
-                    fullName: t.fullName,
-                    teacherId: t.teacherId,
-                  }))}
-                  style={{ width: "100%", height: "42px" }}
-                  className="ant-select-custom"
-                />
-                <label
-                  className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none
-      ${
-        classSchedule.teacher_id
-          ? "-top-2.5 text-gray-400"
-          : "top-2.5 text-gray-400"
-      }`}
-                >
-                  อาจารย์ผู้สอน<span className="text-red-500"> *</span>
-                </label>
-              </div>
-
-              {/* 🔑 เพิ่ม: ปีการศึกษา (Year) ที่เห็นในรูป */}
-              <div className="relative">
-                <input
-                  type="text"
-                  id="year"
-                  required
-                  value={classSchedule.year}
-                  onChange={(e) =>
-                    setClassSchedule({ ...classSchedule, year: e.target.value })
-                  }
-                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
-                  placeholder="ปีการศึกษา"
-                />
-                <label
-                  htmlFor="year"
-                  className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
-                >
-                  ปีการศึกษา<span className="text-red-500"> *</span>
-                </label>
-              </div>
-
-              {/* ภาคการศึกษา (Dropdown Floating Label Style) */}
-              <div className="relative">
-                <select
-                  id="semester"
-                  required
-                  value={classSchedule.semester}
-                  onChange={(e) =>
-                    setClassSchedule({
-                      ...classSchedule,
-                      semester: e.target.value,
-                    })
-                  }
-                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md 
-             focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-gray-50 
-             appearance-none placeholder-transparent"
-                >
-                  <option value="" disabled></option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                </select>
-                <label
-                  htmlFor="semester"
-                  className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none
-      ${
-        classSchedule.semester
-          ? "-top-2.5 text-gray-400"
-          : "top-2.5 text-gray-400"
-      }`}
-                >
-                  ภาคการศึกษา <span className="text-red-500">*</span>
-                </label>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-700">
-                  <svg
-                    className="fill-current h-4 w-4"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                  >
-                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                  </svg>
-                </div>
-              </div>
-
-              {/* กลุ่ม (Group) */}
-              <div className="relative">
-                <input
-                  type="text"
-                  id="group"
-                  required
-                  value={classSchedule.group}
-                  onChange={(e) =>
-                    setClassSchedule({
-                      ...classSchedule,
-                      group: e.target.value,
-                    })
-                  }
-                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
-                  placeholder="กลุ่ม"
-                />
-                <label
-                  htmlFor="group"
-                  className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
-                >
-                  กลุ่ม<span className="text-red-500"> *</span>
-                </label>
-              </div>
-
-              {/* วัน (จ-อา) (Floating Label Style) */}
-              <div className="relative">
-                <select
-                  id="day"
-                  required
-                  value={classSchedule.day}
-                  onChange={(e) =>
-                    setClassSchedule({ ...classSchedule, day: e.target.value })
-                  }
-                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md 
-             focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-gray-50 
-             appearance-none placeholder-transparent"
-                >
-                  <option value="" disabled></option>
-                  <option value="จันทร์">จันทร์</option>
-                  <option value="อังคาร">อังคาร</option>
-                  <option value="พุธ">พุธ</option>
-                  <option value="พฤหัสบดี">พฤหัสบดี</option>
-                  <option value="ศุกร์">ศุกร์</option>
-                  <option value="เสาร์">เสาร์</option>
-                  <option value="อาทิตย์">อาทิตย์</option>
-                </select>
-                <label
-                  htmlFor="day"
-                  className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none
-      ${
-        classSchedule.day ? "-top-2.5 text-gray-400 " : "top-2.5 text-gray-400"
-      }`}
-                >
-                  วัน (จ-อา)<span className="text-red-500"> *</span>
-                </label>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-700">
-                  <svg
-                    className="fill-current h-4 w-4"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                  >
-                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                  </svg>
-                </div>
-              </div>
-
-              <div className="relative">
-    <TimePicker.RangePicker
-        value={classSchedule.classTimes}
-        onChange={(times) =>
-            setClassSchedule({
-                ...classSchedule,
-                classTimes: times || null,
-            })
-        }
-        format={format}
-        style={{ width: "100%" }}
-        // 🔑 เพิ่ม Prop นี้
-        disabledTime={disabledRangeTime} 
-        // 🔑 เพิ่ม className เพื่อควบคุมความสูงและ Border
-        className="h-[42px] border border-gray-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-    />
-</div>
-
-              {/* ห้องเรียน (Room) */}
-              <div className="relative">
-                <input
-                  type="text"
-                  id="room"
-                  required
-                  value={classSchedule.room}
-                  onChange={(e) =>
-                    setClassSchedule({ ...classSchedule, room: e.target.value })
-                  }
-                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
-                  placeholder="ห้องเรียน"
-                />
-                <label
-                  htmlFor="room"
-                  className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
-                >
-                  ห้องเรียน<span className="text-red-500"> *</span>
-                </label>
-              </div>
-
-              {/* ตึก (Building) */}
-              <div className="relative">
-                <input
-                  type="text"
-                  id="building"
-                  required
-                  value={classSchedule.building}
-                  onChange={(e) =>
-                    setClassSchedule({
-                      ...classSchedule,
-                      building: e.target.value,
-                    })
-                  }
-                  className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
-                  placeholder="ตึก"
-                />
-                <label
-                  htmlFor="building"
-                  className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
-                >
-                  ตึก<span className="text-red-500"> *</span>
-                </label>
-              </div>
-
-              {/* 🔑 ลบ Button ออกจาก form และย้ายไปด้านนอก (Ant Design form Submission มักทำโดย onClick บน Button ภายนอก) */}
-            </form>
-
-            <div className="flex justify-end mt-6 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowUploadModal(false);
-                  setSelectedCode("");
-                  setSubjectName("");
-                  setSubjectcredit("");
-                  setClassSchedule({
-                    year: "",
-                    semester: "",
-                    group: "",
-                    day: "",
-                    room: "",
-                    building: "",
-                    teacher_id: "",
-                    teacher_name: "",
-                    classTimes: null,
-                  });
-                }}
-                className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
-              >
-                ยกเลิก
-              </button>
-
-              <button
-                type="submit"
-                // 🔑 ต้องเรียก handleUploadSchedule ผ่าน onClick แทนการใช้ type="submit" บน form
-                onClick={handleUploadSchedule}
-                className="px-5 py-2 bg-[#3F37C9] text-white rounded-md hover:bg-[#2b28a0]"
-              >
-                ยืนยัน
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        onSuccess={() => fetchSchedules()}
+        scheduleData={selectedSchedule}
+        subjectList={subjectList}
+        groupedSubjects={groupedSubjects}
+        teacherList={teacherList}
+      />
     </div>
   );
 };
 
-export default AdminTeachers;
+export default AdminTeachingSchedule;

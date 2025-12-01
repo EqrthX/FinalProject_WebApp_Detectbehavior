@@ -6,12 +6,7 @@ import toast, { Toaster } from "react-hot-toast";
 import { Pagination } from "antd";
 import Breadcrumbs from "../../components/AdminBreadcrumbs";
 
-<<<<<<< HEAD
-// นำเข้าไฟล์ที่แยกไว้
-import { TeacherActionModal, deleteTeacher } from "../../components/TeacherAction"; 
-=======
 import { TeacherActionModal, deleteTeacher } from "../../components/TeacherAction";
->>>>>>> chaianun
 
 // --- Style สำหรับ Custom Scrollbar ---
 const scrollbarStyle = `
@@ -133,13 +128,8 @@ const AdminTeachers = () => {
   const [teachers, setTeachers] = useState([]);
 
   const [currentPage, setCurrentPage] = useState(1);
-<<<<<<< HEAD
-  const [pageSize, setPageSize] = useState(20);
-  
-=======
   const [pageSize, setPageSize] = useState(10);
 
->>>>>>> chaianun
   const [filterFacultyId, setFilterFacultyId] = useState("");
   const [filterMajorId, setFilterMajorId] = useState("");
 
@@ -235,33 +225,11 @@ const AdminTeachers = () => {
   const majorOptions = filterMajorsToShow.map(m => ({ label: m.major_name, value: m.major_id }));
 
   return (
-<<<<<<< HEAD
-    // 🟢 Container หลัก: ใช้ h-screen และ overflow-hidden เพื่อกำหนดกรอบตายตัว
-    <div className="h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-1 p-4 overflow-hidden">
-=======
     // 🟢 1. Container หลัก
     <div className="h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-1 p-4 overflow-hidden">
       <style>{scrollbarStyle}</style>
->>>>>>> chaianun
       <Toaster />
 
-<<<<<<< HEAD
-      {/* 🟢 Main Content: ใช้ flex flex-col และ h-full เพื่อให้เนื้อหาข้างในขยายเต็ม */}
-      <main className="flex-1 transition-all lg:pl-[0rem] md:pl-0 sm:pl-0 h-full flex flex-col">
-        <div className="max-w-screen-2xl mx-auto px-6 md:px-4 w-full h-full flex flex-col">
-          
-          <div className="mt-5 shrink-0"> <Breadcrumbs /> </div>
-
-          <div className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 flex items-center justify-between sticky top-[20px] z-30 shrink-0">
-            <h1 className="text-[18px] font-semibold text-black">อาจารย์</h1>
-          </div>
-
-          {/* 🟢 Card Container: ใช้ flex-1 และ overflow-hidden เพื่อให้ส่วนนี้กินพื้นที่ที่เหลือทั้งหมด */}
-          <div className="bg-white mt-4 p-4 rounded-[20px] shadow-sm border border-[#e9e9e9] flex flex-col flex-1 overflow-hidden">
-            
-            {/* Toolbar Filter (ส่วนหัว) */}
-            <div className="flex justify-between items-center mb-4 flex-wrap gap-2 shrink-0">
-=======
       <aside className="w-full md:w-64 flex-shrink-0"> <AdminNavbar /> </aside>
 
       {/* 🟢 2. Main Content */}
@@ -279,7 +247,6 @@ const AdminTeachers = () => {
 
             {/* Toolbar Filter */}
             <div className="flex justify-between items-center mb-4 flex-wrap gap-2 flex-shrink-0">
->>>>>>> chaianun
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="p-2 font-bold text-gray-800">รายชื่ออาจารย์</div>
 
@@ -289,20 +256,6 @@ const AdminTeachers = () => {
                   value={searchTerm}
                   onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                 />
-<<<<<<< HEAD
-                
-                <select
-                  className="w-full md:w-56 px-5 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#b6b6b6] bg-[#F6F6F4] text-black"
-                  value={filterFacultyId}
-                  onChange={(e) => { setFilterFacultyId(e.target.value); setFilterMajorId(""); setCurrentPage(1); }}
-                >
-                  <option value="">-- คณะทั้งหมด --</option>
-                  {faculty.map((f) => <option key={f.faculty_id} value={f.faculty_id}>{f.faculty_name}</option>)}
-                </select>
-
-                <select
-                  className="w-full md:w-56 px-5 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#b6b6b6] bg-[#F6F6F4] text-black disabled:bg-gray-100 disabled:text-gray-400"
-=======
 
                 <CustomDropdown
                   placeholder="-- คณะทั้งหมด --"
@@ -315,7 +268,6 @@ const AdminTeachers = () => {
                 <CustomDropdown
                   placeholder="-- สาขาทั้งหมด --"
                   options={[{ label: "-- สาขาทั้งหมด --", value: "" }, ...majorOptions]}
->>>>>>> chaianun
                   value={filterMajorId}
                   onChange={(val) => { setFilterMajorId(val); setCurrentPage(1); }}
                   disabled={!filterFacultyId}

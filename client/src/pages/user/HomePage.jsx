@@ -3,26 +3,27 @@ import Navbar from '../../components/Navbar'
 import BookMark from "../../assets/BookMark.png";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import Schedule from '../../components/schedule'; 
-import { supabase } from "../../config/supabase"; // อย่าลืม import supabase
+import { supabase } from "../../config/supabase";
 
 const HomePage = () => {
   const teacher_id = localStorage.getItem("teacher_id");
 
   // --- State สำหรับข้อมูล ---
   const [todayStats, setTodayStats] = useState({
-    avgFocused: 0,      // ตั้งใจเรียนเฉลี่ย
-    avgNonFocused: 0,   // ไม่ตั้งใจเรียนเฉลี่ย
-    dayAverage: 0,      // ค่าเฉลี่ยของวันนี้
+    avgFocused: 0,
+    avgNonFocused: 0,
   });
 
   const [bestWorstTime, setBestWorstTime] = useState({
-    bestTime: "-",      // เวลาที่ดีที่สุด
+    bestTime: "-",      
+    bestSubject: "",
     bestScore: 0,
-    worstTime: "-",     // เวลาที่แย่ที่สุด
+    worstTime: "-",
+    worstSubject: "",     
     worstScore: 0
   });
 
-  const [pieData, setPieData] = useState([]); // ข้อมูลสำหรับกราฟวงกลม
+  const [pieData, setPieData] = useState([]);
 
   // สีสำหรับกราฟ
   const COLORS = ['#0068c9','#fe2b2b', '#8622FF', '#739206ff', '#FE0056', '#00B7EB', '#FF8000', '#00FFCE', '#FFFF00'];
@@ -33,27 +34,24 @@ const HomePage = () => {
     const fetchTodayData = async () => {
       if (!teacher_id) return;
 
-      // 1. กำหนดช่วงเวลา "วันนี้" (00:00 - 23:59)
-      const now = new Date();
-      const startOfDay = new Date(now.setHours(0, 0, 0, 0)).toISOString();
-      const endOfDay = new Date(now.setHours(23, 59, 59, 999)).toISOString();
+      // หาวันที่ปัจจุบัน (YYYY-MM-DD)
+      const todayStr = new Date().toLocaleDateString('en-CA'); 
 
       try {
         const { data, error } = await supabase
-          .from('camera_logs')
+          .from('camera_daily_summary')
           .select('*')
           .eq('teacher_id', teacher_id)
-          .gte('created_at', startOfDay)
-          .lte('created_at', endOfDay);
+          .eq('summary_date', todayStr);
 
         if (error) throw error;
 
         if (data && data.length > 0) {
           processData(data);
         } else {
-          // กรณีไม่มีข้อมูลวันนี้เลย ให้เซ็ตค่าเป็น 0
-          setTodayStats({ avgFocused: 0, avgNonFocused: 0, dayAverage: 0 });
-          setBestWorstTime({ bestTime: "-", bestScore: 0, worstTime: "-", worstScore: 0 });
+          // Reset ค่าถ้าไม่เจอข้อมูลวันนี้
+          setTodayStats({ avgFocused: 0, avgNonFocused: 0 });
+          setBestWorstTime({ bestTime: "-",bestSubject: "", bestScore: 0, worstTime: "-",worstSubject: "", worstScore: 0 });
           setPieData([]);
         }
 
@@ -66,69 +64,84 @@ const HomePage = () => {
   }, [teacher_id]);
 
   // --- ฟังก์ชันคำนวณข้อมูล (Logic) ---
-  const processData = (logs) => {
-    let totalAtt = 0;
-    let totalNon = 0;
+  const processData = (records) => {
+    let sumAvgAtt = 0;
+    let sumAvgNon = 0;
     
     // ตัวแปรสำหรับหา Best/Worst Time
-    let maxAtt = -1;
-    let minAtt = 101; // ตั้งไว้เกิน 100 เพื่อให้ค่าแรกทับแน่นอน
+    let maxScore = -1;
+    let minScore = 101;
     let bestT = "-";
     let worstT = "-";
+    let bestSubject = "";
+    let worstSubject = "";
 
-    // ตัวแปรสำหรับรวม JSON เพื่อทำ Pie Chart
-    const jsonTotals = { Focused: 0, Looking_at_the_board: 0, Taking_notes: 0, LookingAway: 0, Talking: 0, UsingPhone: 0 };
+    // ตัวแปรสำหรับรวม JSON (Pie Chart)
+    const jsonTotals = {};
 
-    logs.forEach(log => {
-      // 1. รวมค่าเพื่อหาค่าเฉลี่ย (แปลงจาก 0-1 เป็น 0-100)
-      const att = Number(log.Attention) * 100;
-      const non = Number(log.Non_Attention) * 100;
-      
-      totalAtt += att;
-      totalNon += non;
+    records.forEach(record => {
+      // 1. จัดการคะแนน (แปลง 0-1 เป็น 0-100 ถ้าจำเป็น)
+      let attScore = Number(record.avg_attention);
+      let nonScore = Number(record.avg_non_attention);
 
-      // 2. หาช่วงเวลาที่ดีที่สุด (Max Attention)
-      if (att > maxAtt) {
-        maxAtt = att;
-        bestT = new Date(log.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+      if (attScore <= 1 && attScore > 0) attScore *= 100;
+      if (nonScore <= 1 && nonScore > 0) nonScore *= 100;
+
+      sumAvgAtt += attScore;
+      sumAvgNon += nonScore;
+
+      // 2. จัดรูปแบบเวลา (HH:mm) จาก created_at
+      const timeStr = record.created_at 
+        ? new Date(record.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+        : "-";
+
+      // 3. หา Best Time (คะแนนสูงสุด)
+      if (attScore > maxScore) {
+        maxScore = attScore;
+        bestT = timeStr;
+        bestSubject = record.subject_id;
       }
 
-      // 3. หาช่วงเวลาที่แย่ที่สุด (Min Attention)
-      if (att < minAtt) {
-        minAtt = att;
-        worstT = new Date(log.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+      // 4. หา Worst Time (คะแนนต่ำสุด)
+      if (attScore < minScore) {
+        minScore = attScore;
+        worstT = timeStr;
+        worstSubject = record.subject_id;
       }
 
-      // 4. รวมข้อมูลสำหรับ Pie Chart
-      const ratios = log.class_json || {};
-      Object.keys(jsonTotals).forEach(key => {
-        jsonTotals[key] += (ratios[key] || 0);
+      // 5. รวม JSON สำหรับ Pie Chart
+      const behaviors = record.class_json_summary || {};
+      Object.keys(behaviors).forEach(key => {
+        const val = Number(behaviors[key] || 0);
+        jsonTotals[key] = (jsonTotals[key] || 0) + val;
       });
     });
 
-    const count = logs.length;
+    const count = records.length;
 
     // --- อัปเดต State ---
     
-    // A. การ์ด 3 ใบ
+    // A. ค่าเฉลี่ยรวม
     setTodayStats({
-      avgFocused: (totalAtt / count).toFixed(0),
-      avgNonFocused: (totalNon / count).toFixed(0),
-      dayAverage: (totalAtt / count).toFixed(0), // ค่าเฉลี่ยรวมวันนี้
+      avgFocused: (sumAvgAtt / count).toFixed(0),
+      avgNonFocused: (sumAvgNon / count).toFixed(0),
     });
 
-    // B. กล่องสรุปผล (Best/Worst)
+    // B. Best/Worst (ใส่ข้อมูลจริงลงไปใน Format เดิม)
     setBestWorstTime({
       bestTime: bestT,
-      bestScore: maxAtt.toFixed(0),
+      bestSubject:  bestSubject,
+      bestScore: maxScore.toFixed(0),
       worstTime: worstT,
-      worstScore: minAtt.toFixed(0)
+      worstSubject: worstSubject,
+      worstScore: minScore.toFixed(0)
     });
 
-    // C. กราฟวงกลม
+    // C. Pie Chart
+    // แปลง jsonTotals เป็น Array และ Recharts จะคำนวณ % จาก value ให้เอง
     const chartData = Object.keys(jsonTotals).map(key => ({
       name: key,
-      value: jsonTotals[key] / count // หาค่าเฉลี่ยต่อ Log
+      value: jsonTotals[key]
     })).filter(item => item.value > 0);
     
     setPieData(chartData);
@@ -136,14 +149,17 @@ const HomePage = () => {
 
   const cardStyle = "bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6 flex flex-col items-center justify-center";
 
+  // ฟังก์ชัน Custom Label สำหรับ Pie Chart (แสดง %)
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
     const x = cx + radius * Math.cos(-(midAngle ?? 0) * RADIAN);
     const y = cy + radius * Math.sin(-(midAngle ?? 0) * RADIAN);
 
+    if (percent < 0.05) return null; // ซ่อนถ้าเล็กกว่า 5%
+
     return (
       <text x={x} y={y} fill="white" fontSize={12} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
-        {`${((percent ?? 0) * 100).toFixed(0)}%`}
+        {`${(percent * 100).toFixed(0)}%`}
       </text>
     );
   };
@@ -156,8 +172,8 @@ const HomePage = () => {
       <div className="flex-1 p-6 overflow-y-auto scrollbar-hide">
         <div className="space-y-6 max-w-screen-2xl mx-auto">
           
-          {/* --- Section 1: การ์ดเปอร์เซ็นต์ (ข้อมูลจริง) --- */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* --- Section 1: การ์ดคะแนน --- */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className={cardStyle}>
               <span className="text-4xl font-bold text-[#1D971D]">{todayStats.avgFocused}%</span>
               <span className="text-gray-700 mt-2 font-medium">ตั้งใจเรียน</span>
@@ -165,10 +181,6 @@ const HomePage = () => {
             <div className={cardStyle}>
               <span className="text-4xl font-bold text-[#FF3300]">{todayStats.avgNonFocused}%</span>
               <span className="text-gray-700 mt-2 font-medium">ไม่ตั้งใจเรียน</span>
-            </div>
-            <div className={cardStyle}>
-              <span className="text-4xl font-bold text-[#0900FF]">{todayStats.dayAverage}%</span>
-              <span className="text-gray-700 mt-2 font-medium">ค่าเฉลี่ยของวันนี้</span>
             </div>
           </div>
 
@@ -181,7 +193,7 @@ const HomePage = () => {
                     
             <div className="flex flex-col space-y-4">
               
-              {/* กราฟวงกลม (ข้อมูลจริง) */}
+              {/* กราฟวงกลม */}
               <div className={`${cardStyle} !justify-start`} style={{ minHeight: '350px' }}>
                 <h2 className="text-lg font-semibold text-[#767676] mb-2 self-start w-full text-center border-b pb-2 border-gray-100">
                   ผลรวมรายวัน
@@ -195,7 +207,7 @@ const HomePage = () => {
                           cx="50%"
                           cy="50%"
                           labelLine={false}
-                          label={renderCustomizedLabel}
+                          label={renderCustomizedLabel} // แสดง % ในกราฟ
                           outerRadius={80}
                           innerRadius={50}
                           dataKey="value"
@@ -205,7 +217,7 @@ const HomePage = () => {
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(val) => val.toFixed(1)}/>
+                        <Tooltip formatter={(val) => `${val} ครั้ง`} />
                         <Legend verticalAlign="bottom" height={36}/>
                       </PieChart>
                     ) : (
@@ -217,19 +229,22 @@ const HomePage = () => {
                 </div>
               </div>
 
-              {/* สรุปผล (ข้อมูลจริง: Best/Worst Time) */}
+              {/* กล่องสรุปผล (ใช้รูปแบบเดิม 100% ตามคำขอ) */}
               <div className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6 flex flex-col">
                 <div className="flex items-center space-x-2 border-b border-gray-100 pb-3 mb-3">
                   <img src={BookMark} alt="Bookmark" className="w-6 h-6" />
                   <h2 className="text-lg font-semibold text-black mb-0">สรุปผล</h2>
                 </div>
                 <div className="space-y-3">
+                  {/* แถวเขียว: ดีที่สุด */}
                   <div className="bg-green-50 border border-green-200 text-[#085E0E] px-4 py-3 rounded-xl flex justify-between items-center text-sm font-medium">
-                    <span>ช่วงเวลาที่ดีที่สุด ({bestWorstTime.bestTime})</span>
+                    <span>ช่วงเวลาที่ดีที่สุด {bestWorstTime.bestTime} ({bestWorstTime.bestSubject})</span>
                     <span className="font-bold">{bestWorstTime.bestScore}%</span>
                   </div>
+                  
+                  {/* แถวแดง: แย่ที่สุด */}
                   <div className="bg-red-50 border border-red-200 text-[#74393C] px-4 py-3 rounded-xl flex justify-between items-center text-sm font-medium">
-                     <span>ช่วงเวลาที่แย่ที่สุด ({bestWorstTime.worstTime})</span>
+                     <span>ช่วงเวลาที่แย่ที่สุด {bestWorstTime.worstTime} ({bestWorstTime.worstSubject})</span>
                      <span className="font-bold">{bestWorstTime.worstScore}%</span>
                   </div>
                 </div>

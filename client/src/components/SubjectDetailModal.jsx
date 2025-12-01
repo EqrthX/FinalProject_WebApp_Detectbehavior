@@ -1,18 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
-import { X, Users, Calendar, Clock, BookOpen } from "lucide-react";
+import { X, Users, Calendar, Clock, BookOpen, Filter } from "lucide-react";
+import { DatePicker } from "antd"; // 🟢 1. นำเข้า DatePicker
 import { supabase } from "../config/supabase";
-import dayjs from "dayjs"; // แนะนำให้ลง npm install dayjs เพิ่มเพื่อจัดการวันที่ง่ายขึ้น
+import dayjs from "dayjs"; 
+import "dayjs/locale/th"; 
 
-// Helper: คำนวณสัปดาห์ที่เรียน (Week 1, Week 2...) จากวันที่
-const getWeekLabel = (dateStr, startDate) => {
-    const current = dayjs(dateStr);
-    const start = dayjs(startDate);
-    const diffWeeks = current.diff(start, 'week');
-    return `สัปดาห์ที่ ${diffWeeks + 1}`;
-};
+const { RangePicker } = DatePicker; // 🟢 2. ดึง RangePicker ออกมาใช้
 
 export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
   // --- States ---
@@ -22,13 +18,15 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingChart, setLoadingChart] = useState(false);
 
-  // --- 1. Fetch Groups (ดึงข้อมูลกลุ่มเรียน) ---
+  // 🟢 3. State สำหรับเก็บช่วงวันที่ (Default เป็น null คือเอาทั้งหมด)
+  const [dateRange, setDateRange] = useState(null);
+
+  // --- 1. Fetch Groups ---
   useEffect(() => {
     if (isOpen && subject?.code) {
       setLoadingGroups(true);
       const fetchGroups = async () => {
         try {
-            // ดึงข้อมูลกลุ่มเรียน + teacher_id เพื่อเอาไป query log ต่อ
             const { data, error } = await supabase
             .from("class_schedule")
             .select(`
@@ -42,8 +40,6 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
             if (error) throw error;
 
             setGroups(data || []);
-            
-            // เลือกกลุ่มแรกเป็น Default
             if (data && data.length > 0) {
                 setSelectedGroup(data[0]);
             } else {
@@ -57,25 +53,39 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
       };
       fetchGroups();
     } else {
+        // Reset State เมื่อปิด Modal
         setGroups([]);
         setSelectedGroup(null);
         setChartData([]);
+        setDateRange(null); // Reset วันที่ด้วย
     }
   }, [isOpen, subject]);
 
-  // --- 2. Fetch Chart Data (ดึงข้อมูลจริงจาก camera_logs) ---
+  // --- 2. Fetch Chart Data ---
   useEffect(() => {
     if (selectedGroup && isOpen) {
       setLoadingChart(true);
-      const fetchLogs = async () => {
+      const fetchSummary = async () => {
         try {
-            // 1. ดึงข้อมูล Log ที่ตรงกับ วิชา และ อาจารย์ ของกลุ่มที่เลือก
-            const { data, error } = await supabase
-                .from("camera_logs")
-                .select("created_at, Attention, Non_Attention")
-                .eq("subject_id", subject.code) // ตรงกับวิชา
-                .eq("teacher_id", selectedGroup.teacher_id) // ตรงกับอาจารย์ผู้สอนกลุ่มนี้
-                .order("created_at", { ascending: true });
+            // เริ่มต้นสร้าง Query
+            let query = supabase
+                .from("camera_daily_summary")
+                .select("summary_date, avg_attention, avg_non_attention")
+                .eq("subject_id", subject.code)
+                .eq("teacher_id", selectedGroup.teacher_id);
+
+            // 🟢 4. เพิ่มเงื่อนไข Filter วันที่ (ถ้ามีการเลือก)
+            if (dateRange && dateRange[0] && dateRange[1]) {
+                const startDate = dateRange[0].format('YYYY-MM-DD');
+                const endDate = dateRange[1].format('YYYY-MM-DD');
+                
+                query = query
+                    .gte('summary_date', startDate) // มากกว่าหรือเท่ากับวันเริ่ม
+                    .lte('summary_date', endDate);  // น้อยกว่าหรือเท่ากับวันสิ้นสุด
+            }
+
+            // สั่ง run query พร้อม sort
+            const { data, error } = await query.order("summary_date", { ascending: true });
 
             if (error) throw error;
 
@@ -84,52 +94,38 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
                 return;
             }
 
-            // 2. ประมวลผลข้อมูล (Group by Week)
-            // หา startDate (วันที่ log แรกเกิดขึ้น) เพื่อใช้นับสัปดาห์ที่ 1
-            const startDate = data[0].created_at; 
-            const groupedData = {};
+            // คำนวณเปอร์เซ็นต์
+            const formattedData = data.map((item) => {
+                const att = Number(item.avg_attention || 0);
+                const non = Number(item.avg_non_attention || 0);
+                const total = att + non; 
 
-            data.forEach((log) => {
-                const weekLabel = getWeekLabel(log.created_at, startDate);
+                const attPct = total === 0 ? 0 : Math.round((att / total) * 100);
+                const nonPct = total === 0 ? 0 : Math.round((non / total) * 100);
 
-                if (!groupedData[weekLabel]) {
-                    groupedData[weekLabel] = { 
-                        sumAtt: 0, 
-                        sumNon: 0, 
-                        count: 0 
-                    };
-                }
-
-                // แปลงค่า Attention/Non_Attention เป็นตัวเลข (เผื่อ DB เป็น string)
-                groupedData[weekLabel].sumAtt += Number(log.Attention || 0);
-                groupedData[weekLabel].sumNon += Number(log.Non_Attention || 0);
-                groupedData[weekLabel].count += 1;
-            });
-
-            // 3. แปลงเป็น Format ของ Recharts (หาค่าเฉลี่ยต่อสัปดาห์)
-            const formattedData = Object.keys(groupedData).map((key) => {
-                const item = groupedData[key];
                 return {
-                    name: key,
-                    // ปัดเศษทศนิยม
-                    attentive: Math.round(item.sumAtt / item.count),
-                    notAttentive: Math.round(item.sumNon / item.count),
+                    name: dayjs(item.summary_date).format("DD MMM"), 
+                    fullDate: item.summary_date,
+                    rawAtt: att,      
+                    rawNon: non,      
+                    attentivePct: attPct,  
+                    notAttentivePct: nonPct 
                 };
             });
 
             setChartData(formattedData);
 
         } catch (err) {
-            console.error("Error fetching camera logs:", err);
+            console.error("Error fetching daily summary:", err);
             setChartData([]);
         } finally {
             setLoadingChart(false);
         }
       };
 
-      fetchLogs();
+      fetchSummary();
     }
-  }, [selectedGroup, isOpen, subject]);
+  }, [selectedGroup, isOpen, subject, dateRange]); // 🟢 เพิ่ม dateRange ใน dependency array
 
   if (!isOpen) return null;
 
@@ -145,7 +141,7 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
                     {subject?.code} : {subject?.name}
                 </h2>
                 <p className="text-sm text-gray-500 mt-1 ml-8">
-                    หมวดหมู่: {subject?.category || "-"}
+                    หมวดหมู่ : {subject?.category || "-"}
                 </p>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500 hover:text-red-500">
@@ -202,9 +198,10 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
 
                 {/* Right Column: Chart */}
                 <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-full p-6">
-                    <div className="flex justify-between items-start mb-6">
+                    {/* 🟢 5. ปรับ Header กราฟให้มี DatePicker */}
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                         <div>
-                            <h3 className="font-bold text-lg text-gray-800">สถิติความสนใจรายสัปดาห์</h3>
+                            <h3 className="font-bold text-lg text-gray-800">สถิติความสนใจรายวัน (%)</h3>
                             <p className="text-sm text-gray-500">
                                 {selectedGroup 
                                     ? `กลุ่มเรียนที่ ${selectedGroup.group} (อ.${selectedGroup.teacher_name})`
@@ -212,9 +209,16 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
                                 }
                             </p>
                         </div>
-                        <div className="flex gap-4 text-xs font-medium">
-                            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-[#38A738]"></span> ตั้งใจ (เฉลี่ย)</div>
-                            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-[#FF4D4F]"></span> ไม่ตั้งใจ (เฉลี่ย)</div>
+                        
+                        {/* Date Range Picker */}
+                        <div className="flex items-center gap-2">
+                            <RangePicker 
+                                onChange={(dates) => setDateRange(dates)}
+                                placeholder={['วันที่เริ่มต้น', 'วันที่สิ้นสุด']}
+                                className="border-gray-300 rounded-lg hover:border-[#3D42D3] focus:border-[#3D42D3]"
+                                format="DD/MM/YYYY"
+                                allowClear
+                            />
                         </div>
                     </div>
 
@@ -233,24 +237,54 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart
                                         data={chartData}
-                                        margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                                        barSize={40}
+                                        margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
+                                        barGap={8} 
                                     >
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} dy={10} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} />
+                                        <XAxis 
+                                            dataKey="name" 
+                                            axisLine={false} 
+                                            tickLine={false} 
+                                            tick={{ fill: '#6B7280', fontSize: 12 }} 
+                                            dy={10} 
+                                        />
+                                        <YAxis 
+                                            axisLine={false} 
+                                            tickLine={false} 
+                                            tick={{ fill: '#6B7280', fontSize: 12 }} 
+                                            domain={[0, 100]} 
+                                            tickFormatter={(value) => `${value}%`} 
+                                        />
                                         <Tooltip 
                                             cursor={{ fill: '#F3F4F6' }}
                                             contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                            labelStyle={{ color: '#374151', fontWeight: 'bold' }}
+                                            formatter={(value, name, props) => {
+                                                if (name === "ตั้งใจเรียน") return [`${value}% (เฉลี่ย ${props.payload.rawAtt.toFixed(1)} คน)`, name];
+                                                if (name === "ไม่ตั้งใจ") return [`${value}% (เฉลี่ย ${props.payload.rawNon.toFixed(1)} คน)`, name];
+                                                return [value, name];
+                                            }}
                                         />
-                                        <Bar dataKey="attentive" name="ตั้งใจเรียน" stackId="a" fill="#38A738" radius={[0, 0, 4, 4]} />
-                                        <Bar dataKey="notAttentive" name="ไม่ตั้งใจ" stackId="a" fill="#FF4D4F" radius={[4, 4, 0, 0]} />
+                                        <Legend verticalAlign="top" height={36} iconType="circle"/>
+                                        
+                                        <Bar 
+                                            dataKey="attentivePct" 
+                                            name="ตั้งใจเรียน" 
+                                            fill="#38A738" 
+                                            radius={[4, 4, 0, 0]} 
+                                            barSize={30} 
+                                        />
+                                        <Bar 
+                                            dataKey="notAttentivePct" 
+                                            name="ไม่ตั้งใจ" 
+                                            fill="#FF4D4F" 
+                                            radius={[4, 4, 0, 0]} 
+                                            barSize={30} 
+                                        />
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
                                 <div className="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                    <p>ยังไม่มีข้อมูลสถิติการเรียนสำหรับกลุ่มนี้</p>
+                                    <p>ไม่พบข้อมูลในช่วงวันที่เลือก</p>
                                 </div>
                             )
                         ) : (

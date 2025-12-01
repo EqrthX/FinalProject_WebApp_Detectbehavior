@@ -11,7 +11,7 @@ const Schedule = () => {
 
     // กำหนดวันและช่องเวลา
     const days = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์"];
-    const timeSlots = [8, 9, 10, 11, 12, 13, 14, 15, 16];
+    const timeSlots = [8, 9, 10, 11, 12, 13, 14, 15, 16]; // 8:00 ถึง 16:00
 
     useEffect(() => {
         const fetchSchedule = async () => {
@@ -32,21 +32,18 @@ const Schedule = () => {
 
                 // --- 2. ดึงข้อมูลชื่ออาจารย์ ---
                 let finalTeacherName = teacherFullname;
-
                 const { data: teacherData, error: teacherError } = await supabase
                     .from("teacher")
-                    .select("teacher_id, first_name, last_name")
+                    .select("first_name, last_name")
                     .eq("teacher_id", teacherCode)
                     .single();
 
-                if (teacherError && teacherError.code !== "PGRST116") {
-                    console.warn("Teacher data fetch warning:", teacherError.message);
-                }
-
                 if (teacherData) {
                     finalTeacherName = `${teacherData.first_name} ${teacherData.last_name}`;
+                } else if (teacherError && teacherError.code !== "PGRST116") {
+                    console.warn("Teacher data fetch warning:", teacherError.message);
                 }
-
+                
                 // --- 3. ดึงตารางสอน ---
                 const { data: scheduleData, error: scheduleError } = await supabase
                     .from("class_schedule")
@@ -56,21 +53,15 @@ const Schedule = () => {
                 if (scheduleError) throw new Error("ไม่สามารถดึงตารางสอนได้: " + scheduleError.message);
 
                 // --- 4. ตั้งค่า State ---
-                if (scheduleData && scheduleData.length > 0) {
-                    setSchedule(scheduleData);
-                    setTeacherInfo({
-                        name: finalTeacherName, // ใช้ชื่อที่หามาได้
-                        year: scheduleData[0].year,
-                        semester: scheduleData[0].semester,
-                    });
-                } else {
-                    setSchedule([]);
-                    setTeacherInfo({
-                        name: finalTeacherName,
-                        year: "2568", // Default
-                        semester: "1", // Default
-                    });
-                }
+                const info = {
+                    name: finalTeacherName,
+                    year: (scheduleData && scheduleData.length > 0) ? scheduleData[0].year : "2568", 
+                    semester: (scheduleData && scheduleData.length > 0) ? scheduleData[0].semester : "1",
+                };
+
+                setSchedule(scheduleData || []);
+                setTeacherInfo(info);
+
             } catch (err) {
                 console.error("Error fetching schedule:", err);
                 toast.error(err.message || "เกิดข้อผิดพลาดในการดึงข้อมูล");
@@ -87,7 +78,7 @@ const Schedule = () => {
         navigate(`/user/Record/${subjectId}`);
     };
 
-    // Function สร้าง Body ของตาราง
+    // Function สร้าง Body ของตาราง (รวม ColSpan และรองรับการทับซ้อน)
     const renderTableBody = () => {
         if (loading) {
             return (
@@ -99,27 +90,18 @@ const Schedule = () => {
             );
         }
 
-        if (!teacherInfo) {
-            return (
-                <tr>
-                    <td colSpan="10" className="text-center p-8 text-red-500">
-                        ไม่พบข้อมูลอาจารย์
-                    </td>
-                </tr>
-            );
-        }
-
-        if (schedule.length === 0) {
+        if (!teacherInfo || schedule.length === 0) {
             return (
                 <tr>
                     <td colSpan="10" className="text-center p-8 text-gray-500">
-                        ไม่พบข้อมูลตารางสอนสำหรับ อ. {teacherInfo.name}
+                        {teacherInfo ? `ไม่พบข้อมูลตารางสอนสำหรับ อ. ${teacherInfo.name}` : "ไม่พบข้อมูลอาจารย์"}
                     </td>
                 </tr>
             );
         }
 
         return days.map((day) => {
+            // กรองและจัดเรียงคาบสอนสำหรับวันนี้
             const classesForDay = schedule
                 .filter((item) => String(item.day).trim() === day)
                 .sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
@@ -129,34 +111,83 @@ const Schedule = () => {
 
             while (slotIndex < timeSlots.length) {
                 const currentSlotHour = timeSlots[slotIndex];
-                const classItem = classesForDay.find(
+                
+                // 1. ค้นหาวิชาทั้งหมดที่ 'เริ่มต้น' ในช่วงเวลาปัจจุบัน
+                const startingClasses = classesForDay.filter(
                     (c) => c.start_time && parseInt(c.start_time.split(":")[0]) === currentSlotHour
                 );
 
-                if (classItem) {
-                    const startHour = parseInt(classItem.start_time.split(":")[0]);
-                    const endHour = classItem.end_time ? parseInt(classItem.end_time.split(":")[0]) : startHour + 1;
-                    const colSpan = endHour - startHour;
-                    const finalColSpan = colSpan > 0 ? colSpan : 1;
+                if (startingClasses.length > 0) {
+                    // 2. คำนวณ ColSpan ที่ใหญ่ที่สุด
+                    let maxColSpan = 1;
+                    let longestClass = startingClasses[0]; 
 
+                    startingClasses.forEach(classItem => {
+                        const startHour = parseInt(classItem.start_time.split(":")[0]);
+                        // ใช้ Math.ceil เพื่อปัดเศษขึ้น หากเวลาสิ้นสุดไม่ใช่ชั่วโมงเต็ม (เช่น 11:30 จะนับถึง 12:00)
+                        const endHourStr = classItem.end_time || `${startHour + 1}:00`;
+                        const endHourPart = parseInt(endHourStr.split(":")[0]);
+                        const endMinutePart = parseInt(endHourStr.split(":")[1] || "0");
+                        
+                        // ถ้านาที > 0 ให้ปัดชั่วโมงขึ้นไปอีก 1 ชั่วโมง (เพื่อให้ครอบคลุมช่องเวลา)
+                        let endHour = endHourPart + (endMinutePart > 0 ? 1 : 0);
+                        
+                        let colSpan = endHour - startHour;
+                        
+                        // ปรับให้ colSpan ไม่เกินขอบเขตของตารางเวลาที่เหลืออยู่
+                        if (slotIndex + colSpan > timeSlots.length) {
+                            colSpan = timeSlots.length - slotIndex;
+                        }
+
+                        if (colSpan > maxColSpan) {
+                            maxColSpan = colSpan;
+                            longestClass = classItem;
+                        }
+                    });
+
+                    // ตรวจสอบให้แน่ใจว่า ColSpan ไม่เป็น 0 หรือค่าลบ
+                    const finalColSpan = maxColSpan > 0 ? maxColSpan : 1;
+                    
+                    // 3. สร้าง Cell สำหรับคาบสอนที่ทับซ้อน/รวมแล้ว
                     cells.push(
-                        <td
-                            key={classItem.subject_id + classItem.group}
-                            colSpan={finalColSpan}
-                            className="bg-yellow-400 text-sm cursor-pointer hover:bg-orange-500 hover:text-white transition-all duration-200 p-2 border border-gray-300 align-top text-center shadow-sm"
-                            onClick={() => handleCourseClick(classItem.subject_id)}
-                            title="คลิกเพื่อบันทึกการสอน"
-                        >
-                            <u className="font-bold">{classItem.subject_id}</u> <br />
-                            <span className="font-medium">
-                                {classItem.subject_name || "(ไม่พบชื่อวิชา)"}
-                            </span> <br />
-                            <span className="text-xs">กลุ่ม {classItem.group} | ห้อง {classItem.room}</span> <br />
-                            <span className="text-xs">[{classItem.start_time} - {classItem.end_time}]</span>
-                        </td>
+<td
+        key={longestClass.subject_id + longestClass.group + currentSlotHour} 
+        colSpan={finalColSpan}
+
+        className="bg-yellow-400 text-xs cursor-pointer transition-all duration-200 border border-gray-300 align-top text-center shadow-sm p-0.5"
+        style={{ position: 'relative' }}
+    >
+        {/* แสดงทุกวิชาที่เริ่มต้น ณ จุดนี้ในเซลล์เดียว */}
+        {startingClasses.map((classItem, index) => (
+            <div 
+                key={classItem.subject_id + classItem.group + index}
+                className={`
+                    hover:bg-orange-500 hover:text-white 
+                    transition-all duration-200 
+                    p-0.5 rounded // 4. ลด padding ภายในเหลือ p-0.5
+                    ${index > 0 ? "mt-1 border-t border-yellow-500/50" : ""}
+                    ${startingClasses.length > 1 ? "bg-yellow-500/30" : "bg-transparent"}
+                `}
+                onClick={() => handleCourseClick(classItem.subject_id)}
+                title="คลิกเพื่อบันทึกการสอน"
+            >
+                <u className="font-bold">{classItem.subject_id}</u> <br />
+                {/* 5. ลดขนาดชื่อวิชา */}
+                <span className="font-medium text-[10px]"> 
+                    {classItem.subject_name || "(ไม่พบชื่อวิชา)"}
+                </span> <br />
+                {/* 6. ลดขนาดกลุ่ม/ห้อง/เวลา ให้เล็กที่สุด */}
+                <span className="text-[9px]">กลุ่ม {classItem.group} | ห้อง {classItem.room}</span> <br />
+                <span className="text-[9px]">[{classItem.start_time} - {classItem.end_time}]</span>
+            </div>
+        ))}
+    </td>
                     );
+                    
+                    // 4. ข้ามช่องเวลาตาม colSpan ที่คำนวณได้
                     slotIndex += finalColSpan;
                 } else {
+                    // 5. ช่องว่าง (Empty slot)
                     cells.push(
                         <td key={`${day}-${currentSlotHour}`} className="border border-gray-300 bg-white/50"></td>
                     );
@@ -174,7 +205,6 @@ const Schedule = () => {
     };
 
     return (
-        // 🔹 ปรับ CSS Container ให้เหมือน Classroom เป๊ะๆ (Rounded, Shadow, Border)
         <div className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6 h-full w-full">
             
             <h2 className="flex items-center space-x-2 text-lg font-semibold text-black mb-4">
@@ -196,14 +226,14 @@ const Schedule = () => {
                     </div>
                 </h2>
             )}
-
+            {/* กำหนดหัวตาราง */}
             <div className="overflow-x-auto">
                 <table className="w-full min-w-[800px] text-center border-collapse border border-gray-300">
                     <thead>
                         <tr className="bg-gray-200 text-gray-700">
                             <th className="border border-gray-300 p-2 w-24">วัน / เวลา</th>
                             {timeSlots.map((t) => (
-                                <th key={t} className="border border-gray-300 p-2">
+                                <th key={t} className="border border-gray-300 p-0.5 text-xs sm:text-sm">
                                     {t}:00 - {t + 1}:00
                                 </th>
                             ))}
@@ -217,12 +247,12 @@ const Schedule = () => {
             
             {/* หมายเหตุเพิ่มเติม */}
             <div className="mt-6 p-4 bg-gray-50 rounded-lg text-xs text-gray-500">
-                            <p className="font-semibold mb-1">* หมายเหตุ</p>
-                            <ul className="list-disc list-inside space-y-1">
-                                <li>คลิกที่แถบวิชาเพื่อทำการ <b>บันทึกการสอน (Record)</b></li>
-                                <li>ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุุกภาคเทอม</li>
-                            </ul>
-                        </div>
+                <p className="font-semibold mb-1">* หมายเหตุ</p>
+                <ul className="list-disc list-inside space-y-1">
+                    <li>คลิกที่แถบวิชาเพื่อทำการ <b>บันทึกการสอน (Record)</b></li>
+                    <li>ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุกภาคเทอม</li>
+                </ul>
+            </div>
         </div>
     );
 };

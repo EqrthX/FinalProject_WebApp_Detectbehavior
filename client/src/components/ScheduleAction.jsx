@@ -111,7 +111,7 @@ export const UploadScheduleAction = ({
             existing.group === classSchedule.group &&
             existing.teacher_id === classSchedule.teacher_id
         ) {
-            toast.error(`ข้อมูลซ้ำ: อาจารย์ ${classSchedule.teacher_name} มีตารางสอนวิชานี้ กลุ่มนี้ อยู่แล้ว ⚠️`);
+            toast.error(`ข้อมูลซ้ำ: อาจารย์ ${classSchedule.teacher_name} มีตารางสอนวิชานี้ กลุ่มนี้ อยู่แล้ว`);
             return;
         }
 
@@ -133,7 +133,7 @@ export const UploadScheduleAction = ({
                     continue; 
                 } else {
                     // ❌ ถ้าคนละห้อง -> ห้าม! (อาจารย์แยกร่างไปสอนอีกห้องไม่ได้)
-                    toast.error(`ไม่สามารถเพิ่มได้: อาจารย์ ${classSchedule.teacher_name} ติดสอนอยู่ที่ห้อง ${existing.room} ในเวลานี้ ⚠️`);
+                    toast.error(`ไม่สามารถเพิ่มได้: อาจารย์ ${classSchedule.teacher_name} ติดสอนอยู่ที่ห้อง ${existing.room} ในเวลานี้`);
                     return;
                 }
             }
@@ -149,7 +149,7 @@ export const UploadScheduleAction = ({
                     continue;
                 } else {
                     // ❌ ไม่อนุญาต: มีคนอื่นใช้ออกอยู่สอนวิชาอื่น
-                    toast.error(`ห้อง ${classSchedule.room} ไม่ว่าง (มีสอนวิชา ${existing.subject_id}) ⚠️`);
+                    toast.error(`ห้อง ${classSchedule.room} ไม่ว่าง (มีสอนวิชา ${existing.subject_id})`);
                     return;
                 }
             }
@@ -158,7 +158,7 @@ export const UploadScheduleAction = ({
 
     } catch (err) {
       console.error("Check duplicate error:", err);
-      toast.error("เกิดข้อผิดพลาดในการตรวจสอบ ❌");
+      toast.error("เกิดข้อผิดพลาดในการตรวจสอบ");
       return;
     }
     // ----------------------------------------------------
@@ -503,9 +503,9 @@ export const EditScheduleAction = ({
         .eq("class_schedule_id", scheduleData.id);
 
     if (error) {
-      toast.error(`เกิดข้อผิดพลาดในการแก้ไข: ${error.message} ❌`);
+      toast.error(`เกิดข้อผิดพลาดในการแก้ไข: ${error.message}`);
     } else {
-      toast.success("แก้ไขข้อมูลสำเร็จ! ✅");
+      toast.success("แก้ไขข้อมูลสำเร็จ!");
       onSuccess();
       onClose();
     }

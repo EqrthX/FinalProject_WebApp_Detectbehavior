@@ -80,20 +80,20 @@ const AdminClassRoom = () => {
 
   // 7. (Optional) แสดงเมื่อไม่พบข้อมูล
   if (!teacher) {
-     return (
+    return (
       <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4">
         <aside className="w-full md:w-64">
           <AdminNavbar />
         </aside>
         <main className="flex-1">
-           <div className="max-w-screen-2xl mx-auto px-6 md:px-4">
-              <div className="mt-5">
-                <Breadcrumbs />
-              </div>
-              <div className="w-full bg-white rounded-[20px] p-6 text-center text-red-500">
-                ไม่พบข้อมูลอาจารย์
-              </div>
-           </div>
+          <div className="max-w-screen-2xl mx-auto px-6 md:px-4">
+            <div className="mt-5">
+              <Breadcrumbs />
+            </div>
+            <div className="w-full bg-white rounded-[20px] p-6 text-center text-red-500">
+              ไม่พบข้อมูลอาจารย์
+            </div>
+          </div>
         </main>
       </div>
     );
@@ -109,16 +109,16 @@ const AdminClassRoom = () => {
       {/* Main */}
       <main className="flex-1 transition-all lg:pl-[0rem] md:pl-0 sm:pl-0">
         <div className="max-w-screen-2xl mx-auto px-6 md:px-4">
-          
           <div className="mt-5">
             <Breadcrumbs />
           </div>
 
           {/* Top bar */}
-          <div className="w-full bg-white rounded-[20px] border border-[#e9e9e9] shadow-sm h-auto md:h-16 px-6 md:px-4 flex flex-col md:flex-row items-start md:items-center justify-between py-3 md:py-0">
-            <h1 className="text-[22px] md:text-[18px] font-semibold text-black">
+          <div className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 flex items-center justify-between mt-0 flex-shrink-0 sticky top-0 z-20">
+            <h1 className="text-[18px] font-semibold text-black">
               ตารางสอน: {teacher.fullname} {/* แสดงชื่ออาจารย์ */}
             </h1>
+
             <span className="text-sm text-gray-600">
               {teacher.faculty} | {teacher.major}
             </span>
@@ -129,9 +129,7 @@ const AdminClassRoom = () => {
             <Classroom teacherData={teacher} />
             <div className="mt-4 p-3 text-sm text-gray-600">
               <p className="italic">*หมายเหตุ</p>
-              <p className="mt-1">
-                ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุุกภาคเทอม
-              </p>
+              <p className="mt-1">ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุกภาคเทอม</p>
             </div>
           </div>
         </div>

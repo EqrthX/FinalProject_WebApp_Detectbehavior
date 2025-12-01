@@ -92,7 +92,7 @@ const TeachingSchedule = () => {
         }
 
         return days.map((day) => {
-            // กรองวิชาในวันนั้นๆ
+            // กรองและจัดเรียงคาบสอนสำหรับวันนี้
             const classesForDay = schedule
                 .filter((item) => String(item.day).trim() === day)
                 .sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
@@ -102,43 +102,82 @@ const TeachingSchedule = () => {
 
             while (slotIndex < timeSlots.length) {
                 const currentSlotHour = timeSlots[slotIndex];
-                
-                // หาวิชาที่เริ่มในชั่วโมงนี้
-                const classItem = classesForDay.find(
+
+                // 1. ค้นหาวิชาทั้งหมดที่ 'เริ่มต้น' ในช่วงเวลาปัจจุบัน
+                const startingClasses = classesForDay.filter(
                     (c) => c.start_time && parseInt(c.start_time.split(":")[0]) === currentSlotHour
                 );
 
-                if (classItem) {
-                    const startHour = parseInt(classItem.start_time.split(":")[0]);
-                    const endHour = classItem.end_time ? parseInt(classItem.end_time.split(":")[0]) : startHour + 1;
-                    const colSpan = endHour - startHour;
-                    const finalColSpan = colSpan > 0 ? colSpan : 1;
+                if (startingClasses.length > 0) {
+                    // 2. คำนวณ ColSpan ที่ใหญ่ที่สุด
+                    let maxColSpan = 1;
+                    let longestClass = startingClasses[0];
 
-                    // สร้าง Cell วิชาเรียน
+                    startingClasses.forEach(classItem => {
+                        const startHour = parseInt(classItem.start_time.split(":")[0]);
+                        // ใช้ Math.ceil เพื่อปัดเศษขึ้น หากเวลาสิ้นสุดไม่ใช่ชั่วโมงเต็ม (เช่น 11:30 จะนับถึง 12:00)
+                        const endHourStr = classItem.end_time || `${startHour + 1}:00`;
+                        const endHourPart = parseInt(endHourStr.split(":")[0]);
+                        const endMinutePart = parseInt(endHourStr.split(":")[1] || "0");
+
+                        // ถ้านาที > 0 ให้ปัดชั่วโมงขึ้นไปอีก 1 ชั่วโมง (เพื่อให้ครอบคลุมช่องเวลา)
+                        let endHour = endHourPart + (endMinutePart > 0 ? 1 : 0);
+
+                        let colSpan = endHour - startHour;
+
+                        // ปรับให้ colSpan ไม่เกินขอบเขตของตารางเวลาที่เหลืออยู่
+                        if (slotIndex + colSpan > timeSlots.length) {
+                            colSpan = timeSlots.length - slotIndex;
+                        }
+
+                        if (colSpan > maxColSpan) {
+                            maxColSpan = colSpan;
+                            longestClass = classItem;
+                        }
+                    });
+
+                    // ตรวจสอบให้แน่ใจว่า ColSpan ไม่เป็น 0 หรือค่าลบ
+                    const finalColSpan = maxColSpan > 0 ? maxColSpan : 1;
+
+                    // 3. สร้าง Cell สำหรับคาบสอนที่ทับซ้อน/รวมแล้ว
                     cells.push(
                         <td
-                            key={classItem.subject_id + classItem.group}
+                            key={longestClass.subject_id + longestClass.group + currentSlotHour}
                             colSpan={finalColSpan}
-                            className="bg-yellow-400 text-sm cursor-pointer hover:bg-orange-400 transition-colors p-2 border border-gray-300 align-top text-center relative group"
-                            onClick={() => handleCourseClick(classItem.subject_id)} // 👈 จุดสำคัญ: คลิกแล้วไป Record
-                            title="คลิกเพื่อบันทึกการสอน"
+                            className="bg-yellow-400 text-sm cursor-pointer transition-all duration-200 border border-gray-300 align-top text-center shadow-sm "
+                            style={{ position: 'relative' }}
                         >
-                            <u>{classItem.subject_id}</u> <br />
-                            <span className="font-medium">{classItem.subject_name || "(ไม่พบชื่อวิชา)"}</span> <br />
-                            <span className="text-xs">กลุ่ม {classItem.group} | ห้อง {classItem.room}</span> <br />
-                            <span className="text-xs">[{classItem.start_time} - {classItem.end_time}]</span>
-                            
-                            {/* Hover Hint */}
-                            <div className="absolute inset-0 bg-black/10 hidden group-hover:flex items-center justify-center text-white font-bold text-xs pointer-events-none">
-                                คลิกเพื่อบันทึก
-                            </div>
+                            {/* แสดงทุกวิชาที่เริ่มต้น ณ จุดนี้ในเซลล์เดียว */}
+                            {startingClasses.map((classItem, index) => (
+                                <div
+                                    key={classItem.subject_id + classItem.group + index}
+                                    className={`
+                    hover:bg-orange-500 hover:text-white 
+                    transition-all duration-200 
+                    p-3 rounded 
+                    ${index > 0 ? "mt-1 border-t border-yellow-500/50" : ""}
+                    ${startingClasses.length > 1 ? "bg-yellow-500/30" : "bg-transparent"}
+                `}
+                                    onClick={() => handleCourseClick(classItem.subject_id)}
+                                    title="คลิกเพื่อบันทึกการสอน"
+                                >
+                                    <span className="font-bold">{classItem.subject_id} </span> 
+                                    <span className="font-medium text-[15px]">
+                                        {classItem.subject_name || "(ไม่พบชื่อวิชา)"}
+                                    </span> <br />
+                                    <span className="text-[15px]">กลุ่ม {classItem.group} | ห้อง {classItem.room}</span> <br />
+                                    <span className="text-[15px]">[{classItem.start_time} - {classItem.end_time}]</span>
+                                </div>
+                            ))}
                         </td>
                     );
+
+                    // 4. ข้ามช่องเวลาตาม colSpan ที่คำนวณได้
                     slotIndex += finalColSpan;
                 } else {
-                    // ช่องว่าง
+                    // 5. ช่องว่าง (Empty slot)
                     cells.push(
-                        <td key={`${day}-${currentSlotHour}`} className="border border-gray-300 bg-white"></td>
+                        <td key={`${day}-${currentSlotHour}`} className="border border-gray-300 bg-white/50"></td>
                     );
                     slotIndex++;
                 }
@@ -203,7 +242,7 @@ const TeachingSchedule = () => {
                             <p className="font-semibold mb-1">* หมายเหตุ</p>
                             <ul className="list-disc list-inside space-y-1">
                                 <li>คลิกที่แถบวิชาเพื่อทำการ <b>บันทึกการสอน (Record)</b></li>
-                                <li>ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุุกภาคเทอม</li>
+                                <li>ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุกภาคเทอม</li>
                             </ul>
                         </div>
                     </div>

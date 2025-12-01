@@ -91,7 +91,7 @@ export const TeacherActionModal = ({
           .eq("id", teacherData.id);
 
         if (error) throw error;
-        toast.success("แก้ไขข้อมูลสำเร็จ ✅");
+        toast.success("แก้ไขข้อมูลสำเร็จ");
 
       } else {
         // --- CREATE ---
@@ -102,12 +102,12 @@ export const TeacherActionModal = ({
         payload.append("password", password);
         payload.append("teacher_id", teacherId);
         payload.append("fullname", fullname);
-        payload.append("major", majorId);
+        payload.append("majorId", majorId);
 
         const response = await axios.post(`admin/create-teacher`, payload, {
           headers: { "Content-Type": "multipart/form-data" },
         });
-        toast.success(response.data.detail || "เพิ่มข้อมูลสำเร็จ ✅");
+        toast.success(response.data.detail || "เพิ่มข้อมูลสำเร็จ");
       }
 
       onSuccess(); // Refresh data in parent
@@ -131,21 +131,8 @@ export const TeacherActionModal = ({
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           
-          {/* Email */}
-          <div className={`relative mt-2 ${isEditMode ? "opacity-60 pointer-events-none" : ""}`}>
-            <input
-              type="text"
-              id="email"
-              value={formData.email}
-              disabled={isEditMode}
-              onChange={handleChange}
-              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
-              placeholder="อีเมล"
-            />
-            <label htmlFor="email" className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">
-              อีเมล {isEditMode ? "(แก้ไขไม่ได้)" : <span className="text-red-500">*</span>}
-            </label>
-          </div>
+          
+          
 
           {/* Password (Create Only) */}
           {!isEditMode && (
@@ -171,12 +158,15 @@ export const TeacherActionModal = ({
               id="teacherId"
               inputMode="numeric"
               value={formData.teacherId}
+              /* 🟢 2. สั่ง disable เมื่อเป็นโหมดแก้ไข */
+              disabled={isEditMode}
               onChange={(e) => setFormData({...formData, teacherId: e.target.value.replace(/[^0-9]/g, "")})}
-              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
               placeholder="รหัสประจำตัว"
             />
             <label htmlFor="teacherId" className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">
-              รหัสประจำตัว <span className="text-red-500">*</span>
+              {/* 🟢 3. เปลี่ยนข้อความ Label ให้ผู้ใช้รู้ */}
+              รหัสประจำตัว {isEditMode ? "(แก้ไขไม่ได้)" : <span className="text-red-500">*</span>}
             </label>
           </div>
 
@@ -265,11 +255,11 @@ export const deleteTeacher = async (id) => {
         try {
             const { error } = await supabase.from("teacher").delete().eq("id", id);
             if (error) throw error;
-            toast.success("ลบข้อมูลเรียบร้อย ✅");
+            toast.success("ลบข้อมูลเรียบร้อย");
             return true; // ส่งค่าบอกว่าลบสำเร็จ
         } catch (err) {
             console.error("Delete Error:", err);
-            toast.error("ลบข้อมูลไม่สำเร็จ ❌");
+            toast.error("ลบข้อมูลไม่สำเร็จ");
             return false;
         }
     }

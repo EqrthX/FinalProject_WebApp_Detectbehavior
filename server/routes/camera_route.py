@@ -4,6 +4,8 @@ import time               # ใช้สำหรับจับเวลา เ
 import base64             # ใช้แปลง bytes ของรูปเป็น base64 เพื่อส่งผ่าน WebSocket / JSON
 import asyncio            # ใช้สำหรับ async/await ใน FastAPI (WebSocket / Router ต่าง ๆ)
 import torch              # ใช้ดูว่ามี GPU ไหม (cuda) และใช้กับ YOLO ที่อยู่ใน ultralytics
+import os                 # ใช้จัดการ path ของไฟล์
+import json
 from datetime import datetime           # ใช้สำหรับเวลาปัจจุบันเก็บลง summary
 from collections import defaultdict     # ใช้ dict แบบค่า default=0 (นับจำนวน class ต่าง ๆ)
 from typing import Optional             # ใช้บอก type ของพารามิเตอร์ที่เป็น optional
@@ -14,11 +16,10 @@ from fastapi import (
     WebSocketDisconnect,# สำหรับจับ event เมื่อ WebSocket หลุด
     Depends,            # ใช้กับ Depends(verify_token) เพื่อเช็ค token
 )
-
 from utils.model_loader import get_model_path          # ฟังก์ชันหา path model (จากไฟล์อื่น)
 from utils.auth import verify_token               # ฟังก์ชันเช็ค token ของผู้ใช้
 from config.bn_supabase import supabase_client    # client สำหรับเรียก Supabase
-from utils.json_buffer import save_buffer, load_buffer, clear_buffer  # จัดการไฟล์ buffer JSON
+from utils.json_buffer import get_all_pending_files, save_buffer
 
 # ----------------- Router หลักของกล้อง -----------------
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
@@ -140,6 +141,8 @@ class CameraThread(threading.Thread):
         # ให้หายไปได้สูงสุดกี่เฟรมก่อนจะยอม reset main_track_id
         self.main_max_lost_frames = 5   
         self.last_detect_time = 0
+
+        self.last_target_center = None
         
     # ----------------------------------------------------------------------
     # ฟังก์ชันเปิดกล้อง (พยายามหลาย backend)
@@ -255,8 +258,8 @@ class CameraThread(threading.Thread):
                         # - tracker="bytetrack.yaml" → ใช้ ByteTrack เป็น tracker
                         results = self.model.track(
                             source=frame,           # เฟรมปัจจุบันจากกล้อง
-                            conf=0.20,              # ค่าความมั่นใจขั้นต่ำในการ detect
-                            iou=0.45,               # ค่า IOU ขั้นต่ำในการจับคู่ box กับ track
+                            conf=0.45,              # ค่าความมั่นใจขั้นต่ำในการ detect
+                            iou=0.50,               # ค่า IOU ขั้นต่ำในการจับคู่ box กับ track
                             device=self.device,     # "cuda" หรือ "cpu"
                             verbose=False,          # ไม่ต้อง print log จาก ultralytics
                             persist=True,           # ให้ YOLO จำ track_id ต่อเนื่อง
@@ -365,6 +368,7 @@ class CameraThread(threading.Thread):
 
         # ถ้า miss ถึง threshold (5 ครั้งติดต่อกัน)
         if timer["miss"] >= 5:
+            # เปลี่ยน current_class เป็น label ใหม่
             timer["current_class"] = label
             timer["duration"] = 0.0
             timer["miss"] = 0
@@ -373,205 +377,148 @@ class CameraThread(threading.Thread):
     # ฟังก์ชันประมวลผล Behavior จาก YOLO result (โหมด track)
     # ----------------------------------------------------------------------
     def process_behavior_track(self, result, now: float):
-        """
-        ประมวลผล behavior โดยใช้ผลลัพธ์จาก YOLO track.
-
-        Concept :
-        - สนใจเฉพาะคลาสใน ATTENDENCE + NON_ATTENDENCE
-        - ใช้ main_track_id เลือก "คนหลักคนแรก"
-        - เฟรมต่อ ๆ ไป: ใช้เฉพาะ box ที่ track_id == main_track_id
-        - คนอื่นที่เดินผ่าน (track_id อื่น) → print log ว่า ignore
-        - ถ้าไม่เจอคนหลักติด ๆ กันหลายเฟรม → reset main_track_id
-        - ทุก ๆ 5 วินาที → เรียก handle_interval() ตามเวลา
-        """
-        
         boxes = result.boxes
 
-        # ถ้าไม่มี box เลยในเฟรมนี้
         if boxes is None or len(boxes) == 0:
             if self.main_track_id is not None:
                 self.main_lost_frames += 1
-
-                # ถ้าหายเกิน limit → ยอม reset main_track_id
                 if self.main_lost_frames >= self.main_max_lost_frames:
                     self.main_track_id = None
+                    self.last_target_center = None # ลืมตำแหน่งด้วย
                     self.main_lost_frames  = 0
             return
 
-        # list เก็บ detection ที่ "เกี่ยวข้อง" (เฉพาะคลาสที่เราสนใจ)
+        # 1. เตรียมข้อมูล Detections + คำนวณ Center
         detections = []
-
-        # วนดูทุก box ที่ detect ได้
         for box in boxes:
-            # index class → ชื่อคลาส
             cls_idx = int(box.cls)
             label = self.model.names[cls_idx]
-
-            # สนใจเฉพาะ class ที่อยู่ใน list ATTENDENCE + NON_ATTENDENCE
             if label not in ATTENDENCE + NON_ATTENDENCE:
                 continue
 
-            # ค่าความมั่นใจของ box นี้ (confidence)
             conf = float(box.conf.item())
+            track_id = int(box.id.item()) if box.id is not None else None
+            
+            if track_id is None: continue
 
-            # track_id (ถ้า YOLO ตั้งให้)
-            track_id = None
-            if box.id is not None:
-                track_id = int(box.id.item() if hasattr(box.id, "item") else box.id)
-
-            # ถ้าไม่มี track_id → ข้าม (เพราะเราจะใช้ track_id ในการเลือกคนหลัก)
-            if track_id is None:
-                continue
+            # คำนวณ Center (x, y)
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            cx = (x1 + x2) / 2
+            cy = (y1 + y2) / 2
 
             detections.append({
-                "box": box,
-                "label": label,
-                "conf": conf,
-                "track_id": track_id,
+                "box": box, "label": label, "conf": conf, "track_id": track_id,
+                "center": (cx, cy) # เก็บตำแหน่งไว้เทียบ
             })
 
-        # ถ้าไม่มี detection ที่เข้าเงื่อนไขเลย
         if not detections:
-            # นับว่าไม่เจอคนหลักในเฟรมนี้
-            if self.main_track_id is not None:
-                self.main_lost_frames += 1
-                if self.main_lost_frames >= self.main_max_lost_frames:
-                    print(f"❌ [Cam {self.camera_id}] Target Lost too long (no valid det). Resetting ID.")
-                    self.main_track_id = None
-                    self.main_lost_frames = 0
             return
 
-        # ----------------- เลือก / ติดตาม main_track_id -----------------
-        
-        # ถ้ายังไม่มีคนหลักมาก่อนเลย → เลือกจาก detection ที่ conf สูงสุดในเฟรมนี้
+        # ----------------- 2. Logic เลือก Target -----------------
+        found_det = None
+
+        # กรณี A: ยังไม่มี Target -> เอาคนที่ Conf สูงสุด
         if self.main_track_id is None:
             best = max(detections, key=lambda d: d["conf"])
             self.main_track_id = best["track_id"]
+            self.last_target_center = best["center"]
             self.main_lost_frames = 0
             self.last_target_conf = best["conf"]
-
-            print(
-                f"🎯 [Cam {self.camera_id}] New Target ID={self.main_track_id} "
-                f"({best['label']} conf={best['conf']:.2f})"
-            )
-
-            # ถ้า conf สูงพอ (เช่น > 0.6) → อัปเดต behavior ทันที
+            
+            print(f"🎯 [Cam {self.camera_id}] New Target ID={self.main_track_id} ({best['label']})")
             if best["conf"] > 0.60:
                 self.update_class_state(best["label"])
+            found_det = best
 
+        # กรณี B: มี Target แล้ว -> ตามล่าหาคนเดิม
         else:
-            target_det = None
-
+            # 2.1 ลองหาจาก ID ก่อน (แม่นยำสุด)
             for d in detections:
                 if d["track_id"] == self.main_track_id:
-                    target_det = d
-                else:
-                    # คนอื่นที่เดินผ่าน → เมิน
-                    print(
-                        f"🚫 [Cam {self.camera_id}] Ignoring Stranger ID={d['track_id']} "
-                        f"({d['label']} conf={d['conf']:.2f})"
-                    )
+                    found_det = d
+                    break
+            
+            # 2.2 ถ้าไม่เจอ ID เดิม -> ลองดูว่ามีใคร "นั่งที่เดิม" ไหม (Distance Check)
+            if found_det is None and self.last_target_center is not None:
+                last_cx, last_cy = self.last_target_center
+                min_dist = 150
+                closest = None
+                
+                for d in detections:
+                    dcx, dcy = d["center"]
+                    dist = ((dcx - last_cx)**2 + (dcy - last_cy)**2)**0.5 # สูตรระยะทาง
+                    if dist < 150 and dist < min_dist: # ถ้าระยะห่างน้อยกว่า 150px
+                        min_dist = dist
+                        closest = d
+                
+                # ถ้าเจอคนนั่งที่เดิม (แต่ ID เปลี่ยน) -> ยึดเป็น Target ใหม่เลย
+                if closest is not None:
+                    print(f"🔄 [Cam {self.camera_id}] ID Switched {self.main_track_id}->{closest['track_id']} (Dist:{min_dist:.1f})")
+                    self.main_track_id = closest["track_id"]
+                    found_det = closest
 
-            if target_det is not None:
-                # เจอคนหลักในเฟรมนี้
+        # ----------------- 3. สรุปผล & Print Log -----------------
+        if found_det:
+            # เจอ Target (ตัวจริง)
+            self.main_lost_frames = 0
+            self.last_target_conf = found_det["conf"]
+            self.last_target_center = found_det["center"] # อัปเดตตำแหน่งล่าสุดเสมอ
+
+            # Print Log Target
+            # print(f"✅ [Cam {self.camera_id}] Active Target: ID={found_det['track_id']} {found_det['label']}")
+
+            if found_det["conf"] >= 0.50:
+                self.update_class_state(found_det["label"])
+        else:
+            # ไม่เจอ Target เลย (หายไปจากจอ หรือ ลุกเดินไปไกล)
+            self.main_lost_frames += 1
+            if self.main_lost_frames >= self.main_max_lost_frames:
+                print(f"❌ [Cam {self.camera_id}] Target Lost completely. Resetting.")
+                self.main_track_id = None
+                self.last_target_center = None
                 self.main_lost_frames = 0
-                self.last_target_conf = target_det["conf"]
 
-                if target_det["conf"] >= 0.6:
-                    self.update_class_state(target_det["label"])
+        # Print Log สำหรับคนเดินผ่าน (Stranger)
+        # ใครก็ตามที่ ID ไม่ตรงกับ main_track_id (หลังจากผ่าน process ข้างบนแล้ว) คือ Stranger
+        for d in detections:
+            if d["track_id"] != self.main_track_id:
+                print(f"🚫 [Cam {self.camera_id}] Ignoring Stranger ID={d['track_id']} ({d['label']})")
 
-                # debug log
-                # print(
-                #     f"✅ [Cam {self.camera_id}] Target ID={self.main_track_id} "
-                #     f"{target_det['label']} ({target_det['conf']:.2f})"
-                # )
+        # ----------------- 4. Timer Interval -----------------
+        if now - self.last_interval_time >= self.interval_seconds:
+            self.last_interval_time = now
+            self.handle_interval()
 
-            else:
-                # ไม่เจอคนหลักเลยในเฟรมนี้
-                self.main_lost_frames += 1
-                print(
-                    f"⚠️ [Cam {self.camera_id}] Target ID={self.main_track_id} lost "
-                    f"({self.main_lost_frames}/{self.main_max_lost_frames})"
-                )
-
-                if self.main_lost_frames >= self.main_max_lost_frames:
-                    print(f"❌ [Cam {self.camera_id}] Target Lost too long. Resetting ID.")
-                    self.main_track_id = None
-                    self.main_lost_frames = 0
-
-            # ----------------- เรียก handle_interval() ทุก ๆ 5 วินาที -----------------
-            # เช็คว่าจากครั้งสุดท้ายที่ handle_interval() ถูกเรียกผ่านมาเกิน 5 วินาทีหรือยัง
-            if now - self.last_interval_time >= self.interval_seconds:
-                # อัปเดตเวลา last_interval_time เป็นตอนนี้
-                self.last_interval_time = now
-                self.handle_interval()
-
-    # ----------------------------------------------------------------------
-    # ฟังก์ชัน handle_interval — ถูกเรียกทุก ๆ 5 วินาที
-    # ----------------------------------------------------------------------
+    
     def handle_interval(self):
-        """
-        ฟังก์ชันนี้จะถูกเรียกทุก ๆ self.interval_seconds (5 วินาที)
-        เพื่อ:
-        - ดูค่า current_class จาก self.class_timer
-        - ถ้าเป็น LookingAway:
-            - เพิ่ม duration ทีละ 5 วินาที
-            - ใช้ duration ตัดสินว่า map เป็น LookingAway / Looking_at_the_board / Taking_notes
-        - นำ class ที่ได้ (mapped) ไปเก็บใน self.interval_results
-        - ถ้าสะสมครบ self.max_intervals (12 ครั้ง = 1 นาที):
-            - เรียก save_summary() สรุปผล 1 นาที
-            - reset ตัวนับ interval ต่าง ๆ
-        """
-        # ดึง current_class ที่คำนวณล่าสุด
         cls = self.class_timer["current_class"]
         mapped = cls
-
-        # ถ้า current_class เป็น "LookingAway" → ใช้ duration แปลเป็น 3 level
         if cls == "LookingAway":
-            # เพิ่มเวลา duration = duration เดิม + 5 วินาที
             self.class_timer["duration"] += self.interval_seconds
             dur = self.class_timer["duration"]
-
-            # ถ้า duration <= 15 วิ → mapped = "LookingAway"
-            if dur <= 15:
+            if dur <= 15: 
                 mapped = "LookingAway"
-            # ถ้า duration <= 35 วิ → mapped = "Looking_at_the_board"
-            elif dur <= 35:
+            elif dur <= 35: 
                 mapped = "Looking_at_the_board"
-            # เกิน 35 วิ → mapped = "Taking_notes"
-            else:
+            else: 
                 mapped = "Taking_notes"
         else:
-            # ถ้าไม่ใช่ LookingAway → reset duration เป็น 0
             self.class_timer["duration"] = 0.0
 
-        # ถ้า mapped ไม่ใช่ None → เอาไปเก็บใน interval_results
         if mapped:
             self.interval_results.append(mapped)
-            # log เล็ก ๆ สำหรับ debug ว่าตอนนี้ class อะไร conf เท่าไหร่ และมี interval กี่อันแล้ว
-            print(
-                f"⏱️ Cam {self.camera_id}: class: {mapped} "
-                f"conf: {self.last_target_conf:.3f} "
-                f"({len(self.interval_results)})"
-            )
+            print(f"⏱️ Cam {self.camera_id}: class: {mapped} ({len(self.interval_results)})")
 
-        # ถ้าเก็บ interval_results เกิน max_intervals → ลบตัวเก่าสุดออก (ให้ list มีขนาด max)
         if len(self.interval_results) > self.max_intervals:
             self.interval_results.pop(0)
 
         self.interval_count += 1
-        # ถ้าเกินหรือเท่ากับ max_intervals (12 ครั้ง = 1 นาที)
         if self.interval_count >= self.max_intervals:
             self.save_summary()
-
-            # reset ตัวนับ interval, interval_results, miss, duration
             self.interval_count = 0
             self.interval_results.clear()
-
-            # reset ค่าอื่น ๆ ที่เคยใช้ (ป้องกัน state เก่ามีผลเกินจำเป็น)
             self.class_timer["miss"] = 0
             self.class_timer["duration"] = 0.0
-
     # ----------------------------------------------------------------------
     # ฟังก์ชัน save_summary — สรุปผลทุก 1 นาที
     # ----------------------------------------------------------------------
@@ -931,149 +878,143 @@ async def ws_summary(websocket: WebSocket, camera_id: str):
 # ==============================================================================
 # Endpoint: ดึง summary จาก buffer แล้ว insert ลง Supabase
 # ==============================================================================
+# ==============================================================================
+# Endpoint: ดึง summary จาก buffer แล้ว insert ลง Supabase
+# ==============================================================================
 @camera_router.get("/summary-to-supabase")
 async def summary_to_supabase_route():
     """
     Endpoint นี้มีหน้าที่:
-    1) ดึง buffer ของทุกกล้อง จากไฟล์ JSON (ผ่าน load_buffer)
-    2) เตรียม payload สำหรับ insert ลงตาราง camera_logs (ทุก record ที่มี)
-    3) สร้าง daily summary (ค่าเฉลี่ย attention / non-attention / class_json_summary รายวัน)
-       แล้ว insert ลงตาราง camera_daily_summary
-    4) ล้าง buffer (ไฟล์ JSON) ด้วย clear_buffer เมื่อ insert สำเร็จ
+    1) ดึง buffer ของทุกกล้อง จากไฟล์ JSON (ผ่าน get_all_pending_files)
+    2) เตรียม payload สำหรับ insert ลงตาราง camera_logs
+    3) สร้าง daily summary และ insert ลงตาราง camera_daily_summary
+    4) ลบไฟล์ JSON ที่ประมวลผลเสร็จแล้ว
     """
     all_summary_data = []
+    processed_files = [] # เก็บรายชื่อไฟล์ที่อ่านสำเร็จ เพื่อตามลบทีหลัง
+
+    # 1. หาไฟล์ JSON ทั้งหมดในโฟลเดอร์
+    files = get_all_pending_files()
+    print(f"📂 Found {len(files)} files pending upload: {files}")
+    if not files:
+        return {"message": "ไม่มีข้อมูลค้างอยู่", "inserted": 0}
+
+    # 2. อ่านข้อมูลจากทุกไฟล์
+    for path in files:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                all_summary_data.append(data)
+                processed_files.append(path) # จด path ไว้ลบทีหลัง
+        except Exception as e:
+            print(f"Error reading {path}: {e}")
+
+    # ถ้าอ่านไฟล์ไม่ได้ข้อมูลเลย
+    if not all_summary_data:
+        return {"message": "อ่านไฟล์ไม่ได้ หรือไม่มีข้อมูลในไฟล์", "inserted": 0}
 
     try:
-        # ----------------- 1) ดึงข้อมูลจาก buffer ของทุกกล้อง -----------------
-        for cam_id in list(camera_threads.keys()):
-            data = load_buffer(str(cam_id))
-            if data:
-                all_summary_data.append(data)
-
-                # หลังอ่านแล้ว ลองลบไฟล์ buffer
-                err_buffer = clear_buffer(str(cam_id))
-                if err_buffer:
-                    print("ไม่สามารถลบไฟล์ JSON ได้")
-            else:
-                print("ไม่เจอไฟล์ JSON ที่กำลังบันทึก")
-
-        # ถ้าไม่มีข้อมูลเลยในทุก buffer → ส่ง message ว่าไม่มีข้อมูล
-        if not all_summary_data:
-            return {"message": "ไม่มีข้อมูลใน buffer", "inserted": 0}
-
-        # ----------------- 2) เตรียม insert ลง camera_logs -----------------
+        # 3. เตรียม insert ลง camera_logs
         insert_payload = []
 
-        # all_summary_data เป็น list ของ dict ต่อกล้อง
         for summary in all_summary_data:
+            # ดึงข้อมูลจาก Header ของไฟล์ json
+            # (ไฟล์แยกตาม teacher/subject แล้ว ข้อมูลตรงนี้จะถูกต้องเสมอ)
             camera_id = summary["camera_id"]
             teacher_id = summary["teacher_id"]
             subject_id = (summary.get("subject_id") or "").strip()
 
-            # summary["records"] เก็บข้อมูลหลายช่วงเวลาในวันนั้น
             for record in summary["records"]:
-                insert_payload.append(
-                    {
-                        "camera_id": camera_id,
-                        "teacher_id": teacher_id,
-                        "subject_id": subject_id,
-                        "Attention": record["Attention"],
-                        "Non_Attention": record["Non_Attention"],
-                        "class_json": record["class_json"],
-                        "created_at": record["created_at"],
-                    }
-                )
+                insert_payload.append({
+                    "camera_id": camera_id,
+                    "teacher_id": teacher_id,
+                    "subject_id": subject_id,
+                    "Attention": record["Attention"],
+                    "Non_Attention": record["Non_Attention"],
+                    "class_json": record["class_json"],
+                    "created_at": record["created_at"],
+                })
 
-        # ถ้ามีข้อมูลพร้อม insert → เรียก Supabase insert
+        # Insert ลง camera_logs
         if insert_payload:
             supabase_client.table("camera_logs").insert(insert_payload).execute()
 
-        # ----------------- 3) เตรียม daily summary ลง camera_daily_summary -----------------
-        # ใช้ defaultdict(list) เพื่อ group row ตาม (teacher_id, subject_id, camera_id, date)
+        # 4. เตรียม daily summary (Logic เดิมของคุณ ถูกต้องแล้ว)
         grops = defaultdict(list)
-
         for row in insert_payload:
-            teacher_id = row["teacher_id"]
-            subject_id = row["subject_id"]
-            camera_id = row["camera_id"]
-
-            # created_at เป็น datetime หรือ string (ISO) → แปลงเป็น datetime เสมอ
+            t_id = row["teacher_id"]
+            s_id = row["subject_id"]
+            c_id = row["camera_id"]
+            
+            # แปลง created_at เป็น datetime
             dt = (
                 row["created_at"]
                 if isinstance(row["created_at"], datetime)
                 else datetime.fromisoformat(str(row["created_at"]).replace("Z", "+00:00"))
             )
-
-            # date_key คือวันที่ในรูปแบบ YYYY-MM-DD
             date_key = dt.date().isoformat()
-
-            key = (teacher_id, subject_id, camera_id, date_key)
+            
+            key = (t_id, s_id, c_id, date_key)
             grops[key].append(row)
 
-        # list สำหรับเก็บ row ที่จะ insert ลง camera_daily_summary
         daily_rows = []
-
-        # วนกลุ่มทีละ group
-        for (teacher_id, subject_id, camera_id, summary_date), rows in grops.items():
+        for (t_id, s_id, c_id, s_date), rows in grops.items():
             total_att = 0.0
             total_non = 0.0
             count = len(rows)
-
-            # เช่น {"Focused": 1.2, "LookingAway": 0.7, ...}
             class_totals = defaultdict(float)
 
             for r in rows:
-                att = float(r.get("Attention") or 0.0)
-                non = float(r.get("Non_Attention") or 0.0)
-                total_att += att
-                total_non += non
-
+                total_att += float(r.get("Attention") or 0.0)
+                total_non += float(r.get("Non_Attention") or 0.0)
+                
                 cj = r.get("class_json") or {}
                 if isinstance(cj, str):
                     try:
-                        import json
-
                         cj = json.loads(cj)
-                    except Exception:
+                    except:
                         cj = {}
+                
+                for k, v in cj.items():
+                    class_totals[k] += float(v or 0.0)
 
-                for cls_name, ratio in cj.items():
-                    class_totals[cls_name] += float(ratio or 0.0)
-
-            # ค่าเฉลี่ย attention / non-attention ของวันนั้น
             avg_att = total_att / count if count > 0 else 0.0
             avg_non = total_non / count if count > 0 else 0.0
-
-            # คำนวณค่าเฉลี่ย class_json_summary
+            
             class_summary = {}
             if count > 0:
-                for cls_name, total_val in class_totals.items():
-                    class_summary[cls_name] = round(total_val / count, 3)
+                for k, v in class_totals.items():
+                    class_summary[k] = round(v / count, 3)
 
-            # เตรียม row สำหรับ insert ลง camera_daily_summary
-            daily_rows.append(
-                {
-                    "teacher_id": teacher_id,
-                    "subject_id": subject_id,
-                    "camera_id": camera_id,
-                    "summary_date": summary_date,                  # string "YYYY-MM-DD"
-                    "avg_attention": round(avg_att, 3),
-                    "avg_non_attention": round(avg_non, 3),
-                    "class_json_summary": class_summary,
-                }
-            )
+            daily_rows.append({
+                "teacher_id": t_id,
+                "subject_id": s_id,
+                "camera_id": c_id,
+                "summary_date": s_date,
+                "avg_attention": round(avg_att, 3),
+                "avg_non_attention": round(avg_non, 3),
+                "class_json_summary": class_summary,
+            })
 
-        # ถ้ามี daily_rows ให้ insert ลง Supabase
+        # Insert ลง camera_daily_summary
         if daily_rows:
             supabase_client.table("camera_daily_summary").insert(daily_rows).execute()
 
-        # สุดท้ายส่งคำตอบกลับว่าบันทึกสำเร็จ และมีกี่ record
+        # 5. ลบไฟล์ที่ประมวลผลเสร็จแล้ว (สำคัญมาก!)
+        deleted_count = 0
+        for path in processed_files:
+            try:
+                os.remove(path)
+                deleted_count += 1
+                # print(f"🗑️ Deleted: {os.path.basename(path)}")
+            except Exception as e:
+                print(f"⚠️ Failed to delete {path}: {e}")
+
         return {
             "message": "บันทึกข้อมูลเสร็จสิ้น",
             "inserted": len(insert_payload),
         }
 
     except Exception as e:
-        # ถ้าระหว่างทางมี error → log และส่ง error message กลับ
         print("Error summary_to_supabase:", e)
         return {"error": str(e)}

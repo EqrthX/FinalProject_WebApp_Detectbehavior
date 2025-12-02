@@ -155,14 +155,14 @@ const SummarizePage = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#F6F6F4] overflow-hidden">
+    <div className="flex flex-col h-screen bg-[#F6F6F4] ">
       <Navbar />
       
       <div style={{ padding: 24, height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <MyBreadcrumb />
         
         {/* Main Content Area */}
-        <div className="flex-1 pt-6 overflow-hidden">
+        <div className="flex-1 pt-6 ">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-auto">
 
             {/* --- Left Column: Line Charts --- */}

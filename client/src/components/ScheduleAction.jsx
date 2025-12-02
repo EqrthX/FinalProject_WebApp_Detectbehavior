@@ -637,7 +637,7 @@ export const EditScheduleAction = ({
 
           {/* Building */}
           <div className="relative">
-            <input type="text" required value={classSchedule.building} onChange={(e) => setClassSchedule({ ...classSchedule, building: e.target.value.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase() })} className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50" placeholder="ตึก" />
+            <input type="text" required value={classSchedule.building} onChange={(e) => setClassSchedule({ ...classSchedule, building: e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() })} className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50" placeholder="ตึก" />
             <label className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">ตึก</label>
           </div>
         </form>

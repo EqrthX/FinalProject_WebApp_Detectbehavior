@@ -97,16 +97,20 @@ export const TeacherActionModal = ({
         // --- CREATE ---
         if (!email || !password) return toast.error("กรุณากรอกอีเมลและรหัสผ่าน");
 
-        const payload = new FormData();
-        payload.append("email", email);
-        payload.append("password", password);
-        payload.append("teacher_id", teacherId);
-        payload.append("fullname", fullname);
-        payload.append("majorId", majorId);
+        // ✅ 1. แก้เป็น JSON Object (แบบนี้ถูกต้อง)
+        const payload = {
+          email: email,
+          password: password,
+          teacher_id: teacherId,
+          fullname: fullname,
+          major_id: majorId // ต้องใช้ major_id ตาม Backend
+        };
 
-        const response = await axios.post(`admin/create-teacher`, payload, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        console.log("Sending JSON Payload:", payload);
+
+        // ✅ 2. ส่งด้วย axios แบบปกติ (ลบ headers ทิ้งไปเลย)
+        const response = await axios.post(`admin/create-teacher`, payload);
+        
         toast.success(response.data.detail || "เพิ่มข้อมูลสำเร็จ");
       }
 
@@ -115,7 +119,30 @@ export const TeacherActionModal = ({
 
     } catch (error) {
       console.error(isEditMode ? "Update Error:" : "Create Error:", error);
-      const msg = error.response?.data?.detail || error.message || "เกิดข้อผิดพลาด";
+      
+      let msg = "เกิดข้อผิดพลาดในการดำเนินการ";
+
+      // ตรวจสอบว่า Backend ส่งรายละเอียด error มาไหม
+      if (error.response?.data?.detail) {
+          const detail = error.response.data.detail;
+
+          // กรณี 1: FastAPI ส่งมาเป็น Array (Validation Error)
+          if (Array.isArray(detail)) {
+              // ดึงเฉพาะข้อความ msg ออกมาต่อกัน
+              msg = detail.map(item => item.msg).join(", ");
+          } 
+          // กรณี 2: ส่งมาเป็น String ปกติ
+          else if (typeof detail === "string") {
+              msg = detail;
+          }
+          // กรณี 3: เป็น Object อื่นๆ
+          else {
+              msg = JSON.stringify(detail);
+          }
+      } else if (error.message) {
+          msg = error.message;
+      }
+
       toast.error(msg);
     }
   };
@@ -131,8 +158,21 @@ export const TeacherActionModal = ({
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           
-          
-          
+          {/* Email */}
+          <div className={`relative mt-2 ${isEditMode ? "opacity-60 pointer-events-none" : ""}`}>
+            <input
+              type="text"
+              id="email"
+              value={formData.email}
+              disabled={isEditMode}
+              onChange={handleChange}
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
+              placeholder="อีเมล"
+            />
+            <label htmlFor="email" className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">
+              อีเมล {isEditMode ? "(แก้ไขไม่ได้)" : <span className="text-red-500">*</span>}
+            </label>
+          </div>
 
           {/* Password (Create Only) */}
           {!isEditMode && (
@@ -152,20 +192,18 @@ export const TeacherActionModal = ({
           )}
 
           {/* Teacher ID */}
-          <div className="relative mt-2">
+          <div className={`relative mt-2 ${isEditMode ? "opacity-60 pointer-events-none" : ""}`}>
             <input
               type="text"
               id="teacherId"
               inputMode="numeric"
               value={formData.teacherId}
-              /* 🟢 2. สั่ง disable เมื่อเป็นโหมดแก้ไข */
               disabled={isEditMode}
               onChange={(e) => setFormData({...formData, teacherId: e.target.value.replace(/[^0-9]/g, "")})}
               className="peer w-full px-4 py-2 border border-gray-300 rounded-md text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
               placeholder="รหัสประจำตัว"
             />
             <label htmlFor="teacherId" className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">
-              {/* 🟢 3. เปลี่ยนข้อความ Label ให้ผู้ใช้รู้ */}
               รหัสประจำตัว {isEditMode ? "(แก้ไขไม่ได้)" : <span className="text-red-500">*</span>}
             </label>
           </div>

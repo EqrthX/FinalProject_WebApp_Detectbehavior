@@ -159,7 +159,7 @@ const AdminChart = ({ selectedCategory }) => { // รับ props เผื่�
           {/* กราฟแท่งแยกสี ตั้งใจ/ไม่ตั้งใจ */}
           <Bar 
             dataKey="attentive" 
-            name="ตั้งใจเรียน" 
+            name="ตั้งใจ"
             fill="#38A738"  // สีเขียว
             radius={[4, 4, 0, 0]} 
             barSize={50}

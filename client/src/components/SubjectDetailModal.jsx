@@ -223,14 +223,7 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
                     </div>
 
                     <div className="flex-1 w-full min-h-0 relative">
-                        {loadingChart ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                                <div className="flex flex-col items-center gap-2">
-                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3D42D3]"></div>
-                                    <p className="text-sm text-gray-500">กำลังประมวลผลข้อมูล...</p>
-                                </div>
-                            </div>
-                        ) : null}
+                        
 
                         {selectedGroup ? (
                             chartData.length > 0 ? (

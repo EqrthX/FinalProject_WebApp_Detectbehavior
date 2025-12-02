@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import dayjs from "dayjs"; // 🟢 เพิ่ม dayjs เพื่อจัดการเวลา
 import { supabase } from "../config/supabase.js"; 
 
-const format = "HH:mm:ss"; 
+const format = "HH:mm"; 
 
 const disabledRangeTime = (_, type) => {
   const disabledHours = () => {
@@ -16,7 +16,6 @@ const disabledRangeTime = (_, type) => {
   return {
     disabledHours,
     disabledMinutes: () => [],
-    disabledSeconds: () => [],
   };
 };
 

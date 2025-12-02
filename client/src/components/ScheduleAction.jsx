@@ -39,7 +39,7 @@ export const UploadScheduleAction = ({
 
   const [classSchedule, setClassSchedule] = useState({
     year: "",
-    semester: "",
+    semester: "1",
     group: "",
     day: "",
     room: "",
@@ -58,7 +58,7 @@ export const UploadScheduleAction = ({
         setIsSubjectFocused(false);
         setClassSchedule({
             year: "",
-            semester: "",
+            semester: "1",
             group: "",
             day: "",
             room: "",
@@ -303,20 +303,20 @@ export const UploadScheduleAction = ({
           </div>
 
           <div className="relative">
-            <select
+            <input
+              type="text"
               id="semester"
-              required
-              value={classSchedule.semester}
-              onChange={(e) => setClassSchedule({ ...classSchedule, semester: e.target.value })}
-              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-gray-50 appearance-none placeholder-transparent"
+              value="1" // 👈 ฟิกค่าไว้ที่ 1 ตรงๆ หรือใช้ {classSchedule.semester} ก็ได้
+              readOnly  // 👈 ห้ามแก้ไข
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 text-gray-500 placeholder-transparent"
+              // 👆 ปรับสี bg-gray-100 และ text-gray-500 เพื่อสื่อว่าเป็นช่องที่แก้ไม่ได้
+            />
+            {/* Label ปรับ Logic ให้ค้างอยู่ด้านบนตลอดเวลา เพราะมีค่า 1 เสมอ */}
+            <label 
+              htmlFor="semester" 
+              className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all pointer-events-none"
             >
-              <option value="" disabled></option>
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-            </select>
-            <label htmlFor="semester" className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none ${classSchedule.semester ? "-top-2.5 text-gray-400" : "top-2.5 text-gray-400"}`}>
-              ภาคการศึกษา <span className="text-red-500">*</span>
+              ภาคการศึกษา (แก้ไขไม่ได้) <span className="text-red-500">*</span> 
             </label>
           </div>
 

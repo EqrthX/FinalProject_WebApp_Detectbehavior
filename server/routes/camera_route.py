@@ -117,13 +117,13 @@ class CameraThread(threading.Thread):
         self.interval_results: list[str] = []
 
         # ความถี่ในการสรุป interval (วินาที)
-        self.interval_seconds = 5
+        self.interval_seconds = 3
         # เวลา timestamp ล่าสุดที่สรุป interval ไปแล้ว
         self.last_interval_time = time.time()
         # นับจำนวน interval ที่ผ่านไปแล้วในรอบ "1 นาที"
         self.interval_count = 0
-        # จำนวน interval สูงสุดใน 1 รอบสรุป (12 x 5 วิ = 1 นาที)
-        self.max_intervals = 12
+        # จำนวน interval สูงสุดใน 1 รอบสรุป (60 / วินาทีที่กำหนด)
+        self.max_intervals = int(60 / self.interval_seconds)
 
         # เก็บค่า confidence ล่าสุดของ target (ไว้ print log)
         self.last_target_conf = 0.0

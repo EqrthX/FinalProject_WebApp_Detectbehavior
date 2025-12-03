@@ -1,377 +1,291 @@
 import React, { useEffect, useState } from 'react'
 import Navbar from '../../components/Navbar.jsx'
 import MyBreadcrumb from '../../components/MyBreadcrumb.jsx'
-import { Link } from 'react-router-dom';
-import { BarChartOutlined, LoadingOutlined } from '@ant-design/icons';
+import { 
+  BarChartOutlined, 
+  LoadingOutlined, 
+  PieChartOutlined 
+} from '@ant-design/icons';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import { supabase } from "../../config/supabase.js"
-import axios from '../../util/axios.js';
-import { Flex, Spin } from 'antd';
-
+import { Spin } from 'antd';
 
 const SummarizePage = () => {
   const teacher_id = localStorage.getItem("teacher_id")
-  const [groupCameras, setGroupCameras] = useState([]);
 
-  const [result, setResult] = useState([])
-  const [lineChartData, setLineChartData] = useState([]);
-  const [summary, setSummary] = useState({ att: 0, nonAtt: 0 });
-  const [dateToDetect, setDateToDetect] = useState(null);
-  const [pieChartData, setPieChartData] = useState([]);
+  const [sessionData, setSessionData] = useState([]);
+  const [headerInfo, setHeaderInfo] = useState({ subject: "", date: "" });
   const [loading, setLoading] = useState(true);
 
-  const [queryDate, setQueryDate] = useState(null);
-  const [displayDate, setDisplayDate] = useState("");
+  // --- 🟢 (เพิ่ม) ฟังก์ชันจัดกลุ่มข้อมูลกราฟเส้น (5 นาที) ---
+  const processDataTo5MinIntervals = (logs) => {
+    const buckets = {};
+    logs.forEach(log => {
+      const date = new Date(log.created_at);
+      // ปัดเศษเวลาเป็นช่วงละ 5 นาที
+      const coeff = 1000 * 60 * 5; 
+      const roundedDate = new Date(Math.floor(date.getTime() / coeff) * coeff);
+      const timeStr = roundedDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
-  useEffect(() => {
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-
-    const utc = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-      .toISOString();
-
-    setQueryDate(utc);
-
-    const formattedDate = date.toLocaleDateString("th-TH", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
+      if (!buckets[timeStr]) {
+        buckets[timeStr] = { time: timeStr, totalAtt: 0, totalNon: 0, count: 0 };
+      }
+      buckets[timeStr].totalAtt += Number(log.Attention || 0);
+      buckets[timeStr].totalNon += Number(log.Non_Attention || 0);
+      buckets[timeStr].count += 1;
     });
-    setDisplayDate(formattedDate);
-  }, []);
 
+    return Object.values(buckets).map(b => ({
+      time: b.time,
+      ตั้งใจ: ((b.totalAtt / b.count) * 100).toFixed(0),
+      ไม่ตั้งใจ: ((b.totalNon / b.count) * 100).toFixed(0)
+    }));
+  };
+
+  // --- 🟢 (แก้ไข) Main Fetch Logic ---
   useEffect(() => {
-    if (!queryDate) {
-      console.warn("⏳ queryDate ยังไม่พร้อม ไม่ควรเขียน Supabase request");
-      return;
-    }
-    const fetechResult = async () => {
+    const fetchLatestSession = async () => {
+      setLoading(true);
       try {
+        // 1. 🔍 หา "Session ล่าสุด" ที่เพิ่งกด Stop
+        const { data: latestRow, error: summaryError } = await supabase
+          .from('camera_daily_summary')
+          .select('*')
+          .eq('teacher_id', teacher_id)
+          .order('created_at', { ascending: false }) // เรียงจากใหม่สุด
+          .limit(1);
 
-        setLoading(true);
+        if (summaryError || !latestRow || latestRow.length === 0) {
+          console.log("ไม่พบข้อมูลการสอนล่าสุด");
+          setSessionData([]);
+          setLoading(false);
+          return;
+        }
 
-        const { data: response, error: errResponse } = await supabase
-          .from("camera_logs")
-          .select("*")
-          .limit(180)
-          .gte("created_at", queryDate)
-          .eq("teacher_id", teacher_id)
-          .order("created_at", { ascending: true })
-
-        if (errResponse) {
-          console.error("Supabase error:", {
-            message: errResponse.message,
-            code: errResponse.code,
-            details: errResponse.details,
-            hint: errResponse.hint
+        // เก็บข้อมูลสำคัญ: รหัสวิชา, วันที่, และเวลาที่กดหยุด
+        const targetSubject = latestRow[0].subject_id;
+        const targetDate = latestRow[0].summary_date; 
+        const stopTime = new Date(latestRow[0].created_at).toISOString(); // เวลาที่กด Stop
+        
+        setHeaderInfo({
+          subject: targetSubject,
+          date: new Date(targetDate).toLocaleDateString("th-TH", {
+            year: "numeric", month: "long", day: "numeric",
           })
-          setGroupCameras({})
-          setResult([])
-          setLoading(false)
-          return
-        }
+        });
 
+        // 2. 📦 ดึง Summary ของ "ทุกกล้อง" ในคาบนั้น
+        const { data: allSummaries } = await supabase
+          .from('camera_daily_summary')
+          .select('*')
+          .eq('teacher_id', teacher_id)
+          .eq('subject_id', targetSubject) // ✅ กรองเฉพาะวิชาล่าสุด
+          .eq('summary_date', targetDate); // ✅ กรองเฉพาะวันที่ล่าสุด
 
-        if (!response || response.length === 0) {
-          console.warn("ไม่มีข้อมูลใน camera_logs")
-          setGroupCameras({})
-          setResult([])
-          setLoading(false)
-          return
-        }
+        // 3. 📈 ดึง Logs (Timeline) เฉพาะของวิชานั้น
+        // กำหนดขอบเขตเวลา: ตั้งแต่เริ่มวัน จนถึงเวลาที่กด Stop
+        const startOfDay = new Date(targetDate).toISOString();
 
-        const groupedByCamera = response.reduce((acc, row) => {
-          if (!acc[row.camera_id]) acc[row.camera_id] = [];
-          acc[row.camera_id].push(row);
-          return acc;
-        }, {})
+        const { data: logs } = await supabase
+          .from('camera_logs')
+          .select('*')
+          .eq('teacher_id', teacher_id)
+          .eq('subject_id', targetSubject) // ✅ สำคัญ: กรอง Logs ให้เหลือแค่วิชานี้เท่านั้น
+          .gte('created_at', startOfDay)   
+          .lte('created_at', stopTime)     // ✅ ตัดจบที่เวลา stop (กัน Log คาบถัดไปหลุดมา)
+          .order('created_at', { ascending: true });
 
-        setGroupCameras(groupedByCamera)
-        setResult(response || [])
+        // 4. 🧩 ประมวลผลข้อมูลแยกตามกล้อง
+        const processed = allSummaries.map((sumItem) => {
+          const camId = sumItem.camera_id;
+          
+          // A. กราฟเส้น (Timeline)
+          const camLogs = logs ? logs.filter(l => l.camera_id === camId) : [];
+          const lineChartData = processDataTo5MinIntervals(camLogs);
+
+          // B. กราฟวงกลม (Pie Chart)
+          const json = sumItem.class_json_summary || {};
+          const totalActions = Object.values(json).reduce((a, b) => Number(a) + Number(b), 0) || 1;
+          
+          const pieChartData = [
+            { name: "Focused", value: (json.Focused || 0) / totalActions },
+            { name: "Looking Board", value: (json.Looking_at_the_board || 0) / totalActions },
+            { name: "Taking Notes", value: (json.Taking_notes || 0) / totalActions },
+            { name: "Looking Away", value: (json.LookingAway || 0) / totalActions },
+            { name: "Using Phone", value: (json.UsingPhone || 0) / totalActions },
+            { name: "Talking", value: (json.Talking || 0) / totalActions },
+          ].filter(d => d.value > 0);
+
+          return {
+            cameraId: camId,
+            avgAtt: (Number(sumItem.avg_attention) * 100).toFixed(0),
+            avgNon: (Number(sumItem.avg_non_attention) * 100).toFixed(0),
+            lineChartData,
+            pieChartData
+          };
+        });
+
+        setSessionData(processed);
+
       } catch (error) {
-        console.error("เกิดข้อผิดพลาดไม่สามารถแสดงผลได้", error)
+        console.error("Error fetching latest session:", error);
       } finally {
         setLoading(false);
       }
+    };
+
+    if (teacher_id) {
+      fetchLatestSession();
     }
-    fetechResult();
-  }, [teacher_id, queryDate]);
-
-  useEffect(() => {
-    if (result && result.length > 0) {
-      const totals = {
-        Focused: 0,
-        Looking_at_the_board: 0,
-        Taking_notes: 0,
-        LookingAway: 0,
-        Talking: 0,
-        UsingPhone: 0,
-      }
-
-      result.forEach(log => {
-        const ratios = log.class_json || {};
-
-        totals.Focused += ratios.Focused || 0;
-        totals.Looking_at_the_board += ratios.Looking_at_the_board || 0;
-        totals.Taking_notes += ratios.Taking_notes || 0;
-        totals.LookingAway += ratios.LookingAway || 0;
-        totals.Talking += ratios.Talking || 0;
-        totals.UsingPhone += ratios.UsingPhone || 0;
-      })
-
-      if (!dateToDetect) {
-        const firstLogDate = new Date(result[0].created_at);
-        setDateToDetect(firstLogDate.toLocaleDateString('th-TH', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        }));
-      }
-      const transformedLineDataAtt = result.map(log => {
-        const date = new Date(log.created_at);
-
-        const formattedTime = date.toLocaleTimeString('th-TH', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        })
-
-        return {
-          name: formattedTime,
-          ความตั้งใจ: (log.Attention * 100).toFixed(2),
-          ความไม่ตั้งใจ: (log.Non_Attention * 100).toFixed(2),
-        }
-      })
-      setLineChartData(transformedLineDataAtt)
-
-      const totalLogs = result.length;
-
-      const totalAttention = result.reduce((acc, log) => acc + (log.Attention || 0), 0);
-
-      const totalNonAttention = result.reduce((acc, log) => acc + (log.Non_Attention || 0), 0);
-
-      const avgAttention = totalLogs > 0 ? (totalAttention / totalLogs) : 0;
-      const avgNonAttenion = totalLogs > 0 ? (totalNonAttention / totalLogs) : 0;
-
-      setSummary({
-        att: avgAttention,
-        nonAtt: avgNonAttenion,
-      })
-
-      const dataForPie = [
-        { name: "Focused", value: totals.Focused / totalLogs },
-        { name: "Looking_at_the_board", value: totals.Looking_at_the_board / totalLogs },
-        { name: "Taking_notes", value: totals.Taking_notes / totalLogs },
-        { name: "LookingAway", value: totals.LookingAway / totalLogs },
-        { name: "UsingPhone", value: totals.UsingPhone / totalLogs },
-      ]
-      setPieChartData(dataForPie);
-    }
-  }, [result])
-  const getAvgAttentionPerCamera = (logs) => {
-    if (!logs || logs.length === 0) return { att: 0, non: 0 }
-
-    let totalAtt = 0
-    let totalNon = 0
-
-    logs.forEach(l => {
-      totalAtt += l.Attention || 0
-      totalNon += l.Non_Attention || 0
-    })
-
-    return {
-      att: totalAtt / logs.length,
-      non: totalNon / logs.length
-    }
-  }
-  const groupCamerasWithPie = Object.fromEntries(
-    Object.entries(groupCameras).map(([camId, logs]) => {
-      const totals = {
-        Focused: 0,
-        Looking_at_the_board: 0,
-        Taking_notes: 0,
-        LookingAway: 0,
-        Talking: 0,
-        UsingPhone: 0,
-      };
-
-      logs.forEach(log => {
-        const ratios = log.class_json || {};
-        totals.Focused += ratios.Focused || 0;
-        totals.Looking_at_the_board += ratios.Looking_at_the_board || 0;
-        totals.Taking_notes += ratios.Taking_notes || 0;
-        totals.LookingAway += ratios.LookingAway || 0;
-        totals.Talking += ratios.Talking || 0;
-        totals.UsingPhone += ratios.UsingPhone || 0;
-      });
-
-      const totalCount = logs.length || 1;
-
-      const pieChartData = [
-        { name: "Focused", value: totals.Focused / totalCount },
-        { name: "Looking_at_the_board", value: totals.Looking_at_the_board / totalCount },
-        { name: "Taking_notes", value: totals.Taking_notes / totalCount },
-        { name: "LookingAway", value: totals.LookingAway / totalCount },
-        { name: "UsingPhone", value: totals.UsingPhone / totalCount },
-      ];
-
-      return [camId, { logs, pieChartData }];
-    })
-  );
-
-  if (loading) {
-    return (
-      <div className="w-full h-screen flex items-center justify-center">
-        <Spin indicator={<LoadingOutlined style={{ fontSize: 90 }} spin />} />
-      </div>
-    )
-  }
+  }, [teacher_id]);
+  
+  const COLORS = ['#0068c9','#fe2b2b', '#8622FF', '#739206ff', '#FE0056', '#00B7EB', '#FF8000', '#00FFCE', '#FFFF00'];
   const RADIAN = Math.PI / 180;
-  const COLORS = ['#0068c9', '#fe2b2b', '#780cdf', '#00B7EB', '#00FFCE', '#FF00FF', '#000'];
-
-  // เพิ่มฟังก์ชัน handleCourseClick
-  const handleCourseClick = (courseId) => {
-    console.log('Course clicked:', courseId);
-    // เพิ่ม logic ที่ต้องการเมื่อคลิกที่วิชา
-  };
 
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+    if (percent < 0.05) return null;
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
     const x = cx + radius * Math.cos(-(midAngle ?? 0) * RADIAN);
     const y = cy + radius * Math.sin(-(midAngle ?? 0) * RADIAN);
-
     return (
-      <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
-        {`${((percent ?? 0) * 100).toFixed(0)}%`}
+      <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize={10}>
+        {`${(percent * 100).toFixed(0)}%`}
       </text>
     );
   };
 
   return (
-    <>
+    <div className="flex flex-col h-screen bg-[#F6F6F4] ">
       <Navbar />
-      <div style={{ padding: 24 }}>
+      
+      <div style={{ padding: 24, height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <MyBreadcrumb />
-        <div className="grid grid-cols-3 gap-4 p-6">
+        
+        {/* Main Content Area */}
+        <div className="flex-1 pt-6 ">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-auto">
 
-          {/* กล่องซ้าย */}
-          <div className="col-span-2 bg-white rounded-2xl shadow p-6 border border-gray-100 h-140">
-            <div className="p-6">
-              <div className="mb-6 ">
-                <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
-                  <BarChartOutlined className="text-2xl text-blue-500" />
-                  ผลรวมรายวัน {displayDate}
-                </h2>
-              </div>
-              <div className="w-full rounded-lg p-6 ">
-                {/* กราฟเส้น */}
-                {Object.entries(groupCameras).map(([camId, logs]) => {
-                  const avg = getAvgAttentionPerCamera(logs)
-                  return (
-                    <div key={camId} className="bg-white p-4 rounded-xl shadow mb-6 border">
-                      <h3 className="text-lg font-semibold mb-3">กล้องตัวที่ {camId}</h3>
-
-                      {/* แสดงข้อมูล Attention แบบล่าสุด */}
-                      <p>ตั้งใจ: {(avg.att * 100).toFixed(1)}%</p>
-                      <p>ไม่ตั้งเรียน: {(avg.non * 100).toFixed(1)}%</p>
-
-                      {/* mini chart ของกล้องนี้ */}
-                      <ResponsiveContainer width="100%" height={200}>
-                        <LineChart data={logs.map(l => ({
-                          time: new Date(l.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
-                          ตั้งใจ: (l.Attention * 100).toFixed(2),
-                          ไม่ตั้งใจ: (l.Non_Attention * 100).toFixed(2),
-                        }))}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                          <XAxis
-                            dataKey="time"
-                          />
-                          <YAxis
-                            domain={[0, 100]}
-                          />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: '#fff',
-                              border: '1px solid #e0e0e0',
-                              borderRadius: '8px'
-                            }}
-                          />
-                          <Legend
-                            wrapperStyle={{ paddingTop: '20px' }}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="ตั้งใจ"
-                            stroke="#82ca9d"
-                            strokeWidth={2}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="ไม่ตั้งใจ"
-                            stroke="#FF3300"
-                            strokeWidth={2}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-
-
-          {/* กล่องฝั่งขวา */}
-          <div className="flex flex-col space-y-4 max-h-[500px] overflow-y-auto">
-            <div className="bg-white rounded-2xl shadow flex flex-col h-140 border border-gray-300">
-              {Object.entries(groupCamerasWithPie).map(([camId, logs]) => (
-                <div
-                  key={camId}
-                  className="bg-white rounded-2xl shadow p-4 flex flex-col border border-gray-300"
-                >
-                  <h2 className="text-lg font-bold mb-3">
-                    กล้องตัวที่ {Number(camId)}
+            {/* --- Left Column: Line Charts --- */}
+            <div className="col-span-2 bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] flex flex-col h-full overflow-hidden">
+              <div className="p-6 border-b border-[#f0f0f0] flex flex-col md:flex-row md:items-center justify-between gap-4 flex-shrink-0">
+                <div className='flex items-center gap-2'>
+                  <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
+                    <BarChartOutlined className="text-2xl text-blue-500" />
+                    {/* แสดงชื่อวิชาล่าสุดที่ดึงมาได้ */}
+                    สรุปผลการสอนล่าสุด: <span className="text-[#38A738]">{headerInfo.subject || "-"}</span>
                   </h2>
-
-                  <ResponsiveContainer width="100%" height={250}>
-                    <PieChart>
-                      <Pie
-                        data={logs.pieChartData}
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={80}
-                        labelLine={false}
-                        label={renderCustomizedLabel}
-                        dataKey="value"
-                      >
-                        {logs.pieChartData.map((entry, index) => (
-                          <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => `${(value * 100).toFixed(1)}%`} />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
-            {/* ปุ่ม */}
-            <div className="p- pt-4">
-              <Link to="/user/ResultsPage">
-                <button
-                  type="submit"
-                  className="bg-[#3D42D3] text-white w-full py-3 rounded-xl font-semibold hover:bg-blue-900 transition-colors"
-                >
-                  ดูสรุปผลทุกวิชา
-                </button>
-              </Link>
+                <div className="text-gray-500 text-sm">วันที่: {headerInfo.date}</div>
+              </div>
 
+              <div className="p-6 overflow-y-auto flex-1 scrollbar-hide">
+                <div className="w-full">
+                  {sessionData.length > 0 ? (
+                    sessionData.map((data) => (
+                      <div key={data.cameraId} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 last:mb-0">
+                        <div className='flex justify-between items-center mb-4'>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">CAM {data.cameraId}</span>
+                              <h3 className="text-lg font-semibold text-gray-700">Timeline ({headerInfo.subject})</h3>
+                            </div>
+                          </div>
+                          <div className="text-sm flex gap-3">
+                            <span className="bg-green-50 text-green-700 px-2 py-1 rounded border border-green-100 font-bold">
+                              เฉลี่ยตั้งใจ: {data.avgAtt}%
+                            </span>
+                            <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-100 font-bold">
+                              เฉลี่ยไม่ตั้งใจ: {data.avgNon}%
+                            </span>
+                          </div>
+                        </div>
+
+                        <ResponsiveContainer width="100%" height={200}>
+                          {data.lineChartData.length > 0 ? (
+                            <LineChart data={data.lineChartData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                              <XAxis dataKey="time" tick={{ fontSize: 12 }} />
+                              <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
+                              <Tooltip contentStyle={{ borderRadius: '8px' }} />
+                              <Legend wrapperStyle={{ paddingTop: '10px' }}/>
+                              <Line type="monotone" dataKey="ตั้งใจ" stroke="#38A738" strokeWidth={2} dot={true} activeDot={{ r: 6 }} />
+                              <Line type="monotone" dataKey="ไม่ตั้งใจ" stroke="#FF3300" strokeWidth={2} dot={true} />
+                            </LineChart>
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-gray-400">
+                              ไม่พบข้อมูล Timeline สำหรับวิชานี้
+                            </div>
+                          )}
+                        </ResponsiveContainer>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-gray-400 bg-gray-50 rounded-xl border-dashed border-2 border-gray-200">
+                      <BarChartOutlined className="text-4xl mb-2 opacity-50" />
+                      <p>ไม่พบข้อมูลการสอนล่าสุด</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
+
+            {/* --- Right Column: Pie Charts --- */}
+            <div className="col-span-1 h-full flex flex-col space-y-4 overflow-hidden">
+              <div className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] flex flex-col h-full overflow-hidden">
+                <div className="p-6 border-b border-[#f0f0f0] flex-shrink-0">
+                  <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
+                     <PieChartOutlined className="text-2xl text-purple-500" />
+                     พฤติกรรมรวม
+                  </h2>
+                </div>
+
+                <div className="p-6 flex flex-col gap-4 overflow-y-auto flex-1 scrollbar-hide">
+                  {sessionData.length > 0 ? (
+                    sessionData.map((data) => (
+                      <div key={data.cameraId} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm relative">
+                        <div className="absolute top-3 left-3 z-10">
+                             <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                              CAM {data.cameraId}
+                            </span>
+                        </div>
+                        <div className="h-[250px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={data.pieChartData}
+                                cx="50%"
+                                cy="50%"
+                                outerRadius={80}
+                                innerRadius={40}
+                                paddingAngle={2}
+                                dataKey="value"
+                                labelLine={false}
+                                label={renderCustomizedLabel}
+                              >
+                                {data.pieChartData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
+                                ))}
+                              </Pie>
+                              <Tooltip formatter={(value) => `${(value * 100).toFixed(1)}%`} />
+                              <Legend layout="horizontal" verticalAlign="bottom" align="center" iconSize={10} wrapperStyle={{fontSize: '12px'}}/>
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-400">
+                      <p>ไม่พบข้อมูลสรุป</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
           </div>
-
         </div>
       </div>
-    </>
+    </div>
   )
 }
 

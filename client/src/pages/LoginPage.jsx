@@ -42,7 +42,7 @@ const LoginPage = () => {
       });
       const data = res.data;
 
-      toast.success(`เข้าสู่ระบบสำเร็จ ✅`);
+      toast.success(`เข้าสู่ระบบสำเร็จ`);
 
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("role", data.role);
@@ -55,7 +55,7 @@ const LoginPage = () => {
       else setErrorMessage("ไม่พบสิทธิ์ของผู้ใช้บัญชีนี้");
     } catch (error) {
       console.error(error);
-      toast.error(error.response?.data?.detail || "เข้าสู่ระบบไม่สำเร็จ ❌");
+      toast.error(error.response?.data?.detail || "เข้าสู่ระบบไม่สำเร็จ");
     } finally {
       setIsLoading(false);
     }

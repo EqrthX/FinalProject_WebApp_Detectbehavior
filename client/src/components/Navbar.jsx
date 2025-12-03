@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X } from "lucide-react"; // ใช้ไอคอนจาก lucide-react (ติดตั้งด้วย npm i lucide-react)
+import { Menu, X } from "lucide-react"; 
 import Profile from "../assets/Profile.png";
-import {supabase} from "../config/supabase"
+import { supabase } from "../config/supabase"
 
 const Navbar = () => {
 
@@ -34,28 +34,20 @@ const Navbar = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  
-
   const handleLogoutClick = () => {
     setShowLogout(false);
     setShowConfirmModal(true);
-    
-
   };
 
   const handleConfirmLogout = async () => {
-
     await supabase.auth.signOut();
-
     localStorage.removeItem("token");
     localStorage.removeItem("role");
     localStorage.removeItem("fullname");
     localStorage.removeItem("teacher_id");
     localStorage.removeItem("major"); 
     localStorage.clear(); 
-
-    await new Promise((res) => setTimeout(res, 300)); // delay 0.3 วิ กัน session race
-
+    await new Promise((res) => setTimeout(res, 300));
     setShowConfirmModal(false);
     navigate('/');
   };
@@ -64,61 +56,67 @@ const Navbar = () => {
 
   return (
     <>
-      {/* 🔹 Navbar Container */}
-      <nav className="relative bg-[#F6F6F4] px-4 sm:px-6 py-3 flex items-center justify-between border-b border-gray-200">
+      {/* 🔹 Navbar Container: เพิ่ม relative เพื่อให้ลูกที่ใช้ absolute อ้างอิงได้ */}
+      <nav className="sticky top-0 bg-[#F6F6F4] px-4 sm:px-6 py-3 flex items-center justify-between border-b border-gray-200 z-50 relative">
 
         {/* 🔹 Left: Hamburger (เฉพาะมือถือ) */}
-        <button
-          className="lg:hidden flex items-center text-gray-700"
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        >
-          {isMobileMenuOpen ? <X size={26} /> : <Menu size={26} />}
-        </button>
-
-        {/* 🔹 Center: เมนูหลัก */}
-        <div className="hidden lg:flex bg-white border border-[#E9E9E9] rounded-full p-2 px-3 space-x-3 mx-auto ml-150">
-          <NavLink
-            to="/user/Homepage"
-            className={({ isActive }) =>
-              isActive
-                ? 'bg-[#38A738] text-white px-8 py-1.5 rounded-2xl font-medium'
-                : 'text-gray-700 px-8 py-1.5 rounded-2xl hover:text-[#38A738]'
-            }
+        <div className="lg:hidden flex-none">
+          <button
+            className="flex items-center text-gray-700"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
-            หน้าแรก
-          </NavLink>
-
-          <NavLink
-            to="/user/TeachingSchedule"
-            className={() =>
-              isTeachingActive
-                ? 'bg-[#38A738] text-white px-8 py-1.5 rounded-2xl font-medium'
-                : 'text-gray-700 px-8 py-1.5 rounded-2xl hover:text-[#38A738]'
-            }
-          >
-            ตารางสอน
-          </NavLink>
-
-          <NavLink
-            to="/user/ResultsPage"
-            className={({ isActive }) =>
-              isActive
-                ? 'bg-[#38A738] text-white px-8 py-1.5 rounded-2xl font-medium'
-                : 'text-gray-700 px-8 py-1.5 rounded-2xl hover:text-[#38A738]'
-            }
-          >
-            สรุปผล
-          </NavLink>
+            {isMobileMenuOpen ? <X size={26} /> : <Menu size={26} />}
+          </button>
         </div>
 
-        {/* 🔹 ขวา: โปรไฟล์ */}
-        <div className="relative ml-auto" ref={dropdownRef}>
+        {/* 🔹 Center: เมนูหลัก */}
+        {/* ใช้ absolute + transform เพื่อบังคับให้อยู่กึ่งกลางจอเป๊ะๆ */}
+        <div className="hidden lg:flex absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+          <div className="bg-white border border-[#E9E9E9] rounded-full p-2 px-3 space-x-3 flex">
+            <NavLink
+              to="/user/Homepage"
+              className={({ isActive }) =>
+                isActive
+                  ? 'bg-[#38A738] text-white px-8 py-1.5 rounded-2xl font-medium transition-all'
+                  : 'text-gray-700 px-8 py-1.5 rounded-2xl hover:text-[#38A738] transition-all'
+              }
+            >
+              หน้าแรก
+            </NavLink>
+
+            <NavLink
+              to="/user/TeachingSchedule"
+              className={() =>
+                isTeachingActive
+                  ? 'bg-[#38A738] text-white px-8 py-1.5 rounded-2xl font-medium transition-all'
+                  : 'text-gray-700 px-8 py-1.5 rounded-2xl hover:text-[#38A738] transition-all'
+              }
+            >
+              ตารางสอน
+            </NavLink>
+
+            <NavLink
+              to="/user/ResultsPage"
+              className={({ isActive }) =>
+                isActive
+                  ? 'bg-[#38A738] text-white px-8 py-1.5 rounded-2xl font-medium transition-all'
+                  : 'text-gray-700 px-8 py-1.5 rounded-2xl hover:text-[#38A738] transition-all'
+              }
+            >
+              สรุปผล
+            </NavLink>
+          </div>
+        </div>
+
+        {/* 🔹 Right: โปรไฟล์ */}
+        {/* ย้ายออกมาอยู่นอก div ของเมนู และใช้ ml-auto เพื่อดันไปขวาสุด */}
+        <div className="flex-none ml-auto relative" ref={dropdownRef}>
           <button
             onClick={() => setShowLogout(!showLogout)}
             className="flex items-center gap-2 bg-white px-3 py-2 rounded-full border border-[#E9E9E9] hover:border-[#38A738] transition"
           >
             <img src={Profile} alt="profile" className="w-8 h-8 rounded-full object-cover" />
-            <div className="hidden sm:flex flex-col text-sm">
+            <div className="hidden sm:flex flex-col text-sm text-left">
               <span className="font-medium">{name}</span>
               <span className="text-gray-500 text-xs">{major}</span>
             </div>
@@ -148,11 +146,12 @@ const Navbar = () => {
             </div>
           )}
         </div>
+
       </nav>
 
-      {/* 🔹 Mobile menu (เมื่อกด hamburger) */}
+      {/* 🔹 Mobile menu */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden bg-white border-t border-gray-200 shadow-md px-6 py-4 space-y-3">
+        <div className="lg:hidden bg-white border-t border-gray-200 shadow-md px-6 py-4 space-y-3 relative z-40">
           <NavLink
             to="/user/Homepage"
             className={({ isActive }) =>
@@ -193,8 +192,9 @@ const Navbar = () => {
 
       {/* 🔹 Modal ยืนยันออกจากระบบ */}
       {showConfirmModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 flex items-center justify-center z-[60] bg-black/60 backdrop-blur-sm">
           <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
+             {/* ... Modal Content เหมือนเดิม ... */}
             <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
               <svg
                 className="w-6 h-6 text-red-600"

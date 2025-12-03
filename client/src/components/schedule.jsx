@@ -9,233 +9,181 @@ const Schedule = () => {
     const [teacherInfo, setTeacherInfo] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // กำหนดวันและช่องเวลา
     const days = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์"];
     const timeSlots = [8, 9, 10, 11, 12, 13, 14, 15, 16];
+    
+    const START_MINUTES = 8 * 60;
+    const TOTAL_MINUTES = 9 * 60; 
+
+    const timeToMinutes = (timeStr) => {
+        if (!timeStr) return 0;
+        const [h, m] = timeStr.split(":").map(Number);
+        return h * 60 + m;
+    };
 
     useEffect(() => {
         const fetchSchedule = async () => {
             setLoading(true);
-
             try {
-                // --- 1. ตรวจสอบการ Login (Auth) โดยใช้ localStorage ---
                 const token = localStorage.getItem("token");
                 const role = localStorage.getItem("role");
                 const teacherCode = localStorage.getItem("teacher_id");
                 const teacherFullname = localStorage.getItem("fullname");
 
-                // ตรวจสอบว่ามี Token, Role เป็น Teacher และมี teacher_id หรือไม่
                 if (!token || role !== "teacher" || !teacherCode) {
                     toast.error("กรุณาเข้าสู่ระบบในฐานะอาจารย์ก่อน");
-                    navigate("/"); // เด้งไปหน้า Login ถ้าไม่ผ่านเงื่อนไข
+                    navigate("/");
                     return;
                 }
 
-                // 2. ดึงข้อมูลอาจารย์ โดยใช้ teacher_id จาก localStorage ---
                 let finalTeacherName = teacherFullname;
+                const { data: teacherData } = await supabase.from("teacher").select("first_name, last_name").eq("teacher_id", teacherCode).single();
+                if (teacherData) finalTeacherName = `${teacherData.first_name} ${teacherData.last_name}`;
 
-                const { data: teacherData, error: teacherError } = await supabase
-                    .from("teacher")
-                    .select("teacher_id, first_name, last_name")
-                    .eq("teacher_id", teacherCode)
-                    .single();
+                const { data: scheduleData, error: scheduleError } = await supabase.from("class_schedule").select("*").eq("teacher_id", teacherCode);
+                if (scheduleError) throw scheduleError;
 
-                if (teacherError && teacherError.code !== "PGRST116") { // PGRST116: No rows returned
-                    throw new Error("ไม่พบข้อมูลอาจารย์ที่ผูกกับรหัสนี้");
-                }
+                const info = {
+                    name: finalTeacherName,
+                    year: (scheduleData && scheduleData.length > 0) ? scheduleData[0].year : "2568", 
+                    semester: (scheduleData && scheduleData.length > 0) ? scheduleData[0].semester : "1",
+                };
 
-                if (teacherData) {
-                    finalTeacherName = `${teacherData.first_name} ${teacherData.last_name}`;
-                } else if (!teacherFullname) {
-                    // กรณีไม่มีข้อมูลในตาราง teacher และไม่มี fullname ใน localStorage
-                    throw new Error("ไม่พบข้อมูลอาจารย์");
-                }
-
-
-                // --- 3. ดึงตารางสอนโดยใช้ 'teacherCode' ---
-                const { data: scheduleData, error: scheduleError } = await supabase
-                    .from("class_schedule")
-                    .select("*")
-                    .eq("teacher_id", teacherCode);
-
-                if (scheduleError) throw new Error("ไม่สามารถดึงตารางสอนได้: " + scheduleError.message);
-
-                // --- 4. จัดการข้อมูลและตั้งค่า State ---
-                if (scheduleData && scheduleData.length > 0) {
-                    setSchedule(scheduleData);
-                    setTeacherInfo({
-                        name: scheduleData[0].teacher_name || finalTeacherName,
-                        year: scheduleData[0].year,
-                        semester: scheduleData[0].semester,
-                    });
-                } else {
-                    setSchedule([]);
-                    // ใช้ข้อมูลจาก localStorage/ที่ดึงมา หากไม่พบตารางสอน
-                    setTeacherInfo({
-                        name: finalTeacherName,
-                        year: "2568",
-                        semester: "1",
-                    });
-                }
+                setSchedule(scheduleData || []);
+                setTeacherInfo(info);
             } catch (err) {
-                console.error("Error fetching schedule:", err);
-                toast.error(err.message || "เกิดข้อผิดพลาดในการดึงข้อมูล");
-                // navigate("/");
+                console.error("Error:", err);
+                toast.error("เกิดข้อผิดพลาดในการดึงข้อมูล");
             } finally {
                 setLoading(false);
             }
         };
-
         fetchSchedule();
     }, [navigate]);
 
-    // *****************************************************************
-    // 🚀 แก้ไข: นำทางไปยัง /user/Record/ ตามรหัสวิชาที่ส่งมา
     const handleCourseClick = (subjectId) => {
-        console.log("คลิกวิชา:", subjectId);
-        // ใช้ navigate เพื่อนำทางไปยังเส้นทางพร้อมรหัสวิชา
         navigate(`/user/Record/${subjectId}`);
     };
-    // *****************************************************************
 
-    // Function หลักในการสร้างตาราง
     const renderTableBody = () => {
-        if (loading) {
-            return (
-                <tr>
-                    <td colSpan="10" className="text-center p-8 text-gray-500">
-                        กำลังโหลดข้อมูลตารางสอน...
-                    </td>
-                </tr>
-            );
-        }
-
-        // กรณีโหลดเสร็จแต่ไม่มีข้อมูล teacherInfo (เช่น บัญชีนี้ไม่ใช่ teacher)
-        if (!teacherInfo) {
-            return (
-                <tr>
-                    <td colSpan="10" className="text-center p-8 text-red-500">
-                        บัญชีนี้ไม่มีสิทธิ์เข้าถึงข้อมูลตารางสอน
-                    </td>
-                </tr>
-            );
-        }
-
-        if (schedule.length === 0) {
-            return (
-                <tr>
-                    <td colSpan="10" className="text-center p-8 text-gray-500">
-                        ไม่พบข้อมูลตารางสอนสำหรับ อ. {teacherInfo.name}
-                    </td>
-                </tr>
-            );
-        }
+        if (loading) return <tr><td colSpan="10" className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr>;
+        if (schedule.length === 0) return <tr><td colSpan="10" className="p-8 text-center text-gray-500">ไม่พบข้อมูล</td></tr>;
 
         return days.map((day) => {
-            const classesForDay = schedule
-                .filter((item) => {
-                    if (!item.day) return false;
-                    return String(item.day).trim() === day;
-                })
-                .sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
-
-            const cells = [];
-            let slotIndex = 0;
-
-            while (slotIndex < timeSlots.length) {
-                const currentSlotHour = timeSlots[slotIndex];
-
-                const classItem = classesForDay.find(
-                    (c) => c.start_time && parseInt(c.start_time.split(":")[0]) === currentSlotHour
-                );
-
-                if (classItem) {
-                    const startHour = parseInt(classItem.start_time.split(":")[0]);
-                    const endHour = classItem.end_time ? parseInt(classItem.end_time.split(":")[0]) : startHour + 1;
-
-                    const colSpan = endHour - startHour;
-                    const finalColSpan = colSpan > 0 ? colSpan : 1;
-
-                    cells.push(
-                        <td
-                            key={classItem.subject_id + classItem.group}
-                            colSpan={finalColSpan}
-                            className="bg-yellow-400 text-sm cursor-pointer hover:bg-orange-400 transition-colors p-2 border border-gray-300 align-top text-center "
-                            onClick={() => handleCourseClick(classItem.subject_id)}
-                        >
-                            <u>{classItem.subject_id}</u> <br />
-                            <span>
-                                {classItem.subject_name || "(ไม่พบชื่อวิชา)"}
-                            </span> <br />
-                            กลุ่ม {classItem.group} | ห้อง {classItem.room} <br />
-                            [{classItem.start_time} - {classItem.end_time}]
-                        </td>
-                    );
-
-                    slotIndex += finalColSpan;
-                } else {
-                    cells.push(
-                        <td
-                            key={`${day}-${currentSlotHour}`}
-                            className="border border-gray-300"
-                        ></td>
-                    );
-                    slotIndex++;
-                }
-            }
+            const classes = schedule
+                .filter((item) => String(item.day).trim() === day)
+                .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
             return (
-                <tr key={day}>
-                    <td className="bg-gray-100 border border-gray-300 p-1">{day}</td>
-                    {cells}
+                <tr key={day} className="h-24 border-b border-gray-200">
+                    <td className="bg-gray-100 border-r border-gray-300 p-2 font-semibold text-gray-700 w-24 align-middle">
+                        {day}
+                    </td>
+
+                    <td colSpan={9} className="p-0 relative align-top h-full">
+                        <div className="absolute inset-0 flex w-full h-full pointer-events-none z-0">
+                            {timeSlots.map((_, i) => (
+                                <div key={i} className={`flex-1 border-r border-gray-200 ${i === timeSlots.length - 1 ? 'border-none' : ''}`}></div>
+                            ))}
+                        </div>
+
+                        <div className="relative w-full h-full min-h-[96px] z-10"> 
+                            {classes.map((item, idx) => {
+                                const startMin = timeToMinutes(item.start_time);
+                                const endMin = timeToMinutes(item.end_time);
+                                const duration = endMin - startMin;
+                                const widthPercent = (duration / TOTAL_MINUTES) * 100;
+                                const leftPercent = ((startMin - START_MINUTES) / TOTAL_MINUTES) * 100;
+
+                                const overlappingItems = classes.filter(c => 
+                                    c.start_time === item.start_time && c.end_time === item.end_time
+                                );
+                                
+                                const totalOverlaps = overlappingItems.length;
+                                const myIndexInOverlap = overlappingItems.indexOf(item); 
+
+                                const heightPercent = 100 / totalOverlaps;
+                                const topPercent = heightPercent * myIndexInOverlap;
+
+                                return (
+                                    <div
+                                        key={idx}
+                                        onClick={() => handleCourseClick(item.subject_id)}
+                                        className="absolute bg-yellow-400 hover:bg-orange-500 hover:text-white 
+                                                   border border-gray-300 shadow-sm cursor-pointer 
+                                                   flex flex-col justify-center items-center text-center 
+                                                   rounded-sm overflow-hidden p-1 transition-all hover:z-50"
+                                        style={{
+                                            left: `${leftPercent}%`,
+                                            width: `${widthPercent}%`,
+                                            height: `${heightPercent}%`,
+                                            top: `${topPercent}%`,
+                                            zIndex: 10 + myIndexInOverlap 
+                                        }}
+                                        title={`${item.subject_name} (${item.start_time} - ${item.end_time})`}
+                                    >
+                                        <div className="flex flex-col justify-center h-full w-full">
+                                            <u className="font-bold text-m">{item.subject_id}</u>
+                                            <span className="font-medium text-[13px] truncate w-full px-1 block">
+                                                {item.subject_name || "(ไม่มีชื่อ)"}
+                                            </span>
+                                            
+                                            {/* 🟢 ส่วนที่เพิ่มเวลากลับมา */}
+                                            {totalOverlaps <= 2 && (
+                                                <div className="text-[11px] leading-tight mt-0.5 opacity-90 hidden sm:block ">
+                                                    <div>กลุ่ม {item.group} | {item.room}</div>
+                                                    <div>[{item.start_time} - {item.end_time}]</div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </td>
                 </tr>
             );
         });
     };
 
     return (
-        <div className="">
-            <div className="col-span-2 bg-white rounded-2xl p-6 ">
-                <h2 className="flex items-center space-x-2 text-lg font-semibold text-black mb-4">
-                    <span>📅</span>
-                    <span>
-                        ตารางสอน {teacherInfo && `(อ. ${teacherInfo.name})`}
-                    </span>
+        <div className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6 h-full w-full">
+            <h2 className="flex items-center space-x-2 text-lg font-semibold text-black mb-4">
+                <span>📅</span>
+                <span>ตารางสอน {teacherInfo && `(อ. ${teacherInfo.name})`}</span>
+            </h2>
+
+            {teacherInfo && (
+                <h2 className="flex justify-center items-center gap-20 mb-6 text-sm sm:text-base">
+                    <div className="flex gap-2"><span>ปีการศึกษา</span><b className="text-[#38A738] underline">{teacherInfo.year}</b></div>
+                    <div className="flex gap-2"><span>ภาคการศึกษา</span><b className="text-[#38A738] underline">{teacherInfo.semester}</b></div>
                 </h2>
-
-                {/* แสดงข้อมูลปีการศึกษาเมื่อมีข้อมูลแล้ว */}
-                {teacherInfo && (
-                    <h2 className="flex justify-center items-center gap-20">
-                        <span>ปีการศึกษา </span>
-                        <b>
-                            <u>{teacherInfo.year}</u>
-                        </b>
-                        <span>ภาคการศึกษา</span>
-                        <b>
-                            <u>{teacherInfo.semester}</u>
-                        </b>
-                    </h2>
-                )}
-
-                <table className="w-full text-center border-collapse border border-gray-300 mt-10">
+            )}
+            
+            <div className="overflow-x-auto">
+                <table className="w-full min-w-[800px] text-center border-collapse border border-gray-300">
                     <thead>
-                        <tr className="bg-gray-200">
-                            <th className="border border-gray-300 p-0.5">Day/Time</th>
-                            <th className="border border-gray-300 p-0.5">8:00-9:00</th>
-                            <th className="border border-gray-300 p-0.5">9:00-10:00</th>
-                            <th className="border border-gray-300 p-0.5">10:00-11:00</th>
-                            <th className="border border-gray-300 p-0.5">11:00-12:00</th>
-                            <th className="border border-gray-300 p-0.5">12:00-13:00</th>
-                            <th className="border border-gray-300 p-0.5">13:00-14:00</th>
-                            <th className="border border-gray-300 p-0.5">14:00-15:00</th>
-                            <th className="border border-gray-300 p-0.5">15:00-16:00</th>
-                            <th className="border border-gray-300 p-0.5">16:00-17:00</th>
+                        <tr className="bg-gray-200 text-gray-700">
+                            <th className="border border-gray-300 p-2 w-24">วัน / เวลา</th>
+                            {timeSlots.map((t) => (
+                                <th key={t} className="border border-gray-300 p-0.5 text-xs sm:text-sm w-[11.11%]">
+                                    {t}:00 - {t + 1}:00
+                                </th>
+                            ))}
                         </tr>
                     </thead>
                     <tbody>
                         {renderTableBody()}
                     </tbody>
                 </table>
+            </div>
+            
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg text-xs text-gray-500">
+                <p className="font-semibold mb-1">* หมายเหตุ</p>
+                <ul className="list-disc list-inside space-y-1">
+                    <li>คลิกที่แถบวิชาเพื่อทำการ <b>บันทึกการสอน (Record)</b></li>
+                    <li>ข้อมูลตารางสอนมีการเปลี่ยนแปลงทุกภาคเทอม</li>
+                </ul>
             </div>
         </div>
     );

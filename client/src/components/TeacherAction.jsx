@@ -73,6 +73,11 @@ export const TeacherActionModal = ({
       return toast.error("กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน");
     }
 
+    if (isEditMode) {
+      const confirm = window.confirm("คุณต้องการบันทึกการแก้ไขข้อมูลใช่หรือไม่?");
+      if (!confirm) return; 
+  }
+
     const nameParts = fullname.trim().split(" ");
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(" ") || "";

@@ -12,7 +12,10 @@ const TeachingSchedule = () => {
     const [schedule, setSchedule] = useState([]);
     const [loading, setLoading] = useState(true);
     const [teacherName, setTeacherName] = useState('');
-    const [semesterInfo, setSemesterInfo] = useState({ year: "...", semester: "..." });
+    
+    // [เพิ่ม] State เก็บปีและเทอม (Default เทอม 1)
+    const [semesterInfo, setSemesterInfo] = useState({ year: "...", semester: "1" });
+    const [selectedTerm, setSelectedTerm] = useState("1"); 
 
     // Constants สำหรับตาราง
     const days = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์"];
@@ -35,17 +38,16 @@ const TeachingSchedule = () => {
         return h * 60 + m;
     };
 
+    // [แก้ไข] เพิ่ม selectedTerm ใน dependency array
     useEffect(() => {
         const fetchSchedule = async () => {
             setLoading(true);
             try {
-                // 1. ดึงข้อมูลจาก LocalStorage (เพราะเป็นอาจารย์ดูของตัวเอง)
-                const token = localStorage.getItem("token");
                 const role = localStorage.getItem("role");
                 const teacherCode = localStorage.getItem("teacher_id");
                 const storedName = localStorage.getItem("fullname");
 
-                if (!token || role !== "teacher" || !teacherCode) {
+                if (role !== "teacher" || !teacherCode) {
                     toast.error("กรุณาเข้าสู่ระบบในฐานะอาจารย์ก่อน");
                     navigate("/");
                     return;
@@ -53,11 +55,12 @@ const TeachingSchedule = () => {
 
                 setTeacherName(storedName || "อาจารย์");
 
-                // 2. ดึงตารางสอน
+                // [แก้ไข] ดึงข้อมูลโดย Filter ตาม semester ที่เลือก (selectedTerm)
                 const { data: scheduleData, error: scheduleError } = await supabase
                     .from('class_schedule')
                     .select('*')
-                    .eq('teacher_id', teacherCode);
+                    .eq('teacher_id', teacherCode)
+                    .eq('semester', selectedTerm); // กรองเทอมตรงนี้
 
                 if (scheduleError) throw scheduleError;
 
@@ -65,11 +68,12 @@ const TeachingSchedule = () => {
                     setSchedule(scheduleData);
                     setSemesterInfo({
                         year: scheduleData[0].year,
-                        semester: scheduleData[0].semester,
+                        semester: selectedTerm,
                     });
                 } else {
                     setSchedule([]);
-                    setSemesterInfo({ year: "2568", semester: "1" });
+                    // ถ้าไม่มีข้อมูล ให้คงปีไว้ (หรือตั้ง default) แต่เทอมตามที่เลือก
+                    setSemesterInfo(prev => ({ ...prev, semester: selectedTerm }));
                 }
 
             } catch (err) {
@@ -81,60 +85,50 @@ const TeachingSchedule = () => {
         };
 
         fetchSchedule();
-    }, [navigate]);
+    }, [navigate, selectedTerm]); // โหลดใหม่เมื่อเปลี่ยนเทอม
 
-    // ✅ ฟังก์ชันเมื่อคลิกที่วิชา (ไปหน้า Record)
     const handleCourseClick = (subjectId) => {
-        // นำทางไปหน้าบันทึกการสอน
         navigate(`/user/Record/${subjectId}`);
     };
 
-    // ✅ แก้ไขส่วน renderTableBody ให้รองรับการซ้อนกัน
+    // [คงเดิมตาม Request] ใช้ Logic Render แบบเดิมเป๊ะๆ
     const renderTableBody = () => {
         if (loading) return <tr><td colSpan="10" className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr>;
-        if (schedule.length === 0) return <tr><td colSpan="10" className="p-8 text-center text-gray-500">ไม่พบข้อมูล</td></tr>;
+        if (schedule.length === 0) return <tr><td colSpan="10" className="p-8 text-center text-gray-500">ไม่พบข้อมูลในเทอม {selectedTerm}</td></tr>;
 
         return days.map((day) => {
-            // ดึงวิชาของวันนี้
             const classes = schedule
                 .filter((item) => String(item.day).trim() === day)
                 .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
             return (
                 <tr key={day} className="h-24 border-b border-gray-200">
-                    <td className="bg-gray-100 border-r border-gray-300 p-2 font-semibold text-gray-700 w-24 align-middle">
+                    <td className="bg-gray-100 border-r border-gray-300 font-semibold text-gray-700 align-middle text-center w-[100px] p-2">
                         {day}
                     </td>
-
-                    <td colSpan={9} className="p-0 relative align-top h-full">
-                        {/* 1. Grid พื้นหลัง */}
+                    {/* ใช้ colSpan=9 เพื่อคลุม TimeSlots ทั้งหมด */}
+                    <td colSpan={9} className="p-0 relative align-top h-full w-auto">
+                        {/* Grid พื้นหลัง */}
                         <div className="absolute inset-0 flex w-full h-full pointer-events-none z-0">
                             {timeSlots.map((_, i) => (
                                 <div key={i} className={`flex-1 border-r border-gray-200 ${i === timeSlots.length - 1 ? 'border-none' : ''}`}></div>
                             ))}
                         </div>
 
-                        {/* 2. กล่องวิชา (คำนวณการซ้อนทับ) */}
+                        {/* กล่องวิชา */}
                         <div className="relative w-full h-full min-h-[96px] z-10">
                             {classes.map((item, idx) => {
-                                // A. คำนวณตำแหน่งแนวนอน (ซ้าย/ขวา)
                                 const startMin = timeToMinutes(item.start_time);
                                 const endMin = timeToMinutes(item.end_time);
                                 const duration = endMin - startMin;
                                 const widthPercent = (duration / TOTAL_MINUTES) * 100;
                                 const leftPercent = ((startMin - START_MINUTES) / TOTAL_MINUTES) * 100;
 
-                                // B. 🟢 คำนวณตำแหน่งแนวตั้ง (บน/ล่าง) กรณีชนกัน
-                                // หาเพื่อนที่เวลาชนกับเราเป๊ะๆ (Same Start & Same End)
                                 const overlappingItems = classes.filter(c =>
                                     c.start_time === item.start_time && c.end_time === item.end_time
                                 );
-
                                 const totalOverlaps = overlappingItems.length;
-                                const myIndexInOverlap = overlappingItems.indexOf(item); // เราเป็นคนที่เท่าไหร่ในกลุ่มที่ชนกัน
-
-                                // ถ้าชนกัน 2 วิชา -> สูงคนละ 50%, top 0% กับ 50%
-                                // ถ้าชนกัน 3 วิชา -> สูงคนละ 33.3%, top 0%, 33%, 66%
+                                const myIndexInOverlap = overlappingItems.indexOf(item);
                                 const heightPercent = 100 / totalOverlaps;
                                 const topPercent = heightPercent * myIndexInOverlap;
 
@@ -142,7 +136,6 @@ const TeachingSchedule = () => {
                                     <div
                                         key={idx}
                                         onClick={() => handleCourseClick(item.subject_id)}
-                                        // 🟢 เอา absolute top/bottom ออก แล้วใช้ style คุมแทน
                                         className="absolute bg-yellow-400 hover:bg-orange-500 hover:text-white 
                                                    border border-gray-300 shadow-sm cursor-pointer 
                                                    flex flex-col justify-center items-center text-center 
@@ -150,26 +143,21 @@ const TeachingSchedule = () => {
                                         style={{
                                             left: `${leftPercent}%`,
                                             width: `${widthPercent}%`,
-
-                                            // 🟢 กำหนดความสูงและตำแหน่งแนวตั้ง
                                             height: `${heightPercent}%`,
                                             top: `${topPercent}%`,
-
-                                            // เพิ่ม z-index เล็กน้อยตามลำดับเพื่อไม่ให้เงาบังกันเอง
                                             zIndex: 10 + myIndexInOverlap
                                         }}
                                         title={`${item.subject_name} (${item.start_time} - ${item.end_time})`}
                                     >
                                         <div className="flex flex-col justify-center h-full w-full">
-                                            <u className="font-bold text-m">{item.subject_id}</u>
-                                            <span className="font-medium text-[13px] truncate w-full px-1 block">
+                                            <u className="font-bold text-xs sm:text-m">{item.subject_id}</u>
+                                            <span className="font-medium text-[10px] md:text-[13px] truncate w-full px-1 block">
                                                 {item.subject_name || "(ไม่มีชื่อ)"}
                                             </span>
-                                            {/* ถ้าซ้อนกันเยอะ ซ่อนรายละเอียดบางอย่าง */}
                                             {totalOverlaps <= 2 && (
-                                                <div className="text-[11px] leading-tight mt-0.5 opacity-90 hidden sm:block ">
+                                                <div className="text-[9px] md:text-[11px] leading-tight mt-0.5 opacity-90 hidden sm:block ">
                                                     <div>กลุ่ม {item.group} | {item.room}</div>
-                                                    <div>[{item.start_time} - {item.end_time}]</div>
+                                                    <div>[{item.start_time.slice(0,5)} - {item.end_time.slice(0,5)}]</div>
                                                 </div>
                                             )}
                                         </div>
@@ -182,15 +170,6 @@ const TeachingSchedule = () => {
             );
         });
     };
-
-    //         return (
-    //             <tr key={day}>
-    //                 <td className="bg-gray-100 border border-gray-300 p-2 font-medium">{day}</td>
-    //                 {cells}
-    //             </tr>
-    //         );
-    //     });
-    // };
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -208,26 +187,47 @@ const TeachingSchedule = () => {
                             <h1 className="text-xl font-bold text-black">ตารางสอนของคุณ</h1>
                             <p className="text-gray-500 text-sm mt-1">{teacherName}</p>
                         </div>
-                        <div className="mt-4 md:mt-0 flex gap-8 text-sm md:text-base">
+                        
+                        {/* [แก้ไข] ส่วนแสดงผลข้อมูลปีและปุ่มเลือกเทอม */}
+                        <div className="mt-4 md:mt-0 flex gap-8 text-sm md:text-base items-center">
                             <div className="text-center">
                                 <span className="block text-gray-500 text-xs">ปีการศึกษา</span>
-                                <span className="font-bold underline text-[#38A738]">{semesterInfo.year}</span>
+                                <span className="font-bold underline text-[#38A738]">{semesterInfo.year || "2568"}</span>
                             </div>
-                            <div className="text-center">
-                                <span className="block text-gray-500 text-xs">ภาคการศึกษา</span>
-                                <span className="font-bold underline text-[#38A738]">{semesterInfo.semester}</span>
+                            
+                            <div className="flex gap-2 items-center">
+                                <span className="text-gray-500 text-xs md:text-sm">ภาคการศึกษา</span>
+                                <div className="flex space-x-1 bg-gray-100 px-2 py-1 rounded-lg">
+                                    {["1", "2", "3"].map((term) => (
+                                        <button
+                                            key={term}
+                                            onClick={() => setSelectedTerm(term)}
+                                            className={`font-bold px-3 py-1 rounded-md transition-all text-xs md:text-sm ${
+                                                selectedTerm === term
+                                                    ? "text-[#38A738] underline cursor-default bg-white shadow-sm"
+                                                    : "text-gray-400 hover:text-gray-600 hover:bg-gray-200"
+                                            }`}
+                                        >
+                                            {term}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     {/* Table Card */}
                     <div className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6 overflow-x-auto">
-                        <table className="w-full min-w-[800px] text-center border-collapse border border-gray-300">
+                        {/* [สำคัญ] ใช้โครงสร้าง Table แบบ Fixed ตามที่ต้องการ */}
+                        <table className="w-full min-w-[800px] border-collapse border border-gray-300 table-fixed">
                             <thead>
                                 <tr className="bg-gray-200 text-gray-700">
-                                    <th className="border border-gray-300 p-2 w-24">วัน / เวลา</th>
+                                    {/* หัวตาราง Column แรก */}
+                                    <th className="border border-gray-300 p-2 w-[100px] text-center">วัน / เวลา</th>
+                                    
+                                    {/* หัวตาราง Time Slots (วนลูป th ตามต้นฉบับ) */}
                                     {timeSlots.map(t => (
-                                        <th key={t} className="border border-gray-300 p-2">
+                                        <th key={t} className="border border-gray-300 p-1 text-xs sm:text-sm font-semibold text-center">
                                             {t}:00 - {t + 1}:00
                                         </th>
                                     ))}

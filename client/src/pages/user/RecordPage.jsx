@@ -1,25 +1,16 @@
-// นำเข้า React และ Hook ที่ใช้จาก React
 import React, { useEffect, useRef, useState } from "react";
-// นำเข้า Navbar ด้านบนของหน้า จากโฟลเดอร์ components
 import Navbar from "../../components/Navbar";
-// นำเข้า Breadcrumb (แสดงเส้นทางหน้า เช่น หน้าแรก > ตารางสอน > บันทึก)
 import MyBreadcrumb from "../../components/MyBreadcrumb";
-// นำเข้า axios เวอร์ชันที่เราตั้งค่า baseURL ไว้แล้ว
 import axios from "../../util/axios";
-// นำเข้า toast สำหรับแจ้งเตือน Popup มุมจอ (เช่น ข้อความสำเร็จ/ผิดพลาด)
 import toast from "react-hot-toast";
-// นำเข้า hook ใช้เปลี่ยนหน้า (navigate) และดึงค่าจาก URL (useParams)
 import { useNavigate, useParams } from "react-router-dom";
 
-// ประกาศ Component หลักของหน้านี้ ชื่อ RecordPage
 const RecordPage = () => {
-    // ใช้ hook useNavigate เพื่อให้เราสามารถสั่งเปลี่ยนหน้าได้ด้วยโค้ด
     const navigate = useNavigate();
 
-    // ดึงค่าจาก URL parameter เช่น /user/record/:subjectId
-    const { subjectId } = useParams();
-
-    // ดึงค่า teacher_id จาก localStorage (หลังจาก Login แล้วเคยเก็บไว้)
+    // ดึงค่าจาก URL parameter เช่น /user/record/:subjectId/:group
+    const { subjectId, group } = useParams();
+    
     const teacherId = localStorage.getItem("teacher_id");
 
     // state สำหรับเก็บ "รายการกล้อง" ที่ค้นเจอในเครื่อง (array)
@@ -111,7 +102,7 @@ const RecordPage = () => {
         // ประกอบ URL สำหรับ WebSocket ของกล้อง + query string teacher_id, subject_id
         const wsUrl =
             `${wsProtocol}://${wsBase}/camera/ws/camera/${cameraId}` +
-            `?teacher_id=${teacherId}&subject_id=${subjectId}`;
+            `?teacher_id=${teacherId}&subject_id=${subjectId}&group=${group}`;
 
         // log ดูว่ากำลังจะเชื่อมต่อไปที่ไหน
         console.log("[connectWebSocket] connecting", wsUrl);
@@ -189,7 +180,7 @@ const RecordPage = () => {
         // ประกอบ URL สำหรับ summary WebSocket
         const wsUrl =
             `${wsProtocol}://${wsBase}/camera/ws/camera/summary/${cameraId}` +
-            `?teacher_id=${teacherId}&subject_id=${subjectId}`;
+            `?teacher_id=${teacherId}&subject_id=${subjectId}&group=${group}`;
 
         // log ว่ากำลังเชื่อมจะต่อ summary socket
         console.log("[connectSummarySocket] connecting", wsUrl);
@@ -349,40 +340,6 @@ const RecordPage = () => {
     }, []); // [] หมายถึงทำ cleanup ตอน component ถูกถอดออกเท่านั้น
 
     // ---------------------- ฟังก์ชันสำหรับปุ่มต่าง ๆ ----------------------
-
-    // ปุ่ม "เชื่อมต่อใหม่" สำหรับกล้องบางตัว
-    const handleReconnect = async (cameraId) => {
-        try {
-            // เรียกหลังบ้านให้เปิดกล้องทั้งหมด (เผื่อกล้องไหนปิด/หลุด)
-            await axios.get("camera/open-all");
-            // เชื่อมต่อ WebSocket ใหม่สำหรับกล้องนี้
-            connectWebSocket(cameraId);
-            // แจ้งผู้ใช้ว่าทำสำเร็จ
-            toast.success(`เชื่อมต่อใหม่ กล้อง ${getCameraName(cameraId)} แล้ว`);
-        } catch {
-            // ถ้ามีปัญหาให้แจ้งเตือนว่าล้มเหลว
-            toast.error(`เชื่อมต่อใหม่กล้อง ${getCameraName(cameraId)} ไม่สำเร็จ`);
-        }
-    };
-
-    // ปุ่ม "ปิดตัวนี้" สำหรับปิดกล้องทีละตัว
-    const handleCloseCamera = async (cameraId) => {
-        try {
-            // เรียก API ปิดกล้องตัวที่ระบุ
-            await axios.get(`camera/close-camera/${cameraId}`);
-            // ปิด WebSocket สตรีมภาพของกล้องนี้
-            safeCloseWS(cameraId);
-            // ปิด WebSocket summary ของกล้องนี้
-            safeCloseSummaryWS(cameraId);
-            // แจ้งเตือนว่าปิดกล้องแล้ว
-            toast.success(`ปิดกล้อง ${getCameraName(cameraId)} แล้ว`);
-        } catch (err) {
-            // แจ้งเตือนว่าปิดกล้องไม่สำเร็จ
-            toast.error("ปิดกล้องไม่สำเร็จ");
-            // log error เพื่อ debug
-            console.error("ปิดกล้องไม่สำเร็จ :", err);
-        }
-    };
 
     // ปุ่ม "ปิดกล้องทั้งหมด"
     const handleCloseAll = async () => {

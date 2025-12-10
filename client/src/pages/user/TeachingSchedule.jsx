@@ -87,8 +87,8 @@ const TeachingSchedule = () => {
         fetchSchedule();
     }, [navigate, selectedTerm]); // โหลดใหม่เมื่อเปลี่ยนเทอม
 
-    const handleCourseClick = (subjectId) => {
-        navigate(`/user/Record/${subjectId}`);
+    const handleCourseClick = (subjectId, group) => {
+        navigate(`/user/Record/${subjectId}/${group}`);
     };
 
     // [คงเดิมตาม Request] ใช้ Logic Render แบบเดิมเป๊ะๆ
@@ -123,7 +123,8 @@ const TeachingSchedule = () => {
                                 const duration = endMin - startMin;
                                 const widthPercent = (duration / TOTAL_MINUTES) * 100;
                                 const leftPercent = ((startMin - START_MINUTES) / TOTAL_MINUTES) * 100;
-
+                                console.log(item.group);
+                                
                                 const overlappingItems = classes.filter(c =>
                                     c.start_time === item.start_time && c.end_time === item.end_time
                                 );
@@ -135,7 +136,7 @@ const TeachingSchedule = () => {
                                 return (
                                     <div
                                         key={idx}
-                                        onClick={() => handleCourseClick(item.subject_id)}
+                                        onClick={() => handleCourseClick(item.subject_id, item.group)}
                                         className="absolute bg-yellow-400 hover:bg-orange-500 hover:text-white 
                                                    border border-gray-300 shadow-sm cursor-pointer 
                                                    flex flex-col justify-center items-center text-center 

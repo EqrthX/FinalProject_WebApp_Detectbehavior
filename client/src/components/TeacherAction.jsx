@@ -73,6 +73,11 @@ export const TeacherActionModal = ({
       return toast.error("กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน");
     }
 
+    if (isEditMode) {
+      const confirm = window.confirm("คุณต้องการบันทึกการแก้ไขข้อมูลใช่หรือไม่?");
+      if (!confirm) return; 
+  }
+
     const nameParts = fullname.trim().split(" ");
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(" ") || "";
@@ -200,7 +205,7 @@ export const TeacherActionModal = ({
               value={formData.teacherId}
               disabled={isEditMode}
               onChange={(e) => setFormData({...formData, teacherId: e.target.value.replace(/[^0-9]/g, "")})}
-              className="peer w-full px-4 py-2 border border-gray-300 rounded-md text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
               placeholder="รหัสประจำตัว"
             />
             <label htmlFor="teacherId" className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">

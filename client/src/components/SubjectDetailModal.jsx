@@ -2,24 +2,28 @@ import React, { useState, useEffect } from "react";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
-import { X, Users, Calendar, Clock, BookOpen, Filter } from "lucide-react";
-import { DatePicker } from "antd"; // 🟢 1. นำเข้า DatePicker
+import { X, Users, Calendar, Clock, BookOpen } from "lucide-react";
+import { DatePicker } from "antd"; 
 import { supabase } from "../config/supabase";
 import dayjs from "dayjs"; 
 import "dayjs/locale/th"; 
+import isBetween from "dayjs/plugin/isBetween"; 
 
-const { RangePicker } = DatePicker; // 🟢 2. ดึง RangePicker ออกมาใช้
+dayjs.extend(isBetween);
+const { RangePicker } = DatePicker;
 
 export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
-  // --- States ---
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [chartData, setChartData] = useState([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingChart, setLoadingChart] = useState(false);
-
-  // 🟢 3. State สำหรับเก็บช่วงวันที่ (Default เป็น null คือเอาทั้งหมด)
   const [dateRange, setDateRange] = useState(null);
+
+  const getDayNumber = (thaiDay) => {
+    const days = { "อาทิตย์": 0, "จันทร์": 1, "อังคาร": 2, "พุธ": 3, "พฤหัสบดี": 4, "ศุกร์": 5, "เสาร์": 6 };
+    return days[thaiDay] !== undefined ? days[thaiDay] : -1;
+  };
 
   // --- 1. Fetch Groups ---
   useEffect(() => {
@@ -29,112 +33,129 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
         try {
             const { data, error } = await supabase
             .from("class_schedule")
-            .select(`
-                id: class_schedule_id, 
-                group, day, start_time, end_time, 
-                room, teacher_name, teacher_id, subject_id
-            `)
+            .select(`id: class_schedule_id, group, day, start_time, end_time, room, teacher_name, teacher_id, subject_id`)
             .eq("subject_id", subject.code) 
             .order("group", { ascending: true });
 
             if (error) throw error;
-
             setGroups(data || []);
-            if (data && data.length > 0) {
-                setSelectedGroup(data[0]);
-            } else {
-                setSelectedGroup(null);
-            }
-        } catch (err) {
-            console.error("Error fetching groups:", err);
-        } finally {
-            setLoadingGroups(false);
-        }
+            if (data && data.length > 0) setSelectedGroup(data[0]);
+            else setSelectedGroup(null);
+        } catch (err) { console.error(err); } 
+        finally { setLoadingGroups(false); }
       };
       fetchGroups();
     } else {
-        // Reset State เมื่อปิด Modal
-        setGroups([]);
-        setSelectedGroup(null);
-        setChartData([]);
-        setDateRange(null); // Reset วันที่ด้วย
+        setGroups([]); setSelectedGroup(null); setChartData([]); setDateRange(null);
     }
   }, [isOpen, subject]);
 
-  // --- 2. Fetch Chart Data ---
+  // --- 2. Fetch Chart Data (Logic ใหม่: แยกกลุ่มในวันเดียวกัน) ---
   useEffect(() => {
     if (selectedGroup && isOpen) {
       setLoadingChart(true);
       const fetchSummary = async () => {
         try {
-            // เริ่มต้นสร้าง Query
+            console.log("Selected Group:", selectedGroup);
+
+            // 1. ดึงข้อมูลทั้งหมดของวิชานี้ (เอา teacher_id ออกก่อน เพื่อความชัวร์ว่าข้อมูลมา)
             let query = supabase
                 .from("camera_daily_summary")
-                .select("summary_date, avg_attention, avg_non_attention")
-                .eq("subject_id", subject.code)
-                .eq("teacher_id", selectedGroup.teacher_id);
+                .select("summary_date, created_at, avg_attention, camera_id") 
+                .eq("subject_id", subject.code);
 
-            // 🟢 4. เพิ่มเงื่อนไข Filter วันที่ (ถ้ามีการเลือก)
             if (dateRange && dateRange[0] && dateRange[1]) {
-                const startDate = dateRange[0].format('YYYY-MM-DD');
-                const endDate = dateRange[1].format('YYYY-MM-DD');
-                
                 query = query
-                    .gte('summary_date', startDate) // มากกว่าหรือเท่ากับวันเริ่ม
-                    .lte('summary_date', endDate);  // น้อยกว่าหรือเท่ากับวันสิ้นสุด
+                    .gte('summary_date', dateRange[0].format('YYYY-MM-DD'))
+                    .lte('summary_date', dateRange[1].format('YYYY-MM-DD'));
             }
 
-            // สั่ง run query พร้อม sort
             const { data, error } = await query.order("summary_date", { ascending: true });
-
             if (error) throw error;
 
-            if (!data || data.length === 0) {
-                setChartData([]);
-                return;
-            }
+            console.log("Raw Data form DB:", data); // ดูว่ามีข้อมูลดิบมาไหม
 
-            // คำนวณเปอร์เซ็นต์
-            const formattedData = data.map((item) => {
-                const att = Number(item.avg_attention || 0);
-                const non = Number(item.avg_non_attention || 0);
-                const total = att + non; 
+            if (!data || data.length === 0) { setChartData([]); return; }
 
-                const attPct = total === 0 ? 0 : Math.round((att / total) * 100);
-                const nonPct = total === 0 ? 0 : Math.round((non / total) * 100);
+            // --- FILTERING LOGIC ---
+            // เตรียมข้อมูลวันและเวลาของกลุ่มที่เลือก
+            const targetDayNum = getDayNumber(selectedGroup.day); 
+            const groupStartTime = selectedGroup.start_time.slice(0, 5); // "11:00"
+            const groupEndTime = selectedGroup.end_time.slice(0, 5);     // "14:00"
+
+            const filteredData = data.filter(item => {
+                const recordDateTime = dayjs(item.created_at); // ใช้เวลาที่บันทึกจริง (created_at)
+
+                // A. เช็ควัน: ต้องตรงกัน (เช่น วันจันทร์)
+                // หมายเหตุ: ใช้ recordDateTime.day() เทียบกับ targetDayNum
+                // ถ้า summary_date ตรงเป๊ะอยู่แล้ว แต่ created_at อาจจะเพี้ยน timezone ให้ลองเปลี่ยนไปใช้ dayjs(item.summary_date).day() แทนได้
+                if (recordDateTime.day() !== targetDayNum) return false;
+
+                // B. เช็คช่วงเวลา: เพื่อแยกกลุ่มที่เรียนวันเดียวกัน
+                const dateStr = recordDateTime.format("YYYY-MM-DD");
+                
+                // สร้างขอบเขตเวลาเรียนของกลุ่มนี้
+                // 🟢 Buffer: เผื่อเวลา +/- 3 ชั่วโมง (กว้างมาก เพื่อให้ข้อมูล 09:00 เข้ามาอยู่ในคาบ 11:00 ได้)
+                const classStart = dayjs(`${dateStr} ${groupStartTime}`).subtract(3, 'hour');
+                const classEnd = dayjs(`${dateStr} ${groupEndTime}`).add(3, 'hour');
+
+                // ถ้าเวลาที่บันทึก (created_at) อยู่ในช่วงนี้ ให้ถือว่าเป็นของกลุ่มนี้
+                const isMatch = recordDateTime.isBetween(classStart, classEnd, null, '[]');
+                
+                return isMatch;
+            });
+
+            console.log("Filtered Data:", filteredData); // ดูว่าเหลือข้อมูลหลังกรองเท่าไหร่
+
+            // --- COUNTING LOGIC (นับคน) ---
+            const dailyStats = {};
+            filteredData.forEach((item) => {
+                const dateKey = dayjs(item.summary_date).format("YYYY-MM-DD");
+                const cameraKey = item.camera_id; 
+
+                if (!dailyStats[dateKey]) dailyStats[dateKey] = { date: item.summary_date, students: {} };
+                if (!dailyStats[dateKey].students[cameraKey]) dailyStats[dateKey].students[cameraKey] = { sumAttention: 0, count: 0 };
+
+                dailyStats[dateKey].students[cameraKey].sumAttention += Number(item.avg_attention || 0);
+                dailyStats[dateKey].students[cameraKey].count += 1;
+            });
+
+            const formattedData = Object.keys(dailyStats).map((dateKey) => {
+                const dayData = dailyStats[dateKey];
+                let attentiveCount = 0;
+                let inattentiveCount = 0;
+
+                Object.values(dayData.students).forEach((student) => {
+                    const avg = student.sumAttention / student.count;
+                    if (avg >= 50) attentiveCount++; else inattentiveCount++;
+                });
 
                 return {
-                    name: dayjs(item.summary_date).format("DD MMM"), 
-                    fullDate: item.summary_date,
-                    rawAtt: att,      
-                    rawNon: non,      
-                    attentivePct: attPct,  
-                    notAttentivePct: nonPct 
+                    name: dayjs(dayData.date).format("DD MMM"), 
+                    fullDate: dayData.date,
+                    attentivePeople: attentiveCount,
+                    inattentivePeople: inattentiveCount
                 };
             });
 
+            formattedData.sort((a, b) => new Date(a.fullDate) - new Date(b.fullDate));
             setChartData(formattedData);
 
-        } catch (err) {
-            console.error("Error fetching daily summary:", err);
-            setChartData([]);
-        } finally {
-            setLoadingChart(false);
-        }
+        } catch (err) { console.error(err); setChartData([]); } 
+        finally { setLoadingChart(false); }
       };
-
       fetchSummary();
     }
-  }, [selectedGroup, isOpen, subject, dateRange]); // 🟢 เพิ่ม dateRange ใน dependency array
+  }, [selectedGroup, isOpen, subject, dateRange]);
 
+  // ... (JSX ส่วน Return เหมือนเดิม ไม่ต้องแก้)
   if (!isOpen) return null;
-
   return (
+    // ... Copy JSX เดิมมาวางได้เลย
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-[#f8f8f8] w-full max-w-5xl h-[85vh] rounded-[20px] shadow-2xl flex flex-col overflow-hidden border border-gray-200">
-        
-        {/* Header */}
-        <div className="bg-white px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+         {/* ... Header ... */}
+         <div className="bg-white px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <div>
                 <h2 className="text-xl font-bold text-[#3D42D3] flex items-center gap-2">
                     <BookOpen className="w-6 h-6" />
@@ -198,19 +219,18 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
 
                 {/* Right Column: Chart */}
                 <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-full p-6">
-                    {/* 🟢 5. ปรับ Header กราฟให้มี DatePicker */}
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                         <div>
-                            <h3 className="font-bold text-lg text-gray-800">สถิติความสนใจรายวัน (%)</h3>
+                            {/* 🟢 เปลี่ยนหัวข้อกราฟ */}
+                            <h3 className="font-bold text-lg text-gray-800">จำนวนนักศึกษาที่ตั้งใจเรียน (คน)</h3>
                             <p className="text-sm text-gray-500">
                                 {selectedGroup 
-                                    ? `กลุ่มเรียนที่ ${selectedGroup.group} (อ.${selectedGroup.teacher_name})`
+                                    ? `กลุ่มเรียนที่ ${selectedGroup.group} (เกณฑ์ > 50%)`
                                     : "กรุณาเลือกกลุ่มเรียนด้านซ้าย"
                                 }
                             </p>
                         </div>
                         
-                        {/* Date Range Picker */}
                         <div className="flex items-center gap-2">
                             <RangePicker 
                                 onChange={(dates) => setDateRange(dates)}
@@ -224,15 +244,10 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
 
                     <div className="flex-1 w-full min-h-0 relative">
                         {loadingChart ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                                <div className="flex flex-col items-center gap-2">
-                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3D42D3]"></div>
-                                    <p className="text-sm text-gray-500">กำลังประมวลผลข้อมูล...</p>
-                                </div>
+                            <div className="h-full flex items-center justify-center">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3D42D3]"></div>
                             </div>
-                        ) : null}
-
-                        {selectedGroup ? (
+                        ) : selectedGroup ? (
                             chartData.length > 0 ? (
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart
@@ -252,29 +267,25 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
                                             axisLine={false} 
                                             tickLine={false} 
                                             tick={{ fill: '#6B7280', fontSize: 12 }} 
-                                            domain={[0, 100]} 
-                                            tickFormatter={(value) => `${value}%`} 
+                                            allowDecimals={false} // 🟢 ห้ามมีทศนิยม (นับคน)
+                                            label={{ value: 'จำนวนคน', angle: -90, position: 'insideLeft', fill: '#9CA3AF' }}
                                         />
                                         <Tooltip 
                                             cursor={{ fill: '#F3F4F6' }}
                                             contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                            formatter={(value, name, props) => {
-                                                if (name === "ตั้งใจเรียน") return [`${value}% (เฉลี่ย ${props.payload.rawAtt.toFixed(1)} คน)`, name];
-                                                if (name === "ไม่ตั้งใจ") return [`${value}% (เฉลี่ย ${props.payload.rawNon.toFixed(1)} คน)`, name];
-                                                return [value, name];
-                                            }}
+                                            formatter={(value) => `${value} คน`} // 🟢 หน่วยเป็นคน
                                         />
                                         <Legend verticalAlign="top" height={36} iconType="circle"/>
                                         
                                         <Bar 
-                                            dataKey="attentivePct" 
+                                            dataKey="attentivePeople" 
                                             name="ตั้งใจเรียน" 
                                             fill="#38A738" 
                                             radius={[4, 4, 0, 0]} 
                                             barSize={30} 
                                         />
                                         <Bar 
-                                            dataKey="notAttentivePct" 
+                                            dataKey="inattentivePeople" 
                                             name="ไม่ตั้งใจ" 
                                             fill="#FF4D4F" 
                                             radius={[4, 4, 0, 0]} 

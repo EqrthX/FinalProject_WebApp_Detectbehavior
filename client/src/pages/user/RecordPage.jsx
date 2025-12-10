@@ -379,8 +379,6 @@ const RecordPage = () => {
 
             // เรียก API ให้เริ่มตรวจจับทุกกล้อง
             const resStartDetect = await axios.get(`camera/start-all`);
-            // รับรายการ id กล้องที่เริ่มตรวจจับสำเร็จจากหลังบ้าน
-            const started_ids = resStartDetect.data.started || [];
 
             // แจ้งเตือนว่าการเริ่มตรวจจับสำเร็จ
             toast.success(`เริ่มตรวจจับทุกกล้อง`);
@@ -426,7 +424,7 @@ const RecordPage = () => {
             // แจ้งเตือนว่าหยุดตรวจจับเรียบร้อย
             toast.success(`หยุดการตรวจจับทุกกล้อง`);
             // ส่งผู้ใช้ไปยังหน้า "สรุปผล" ของ user
-            navigate("/user/summarize/");
+            navigate(`/user/summarize/${subjectId}/${group}`);
         } catch (error) {
             // ถ้ามีปัญหาระหว่างหยุดตรวจจับ ให้ log ไว้
             console.error("การหยุดตรวจจับเกิดข้อผิดพลาด", error);

@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import { supabase } from "../../config/supabase.js"
+import { useParams } from 'react-router-dom';
 
 // --- 1. กำหนดชุดสีมาตรฐาน ---
 const BEHAVIOR_COLORS = {
@@ -22,6 +23,7 @@ const BEHAVIOR_COLORS = {
 
 const SummarizePage = () => {
   const teacher_id = localStorage.getItem("teacher_id")
+  const {subject_id, group} = useParams();
 
   const [sessionData, setSessionData] = useState([]);
   const [headerInfo, setHeaderInfo] = useState({ subject: "", date: "" });
@@ -62,6 +64,7 @@ const SummarizePage = () => {
           .from('camera_daily_summary')
           .select('*')
           .eq('teacher_id', teacher_id)
+          .eq("group", group)
           .order('created_at', { ascending: false })
           .limit(1);
 
@@ -88,7 +91,8 @@ const SummarizePage = () => {
           .select('*')
           .eq('teacher_id', teacher_id)
           .eq('subject_id', targetSubject)
-          .eq('summary_date', targetDate);
+          .eq('summary_date', targetDate)
+          .eq("group", group)
 
         // C. ดึง Logs Timeline
         const startOfDay = new Date(targetDate).toISOString();
@@ -97,6 +101,7 @@ const SummarizePage = () => {
           .select('*')
           .eq('teacher_id', teacher_id)
           .eq('subject_id', targetSubject)
+          .eq("group", group)
           .gte('created_at', startOfDay)   
           .lte('created_at', stopTime)
           .order('created_at', { ascending: true });
@@ -175,7 +180,7 @@ const SummarizePage = () => {
                 <div className='flex items-center gap-2'>
                   <BarChartOutlined className="text-2xl text-blue-500" />
                   <h2 className="text-xl font-semibold text-gray-700">
-                    สรุปผลการสอนล่าสุด: <span className="text-[#38A738] ml-2">{headerInfo.subject || "กำลังโหลด..."}</span>
+                    สรุปผลการสอนล่าสุด: <span className="text-[#38A738] ml-2">{headerInfo.subject || "กำลังโหลด..."} กลุ่ม {group}</span>
                   </h2>
                 </div>
                 <div className="text-gray-500 text-sm flex items-center gap-2">

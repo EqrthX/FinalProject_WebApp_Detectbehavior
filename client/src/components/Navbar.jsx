@@ -17,11 +17,16 @@ const Navbar = () => {
   const name = localStorage.getItem("fullname")
   const major = localStorage.getItem("major");
 
+  // ---------------------------------------------------------------------------
+  // 🟢 แก้ไขตรงนี้: เปลี่ยน logic การเช็ค path
+  // ใช้ .some() คู่กับ .startsWith() เพื่อให้รองรับ URL ที่มี ID ต่อท้าย
+  // เช่น /user/Record/15 หรือ /user/summarize ก็จะถือว่าเป็น TeachingSchedule ด้วย
+  // ---------------------------------------------------------------------------
   const isTeachingActive = [
     '/user/TeachingSchedule',
     '/user/Record',
     '/user/summarize'
-  ].includes(location.pathname);
+  ].some(path => location.pathname.startsWith(path));
 
   // ปิด dropdown เมื่อคลิกข้างนอก
   useEffect(() => {
@@ -56,10 +61,8 @@ const Navbar = () => {
 
   return (
     <>
-      {/* 🔹 Navbar Container: เพิ่ม relative เพื่อให้ลูกที่ใช้ absolute อ้างอิงได้ */}
       <nav className="sticky top-0 bg-[#F6F6F4] px-4 sm:px-6 py-3 flex items-center justify-between border-b border-gray-200 z-50 relative">
 
-        {/* 🔹 Left: Hamburger (เฉพาะมือถือ) */}
         <div className="lg:hidden flex-none">
           <button
             className="flex items-center text-gray-700"
@@ -69,8 +72,7 @@ const Navbar = () => {
           </button>
         </div>
 
-        {/* 🔹 Center: เมนูหลัก */}
-        {/* ใช้ absolute + transform เพื่อบังคับให้อยู่กึ่งกลางจอเป๊ะๆ */}
+        {/* Desktop Menu */}
         <div className="hidden lg:flex absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
           <div className="bg-white border border-[#E9E9E9] rounded-full p-2 px-3 space-x-3 flex">
             <NavLink
@@ -84,6 +86,7 @@ const Navbar = () => {
               หน้าแรก
             </NavLink>
 
+            {/* ปุ่มตารางสอน ใช้ Logic ที่แก้แล้ว */}
             <NavLink
               to="/user/TeachingSchedule"
               className={() =>
@@ -108,8 +111,7 @@ const Navbar = () => {
           </div>
         </div>
 
-        {/* 🔹 Right: โปรไฟล์ */}
-        {/* ย้ายออกมาอยู่นอก div ของเมนู และใช้ ml-auto เพื่อดันไปขวาสุด */}
+        {/* Profile Section */}
         <div className="flex-none ml-auto relative" ref={dropdownRef}>
           <button
             onClick={() => setShowLogout(!showLogout)}
@@ -128,28 +130,17 @@ const Navbar = () => {
                 onClick={handleLogoutClick}
                 className="w-full text-left px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition flex items-center space-x-2"
               >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                  />
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
                 <span>ออกจากระบบ</span>
               </button>
             </div>
           )}
         </div>
-
       </nav>
 
-      {/* 🔹 Mobile menu */}
+      {/* Mobile Menu */}
       {isMobileMenuOpen && (
         <div className="lg:hidden bg-white border-t border-gray-200 shadow-md px-6 py-4 space-y-3 relative z-40">
           <NavLink
@@ -164,6 +155,7 @@ const Navbar = () => {
             หน้าแรก
           </NavLink>
 
+          {/* ปุ่มตารางสอน Mobile ใช้ Logic เดียวกัน */}
           <NavLink
             to="/user/TeachingSchedule"
             className={() =>
@@ -190,34 +182,17 @@ const Navbar = () => {
         </div>
       )}
 
-      {/* 🔹 Modal ยืนยันออกจากระบบ */}
+      {/* Modal */}
       {showConfirmModal && (
         <div className="fixed inset-0 flex items-center justify-center z-[60] bg-black/60 backdrop-blur-sm">
           <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
-             {/* ... Modal Content เหมือนเดิม ... */}
             <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
-              <svg
-                className="w-6 h-6 text-red-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                />
+              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
             </div>
-
-            <h3 className="text-lg font-semibold text-center mb-2">
-              ยืนยันการออกจากระบบ
-            </h3>
-            <p className="text-gray-600 text-center mb-6">
-              คุณต้องการออกจากระบบใช่หรือไม่?
-            </p>
-
+            <h3 className="text-lg font-semibold text-center mb-2">ยืนยันการออกจากระบบ</h3>
+            <p className="text-gray-600 text-center mb-6">คุณต้องการออกจากระบบใช่หรือไม่?</p>
             <div className="flex space-x-3">
               <button
                 onClick={handleCancelLogout}

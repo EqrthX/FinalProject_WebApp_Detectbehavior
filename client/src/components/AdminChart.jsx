@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import { supabase } from "../config/supabase";
 
-const AdminChart = ({ selectedCategory }) => {
+const AdminChart = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -19,123 +19,156 @@ const AdminChart = ({ selectedCategory }) => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // ดึงข้อมูลมาเยอะๆ หน่อย เพราะเราจะยุบรวมเหลือแค่จำนวนนักเรียนจริง
-        const { data: summaries, error } = await supabase
+        // 1. ดึงข้อมูลดิบทั้งหมด (เพิ่ม group ใน select)
+        const { data: allRecords, error } = await supabase
           .from("camera_daily_summary")
-          .select("subject_id, camera_id, avg_attention, summary_date, created_at")
-          .order("summary_date", { ascending: false })
-          .limit(2000); 
+          .select("subject_id, group, camera_id, avg_attention")
+          .limit(10000); 
 
         if (error) throw error;
 
-        // --- STEP 1: จัดกลุ่ม (รายหัวนักเรียน) ---
-        const uniqueStudents = {}; // เปลี่ยนชื่อตัวแปรให้สื่อความหมาย
+        // 🟢 เพิ่มการกรอง: เฉพาะ Record ที่มี 'group' เท่านั้น
+        const filteredRecords = allRecords.filter(record => record.group !== null && record.group !== undefined);
 
-        summaries.forEach((item) => {
-          // เราไม่สนวันที่แล้ว (ตัด dateStr ทิ้ง) เพื่อรวมคะแนนของคนนี้ตลอดทั้งเทอม
-          const sectionVal = item.section || 'N/A'; 
-          
-          // 🟢 KEY ใหม่: แยกแค่ วิชา + กลุ่ม + เลขกล้อง (1 Key = 1 นักเรียน)
-          const uniqueKey = `${item.subject_id}|${sectionVal}|${item.camera_id}`;
+        // --- STEP 1: สร้างสมุดพกนักเรียน (รวบรวมคะแนนรายคน) ---
+        // Key ของนักเรียน 1 คน = "วิชา-กลุ่ม-เลขกล้อง"
+        const studentsReport = {};
 
-          if (!uniqueStudents[uniqueKey]) {
-            uniqueStudents[uniqueKey] = {
-              subject_id: item.subject_id,
-              lastActive: item.summary_date || item.created_at, // เก็บวันที่ล่าสุดที่น้องคนนี้เข้าเรียน
-              sumAttention: 0,
-              count: 0 
+        filteredRecords.forEach((record) => {
+          // สร้าง Key เพื่อระบุตัวตน (Unique ID)
+          const studentKey = `${record.subject_id}-${record.group}-${record.camera_id}`;
+
+          if (!studentsReport[studentKey]) {
+            studentsReport[studentKey] = {
+              subject_id: record.subject_id,
+              totalScore: 0,
+              sessionCount: 0
             };
           }
 
-          // รวมคะแนนสะสมทุกคาบเรียนของคนนี้
-          uniqueStudents[uniqueKey].sumAttention += Number(item.avg_attention || 0);
-          uniqueStudents[uniqueKey].count += 1; // นับจำนวนคาบที่เข้าเรียน
-
-          // อัปเดตวันที่ล่าสุด (เผื่อเรียงลำดับ)
-          const currentDate = new Date(item.summary_date || item.created_at);
-          const savedDate = new Date(uniqueStudents[uniqueKey].lastActive);
-          if (currentDate > savedDate) {
-             uniqueStudents[uniqueKey].lastActive = item.summary_date || item.created_at;
-          }
+          // บวกคะแนนเพิ่มเข้าไป
+          studentsReport[studentKey].totalScore += Number(record.avg_attention || 0);
+          studentsReport[studentKey].sessionCount += 1;
         });
 
-        // --- STEP 2: ตัดสินพฤติกรรม "โดยรวม" ของนักเรียนคนนั้น ---
-        const subjectStats = {};
+        // --- STEP 2: ตัดเกรดพฤติกรรม (ผ่าน / ไม่ผ่าน) ---
+        const subjectCounts = {};
 
-        Object.values(uniqueStudents).forEach((student) => {
+        Object.values(studentsReport).forEach((student) => {
           const subject = student.subject_id;
 
-          if (!subjectStats[subject]) {
-            subjectStats[subject] = {
-              subject_id: subject,
-              attentiveCount: 0,
-              inattentiveCount: 0,
-              lastActive: student.lastActive,
+          if (!subjectCounts[subject]) {
+            subjectCounts[subject] = {
+              subject: subject,
+              attentive: 0,
+              inattentive: 0
             };
           }
 
-          // คะแนนเฉลี่ยตลอดเทอมของนักเรียนคนนี้
-          const avgPercent = (student.sumAttention / student.count) * 100;
+          // คำนวณค่าเฉลี่ยของคนนี้
+          const finalAverage = (student.totalScore / student.sessionCount) * 100;
 
-          // ถ้าโดยรวมตลอดเทอม เกิน 50% ถือว่าเป็นเด็กตั้งใจเรียน
-          if (avgPercent >= 50) {
-            subjectStats[subject].attentiveCount += 1;
+          // ตัดสินใจ: ถ้าเฉลี่ยเกิน 50% ให้ถือว่าเป็นคนตั้งใจ
+          if (finalAverage >= 50) {
+            subjectCounts[subject].attentive += 1;
           } else {
-            subjectStats[subject].inattentiveCount += 1;
-          }
-          
-          // หาว่าวิชานี้มีการเรียนการสอนล่าสุดเมื่อไหร่
-          const currentSubDate = new Date(student.lastActive);
-          const savedSubDate = new Date(subjectStats[subject].lastActive);
-          if (currentSubDate > savedSubDate) {
-            subjectStats[subject].lastActive = student.lastActive;
+            subjectCounts[subject].inattentive += 1;
           }
         });
 
-        // --- STEP 3: ลงกราฟ ---
-        let processedData = Object.values(subjectStats).map((item) => {
-          return {
-            subject: item.subject_id,
-            attentivePeople: item.attentiveCount,
-            inattentivePeople: item.inattentiveCount,
-            lastActive: item.lastActive,
-          };
-        });
+        // --- STEP 3: แปลงข้อมูลเป็น Array เพื่อใส่กราฟ ---
+        const chartData = Object.values(subjectCounts);
 
-        processedData.sort((a, b) => new Date(b.lastActive) - new Date(a.lastActive));
-        const topSubjects = processedData.slice(0, 6);
+        // เรียงลำดับตามจำนวนคนเรียนจากมากไปน้อย
+        chartData.sort((a, b) => (b.attentive + b.inattentive) - (a.attentive + a.inattentive));
 
-        setData(topSubjects);
+        setData(chartData);
 
       } catch (err) {
-        console.error("Error fetching chart summary:", err);
+        console.error("Error fetching admin chart:", err);
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [selectedCategory]);
+  }, []);
 
-  if (loading) return <div className="w-full h-[560px] flex items-center justify-center bg-white rounded-2xl border border-gray-200"><p className="text-gray-400">กำลังประมวลผล...</p></div>;
-  if (data.length === 0) return <div className="w-full h-[560px] flex items-center justify-center bg-white rounded-2xl border border-gray-200"><p className="text-gray-400">ไม่พบข้อมูล</p></div>;
+  if (loading) return (
+    <div className="w-full h-[560px] flex items-center justify-center bg-white rounded-2xl border border-gray-200">
+      <p className="text-gray-400">กำลังประมวลผลข้อมูลทั้งเทอม...</p>
+    </div>
+  );
+
+  if (data.length === 0) return (
+    <div className="w-full h-[500px] flex items-center justify-center bg-white rounded-2xl border border-gray-200">
+      <p className="text-lg text-gray-400">ไม่พบข้อมูลรายวิชาที่มีการกำหนดกลุ่มเรียน</p>
+      <p className="text-sm text-gray-400 mt-2">โปรดตรวจสอบว่าข้อมูลที่บันทึกมีค่า 'Group' แล้ว</p>
+    </div>
+  );
 
   return (
-    <div className="w-full h-[560px] bg-white border border-gray-200 rounded-2xl shadow-sm p-5 md:p-6 lg:p-8">
-      <h2 className="text-md font-semibold mb-5 text-gray-800">
-        สรุปพฤติกรรมนักเรียนรายบุคคล (เฉลี่ยรวมทุกคาบ)
-      </h2>
+    <div className="w-full h-[560px] bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+        <div>
+            <h2 className="text-lg font-semibold text-gray-800">
+            สรุปพฤติกรรมนักเรียนรายวิชา (ภาพรวมทั้งเทอม)
+            </h2>
+            <p className="text-xs text-gray-400 mt-1">
+            เกณฑ์ตัดสิน: คะแนนเฉลี่ยสะสมทุกคาบ {'>'}= 50% ถือว่าตั้งใจเรียน
+            </p>
+        </div>
+        <div className="mt-2 md:mt-0 flex gap-2">
+             <div className="flex items-center gap-1 text-xs text-gray-500">
+                <div className="w-3 h-3 rounded-full bg-[#38A738]"></div> ตั้งใจ
+             </div>
+             <div className="flex items-center gap-1 text-xs text-gray-500">
+                <div className="w-3 h-3 rounded-full bg-[#FF4D4F]"></div> ไม่ตั้งใจ
+             </div>
+        </div>
+      </div>
       
-      <ResponsiveContainer width="100%" height="90%">
-        <BarChart data={data} barGap={8} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+      <ResponsiveContainer width="100%" height="85%">
+        <BarChart 
+          data={data} 
+          margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
+          barGap={8}
+        >
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-          <XAxis dataKey="subject" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} dy={10} />
-          <YAxis axisLine={false} tickLine={false} allowDecimals={false} tick={{ fill: '#6B7280', fontSize: 12 }} label={{ value: 'จำนวนนักเรียน (คน)', angle: -90, position: 'insideLeft', fill: '#9CA3AF' }} />
-          <Tooltip formatter={(value) => `${value} คน`} cursor={{ fill: '#F3F4F6' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
-          <Legend verticalAlign="top" height={36} iconType="circle" />
+          <XAxis 
+            dataKey="subject" 
+            axisLine={false} 
+            tickLine={false} 
+            tick={{ fill: '#6B7280', fontSize: 12 }} 
+            dy={10} 
+          />
+          <YAxis 
+            axisLine={false} 
+            tickLine={false} 
+            allowDecimals={false} 
+            tick={{ fill: '#6B7280', fontSize: 12 }} 
+            label={{ value: 'จำนวนคน', angle: -90, position: 'insideLeft', fill: '#9CA3AF', offset: 10 }} 
+          />
+          <Tooltip 
+            cursor={{ fill: '#F9FAFB' }}
+            formatter={(value) => [`ทั้งหมด ${value} คน`]}
+            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+          />
           
-          <Bar dataKey="attentivePeople" name="ตั้งใจเรียน (ภาพรวม)" fill="#38A738" radius={[4, 4, 0, 0]} barSize={40} />
-          <Bar dataKey="inattentivePeople" name="ไม่ตั้งใจเรียน (ภาพรวม)" fill="#FF4D4F" radius={[4, 4, 0, 0]} barSize={40} />
+          <Bar 
+            dataKey="attentive" 
+            name="ตั้งใจเรียน" 
+            fill="#38A738" 
+            radius={[4, 4, 0, 0]} 
+            barSize={40} 
+          />
+          <Bar 
+            dataKey="inattentive" 
+            name="ไม่ตั้งใจเรียน" 
+            fill="#FF4D4F" 
+            radius={[4, 4, 0, 0]} 
+            barSize={40} 
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>

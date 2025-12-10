@@ -2,14 +2,13 @@ import React, { useState, useEffect } from "react";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
-import { X, Users, Calendar, Clock, BookOpen } from "lucide-react";
+// ใช้ BarChart2 จาก lucide-react เพื่อไม่ให้ชื่อชนกับกราฟ
+import { X, Users, Calendar, Clock, BookOpen, BarChart2 } from "lucide-react";
 import { DatePicker } from "antd"; 
 import { supabase } from "../config/supabase";
 import dayjs from "dayjs"; 
 import "dayjs/locale/th"; 
-import isBetween from "dayjs/plugin/isBetween"; 
 
-dayjs.extend(isBetween);
 const { RangePicker } = DatePicker;
 
 export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
@@ -20,12 +19,7 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
   const [loadingChart, setLoadingChart] = useState(false);
   const [dateRange, setDateRange] = useState(null);
 
-  const getDayNumber = (thaiDay) => {
-    const days = { "อาทิตย์": 0, "จันทร์": 1, "อังคาร": 2, "พุธ": 3, "พฤหัสบดี": 4, "ศุกร์": 5, "เสาร์": 6 };
-    return days[thaiDay] !== undefined ? days[thaiDay] : -1;
-  };
-
-  // --- 1. Fetch Groups ---
+  // --- 1. Fetch Groups (ดึงเฉพาะกลุ่มที่มีในตารางเรียน และต้องมีเลขกลุ่มชัดเจน) ---
   useEffect(() => {
     if (isOpen && subject?.code) {
       setLoadingGroups(true);
@@ -38,9 +32,16 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
             .order("group", { ascending: true });
 
             if (error) throw error;
-            setGroups(data || []);
-            if (data && data.length > 0) setSelectedGroup(data[0]);
+            
+            // ✅ กรอง: เอาเฉพาะที่มีเลขกลุ่ม (ไม่เอา null, ไม่เอาว่าง)
+            const validGroups = data?.filter(g => g.group !== null && g.group !== "") || [];
+            
+            setGroups(validGroups);
+            
+            // เลือกกลุ่มแรกให้อัตโนมัติ
+            if (validGroups.length > 0) setSelectedGroup(validGroups[0]);
             else setSelectedGroup(null);
+
         } catch (err) { console.error(err); } 
         finally { setLoadingGroups(false); }
       };
@@ -50,20 +51,22 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
     }
   }, [isOpen, subject]);
 
-  // --- 2. Fetch Chart Data (Logic ใหม่: แยกกลุ่มในวันเดียวกัน) ---
+  // --- 2. Fetch & Calculate Chart Data (ดึงข้อมูลพฤติกรรม) ---
   useEffect(() => {
     if (selectedGroup && isOpen) {
       setLoadingChart(true);
       const fetchSummary = async () => {
         try {
-            console.log("Selected Group:", selectedGroup);
-
-            // 1. ดึงข้อมูลทั้งหมดของวิชานี้ (เอา teacher_id ออกก่อน เพื่อความชัวร์ว่าข้อมูลมา)
+            // 🟢 Query: ดึงข้อมูลจาก camera_daily_summary
             let query = supabase
-                .from("camera_daily_summary")
-                .select("summary_date, created_at, avg_attention, camera_id") 
-                .eq("subject_id", subject.code);
+                .from("camera_daily_summary") 
+                .select("avg_attention, camera_id, group, teacher_id, summary_date") 
+                .eq("subject_id", subject.code)
+                .eq("group", selectedGroup.group)       // 1. ต้องตรงกับกลุ่มที่เลือก
+                .eq("teacher_id", selectedGroup.teacher_id) // 2. ✅ สำคัญมาก: ต้องตรงกับอาจารย์ผู้สอนคนนี้เท่านั้น (ป้องกันข้อมูลของมานีหลุดมา)
+                .not("group", "is", null);              // 3. ห้ามเป็นค่าว่างเด็ดขาด
 
+            // กรองช่วงวันที่ (ถ้ามีการเลือก)
             if (dateRange && dateRange[0] && dateRange[1]) {
                 query = query
                     .gte('summary_date', dateRange[0].format('YYYY-MM-DD'))
@@ -71,91 +74,72 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
             }
 
             const { data, error } = await query.order("summary_date", { ascending: true });
+            
             if (error) throw error;
 
-            console.log("Raw Data form DB:", data); // ดูว่ามีข้อมูลดิบมาไหม
+            if (!data || data.length === 0) { 
+                setChartData([]); 
+                return; 
+            }
 
-            if (!data || data.length === 0) { setChartData([]); return; }
+            // --- LOGIC: รวมคะแนนรายคน (1 camera_id = 1 คน) ---
+            const studentsReport = {};
 
-            // --- FILTERING LOGIC ---
-            // เตรียมข้อมูลวันและเวลาของกลุ่มที่เลือก
-            const targetDayNum = getDayNumber(selectedGroup.day); 
-            const groupStartTime = selectedGroup.start_time.slice(0, 5); // "11:00"
-            const groupEndTime = selectedGroup.end_time.slice(0, 5);     // "14:00"
-
-            const filteredData = data.filter(item => {
-                const recordDateTime = dayjs(item.created_at); // ใช้เวลาที่บันทึกจริง (created_at)
-
-                // A. เช็ควัน: ต้องตรงกัน (เช่น วันจันทร์)
-                // หมายเหตุ: ใช้ recordDateTime.day() เทียบกับ targetDayNum
-                // ถ้า summary_date ตรงเป๊ะอยู่แล้ว แต่ created_at อาจจะเพี้ยน timezone ให้ลองเปลี่ยนไปใช้ dayjs(item.summary_date).day() แทนได้
-                if (recordDateTime.day() !== targetDayNum) return false;
-
-                // B. เช็คช่วงเวลา: เพื่อแยกกลุ่มที่เรียนวันเดียวกัน
-                const dateStr = recordDateTime.format("YYYY-MM-DD");
-                
-                // สร้างขอบเขตเวลาเรียนของกลุ่มนี้
-                // 🟢 Buffer: เผื่อเวลา +/- 3 ชั่วโมง (กว้างมาก เพื่อให้ข้อมูล 09:00 เข้ามาอยู่ในคาบ 11:00 ได้)
-                const classStart = dayjs(`${dateStr} ${groupStartTime}`).subtract(3, 'hour');
-                const classEnd = dayjs(`${dateStr} ${groupEndTime}`).add(3, 'hour');
-
-                // ถ้าเวลาที่บันทึก (created_at) อยู่ในช่วงนี้ ให้ถือว่าเป็นของกลุ่มนี้
-                const isMatch = recordDateTime.isBetween(classStart, classEnd, null, '[]');
-                
-                return isMatch;
-            });
-
-            console.log("Filtered Data:", filteredData); // ดูว่าเหลือข้อมูลหลังกรองเท่าไหร่
-
-            // --- COUNTING LOGIC (นับคน) ---
-            const dailyStats = {};
-            filteredData.forEach((item) => {
-                const dateKey = dayjs(item.summary_date).format("YYYY-MM-DD");
+            data.forEach((item) => {
                 const cameraKey = item.camera_id; 
 
-                if (!dailyStats[dateKey]) dailyStats[dateKey] = { date: item.summary_date, students: {} };
-                if (!dailyStats[dateKey].students[cameraKey]) dailyStats[dateKey].students[cameraKey] = { sumAttention: 0, count: 0 };
+                if (!studentsReport[cameraKey]) {
+                    studentsReport[cameraKey] = { sumAttention: 0, count: 0 };
+                }
 
-                dailyStats[dateKey].students[cameraKey].sumAttention += Number(item.avg_attention || 0);
-                dailyStats[dateKey].students[cameraKey].count += 1;
+                // รวมคะแนนสะสม
+                studentsReport[cameraKey].sumAttention += Number(item.avg_attention || 0);
+                studentsReport[cameraKey].count += 1;
             });
 
-            const formattedData = Object.keys(dailyStats).map((dateKey) => {
-                const dayData = dailyStats[dateKey];
-                let attentiveCount = 0;
-                let inattentiveCount = 0;
+            // --- สรุปผลลัพธ์เป็น 1 จุดข้อมูล ---
+            let attentiveCount = 0;
+            let inattentiveCount = 0;
 
-                Object.values(dayData.students).forEach((student) => {
-                    const avg = student.sumAttention / student.count;
-                    if (avg >= 50) attentiveCount++; else inattentiveCount++;
-                });
+            Object.values(studentsReport).forEach((student) => {
+                // หาค่าเฉลี่ย
+                const avg = student.sumAttention / student.count;
 
-                return {
-                    name: dayjs(dayData.date).format("DD MMM"), 
-                    fullDate: dayData.date,
-                    attentivePeople: attentiveCount,
-                    inattentivePeople: inattentiveCount
-                };
+                // เกณฑ์: >= 0.5 (50%) ถือว่าตั้งใจ
+                if (avg >= 0.5) attentiveCount++; 
+                else inattentiveCount++;
             });
 
-            formattedData.sort((a, b) => new Date(a.fullDate) - new Date(b.fullDate));
-            setChartData(formattedData);
+            // ข้อมูลสำหรับกราฟ
+            const summaryChartData = [{
+                name: "ภาพรวม", 
+                attentivePeople: attentiveCount,
+                inattentivePeople: inattentiveCount,
+                totalStudents: attentiveCount + inattentiveCount
+            }];
 
-        } catch (err) { console.error(err); setChartData([]); } 
-        finally { setLoadingChart(false); }
+            setChartData(summaryChartData);
+
+        } catch (err) { 
+            console.error("Error fetching summary:", err); 
+            setChartData([]); 
+        } finally { 
+            setLoadingChart(false); 
+        }
       };
+      
       fetchSummary();
     }
-  }, [selectedGroup, isOpen, subject, dateRange]);
+  }, [selectedGroup, isOpen, subject, dateRange]); 
 
-  // ... (JSX ส่วน Return เหมือนเดิม ไม่ต้องแก้)
   if (!isOpen) return null;
+
   return (
-    // ... Copy JSX เดิมมาวางได้เลย
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-[#f8f8f8] w-full max-w-5xl h-[85vh] rounded-[20px] shadow-2xl flex flex-col overflow-hidden border border-gray-200">
-         {/* ... Header ... */}
-         <div className="bg-white px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+        
+        {/* Header */}
+        <div className="bg-white px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <div>
                 <h2 className="text-xl font-bold text-[#3D42D3] flex items-center gap-2">
                     <BookOpen className="w-6 h-6" />
@@ -186,7 +170,10 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
                         {loadingGroups ? (
                             <div className="flex justify-center mt-10"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#3D42D3]"></div></div>
                         ) : groups.length === 0 ? (
-                            <p className="text-center text-gray-400 mt-10">ไม่พบกลุ่มเรียน</p>
+                            <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+                                <Users className="w-8 h-8 mb-2 opacity-30" />
+                                <p>ไม่พบข้อมูลกลุ่มเรียน</p>
+                            </div>
                         ) : (
                             groups.map((g) => (
                                 <div 
@@ -221,12 +208,13 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
                 <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-full p-6">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                         <div>
-                            {/* 🟢 เปลี่ยนหัวข้อกราฟ */}
-                            <h3 className="font-bold text-lg text-gray-800">จำนวนนักศึกษาที่ตั้งใจเรียน (คน)</h3>
+                            <h3 className="font-bold text-lg text-gray-800">
+                                สรุปภาพรวมพฤติกรรมสะสม
+                            </h3>
                             <p className="text-sm text-gray-500">
                                 {selectedGroup 
-                                    ? `กลุ่มเรียนที่ ${selectedGroup.group} (เกณฑ์ > 50%)`
-                                    : "กรุณาเลือกกลุ่มเรียนด้านซ้าย"
+                                    ? `กลุ่มเรียนที่ ${selectedGroup.group}: ตัดสินจากคะแนนเฉลี่ยสะสมทุกคาบ (${chartData[0]?.totalStudents || 0} คน)`
+                                    : "กรุณาเลือกกลุ่มเรียนด้านซ้ายเพื่อแสดงข้อมูล"
                                 }
                             </p>
                         </div>
@@ -234,8 +222,8 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
                         <div className="flex items-center gap-2">
                             <RangePicker 
                                 onChange={(dates) => setDateRange(dates)}
-                                placeholder={['วันที่เริ่มต้น', 'วันที่สิ้นสุด']}
-                                className="border-gray-300 rounded-lg hover:border-[#3D42D3] focus:border-[#3D42D3]"
+                                placeholder={['เริ่มต้น', 'สิ้นสุด']}
+                                className="border-gray-300 rounded-lg"
                                 format="DD/MM/YYYY"
                                 allowClear
                             />
@@ -250,58 +238,67 @@ export const SubjectDetailModal = ({ isOpen, onClose, subject }) => {
                         ) : selectedGroup ? (
                             chartData.length > 0 ? (
                                 <ResponsiveContainer width="100%" height="100%">
+                                    {/* ✅ ปรับกราฟกลับเป็นแนวตั้ง และแยกแท่ง */}
                                     <BarChart
                                         data={chartData}
                                         margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
-                                        barGap={8} 
+                                        // เอา layout="vertical" ออกเพื่อให้เป็นแนวตั้งปกติ
+                                        barGap={20} // ระยะห่างระหว่างแท่งเขียวกับแดง
                                     >
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                        
+                                        {/* แกน X คือชื่อ (ภาพรวม) */}
                                         <XAxis 
                                             dataKey="name" 
                                             axisLine={false} 
                                             tickLine={false} 
-                                            tick={{ fill: '#6B7280', fontSize: 12 }} 
+                                            tick={{ fill: '#6B7280', fontSize: 14, fontWeight: 'bold' }} 
                                             dy={10} 
                                         />
+                                        
+                                        {/* แกน Y คือจำนวนคน */}
                                         <YAxis 
                                             axisLine={false} 
                                             tickLine={false} 
                                             tick={{ fill: '#6B7280', fontSize: 12 }} 
-                                            allowDecimals={false} // 🟢 ห้ามมีทศนิยม (นับคน)
+                                            allowDecimals={false} 
                                             label={{ value: 'จำนวนคน', angle: -90, position: 'insideLeft', fill: '#9CA3AF' }}
                                         />
+                                        
                                         <Tooltip 
                                             cursor={{ fill: '#F3F4F6' }}
                                             contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                            formatter={(value) => `${value} คน`} // 🟢 หน่วยเป็นคน
+                                            formatter={(value) => [`${value} คน`]} 
                                         />
                                         <Legend verticalAlign="top" height={36} iconType="circle"/>
                                         
+                                        {/* เอา stackId ออกเพื่อให้แท่งแยกกัน */}
                                         <Bar 
                                             dataKey="attentivePeople" 
-                                            name="ตั้งใจเรียน" 
+                                            name="ตั้งใจเรียน (>= 50%)" 
                                             fill="#38A738" 
-                                            radius={[4, 4, 0, 0]} 
-                                            barSize={30} 
+                                            radius={[4, 4, 0, 0]} // มนหัวบน
+                                            barSize={60} // ขนาดความกว้างแท่ง
                                         />
                                         <Bar 
                                             dataKey="inattentivePeople" 
                                             name="ไม่ตั้งใจ" 
                                             fill="#FF4D4F" 
-                                            radius={[4, 4, 0, 0]} 
-                                            barSize={30} 
+                                            radius={[4, 4, 0, 0]} // มนหัวบน
+                                            barSize={60} // ขนาดความกว้างแท่ง
                                         />
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
                                 <div className="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                    <p>ไม่พบข้อมูลในช่วงวันที่เลือก</p>
+                                    <BarChart2 className="w-12 h-12 mb-3 opacity-20" />
+                                    <p>ไม่พบข้อมูลการบันทึกของกลุ่มนี้</p>
                                 </div>
                             )
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-300">
                                 <Users className="w-10 h-10 mb-2 opacity-20" />
-                                <p>เลือกกลุ่มเรียนเพื่อแสดงกราฟ</p>
+                                <p>เลือกกลุ่มเรียนเพื่อแสดงสรุปภาพรวม</p>
                             </div>
                         )}
                     </div>

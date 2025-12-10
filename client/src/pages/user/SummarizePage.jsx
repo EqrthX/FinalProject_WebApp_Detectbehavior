@@ -4,10 +4,14 @@ import MyBreadcrumb from '../../components/MyBreadcrumb.jsx'
 import { 
   BarChartOutlined, 
   PieChartOutlined,
-  CalendarOutlined
+  CalendarOutlined,
+  SendOutlined,
+  TeamOutlined,
+  ClockCircleOutlined // 🟢 1. เพิ่มไอคอนนาฬิกา
 } from '@ant-design/icons';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import { supabase } from "../../config/supabase.js"
+import { useNavigate } from "react-router-dom";
 
 // --- 1. กำหนดชุดสีมาตรฐาน ---
 const BEHAVIOR_COLORS = {
@@ -22,9 +26,11 @@ const BEHAVIOR_COLORS = {
 
 const SummarizePage = () => {
   const teacher_id = localStorage.getItem("teacher_id")
+  const navigate = useNavigate();
 
   const [sessionData, setSessionData] = useState([]);
-  const [headerInfo, setHeaderInfo] = useState({ subject: "", date: "" });
+  // 🟢 เพิ่ม scheduleTime ใน State
+  const [headerInfo, setHeaderInfo] = useState({ subject: "", date: "", group: "", scheduleTime: "" }); 
   const [loading, setLoading] = useState(true);
 
   // --- 2. ฟังก์ชันจัดกลุ่มข้อมูลกราฟเส้น (3 นาที - เส้นเดียว) ---
@@ -32,7 +38,6 @@ const SummarizePage = () => {
     const buckets = {};
     logs.forEach(log => {
       const date = new Date(log.created_at);
-      // ปัดเศษเวลาเป็นช่วงละ 3 นาที
       const coeff = 1000 * 60 * 3; 
       const roundedDate = new Date(Math.floor(date.getTime() / coeff) * coeff);
       const timeStr = roundedDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
@@ -40,14 +45,12 @@ const SummarizePage = () => {
       if (!buckets[timeStr]) {
         buckets[timeStr] = { time: timeStr, totalAtt: 0, count: 0 };
       }
-      // เก็บค่าความตั้งใจรวม
       buckets[timeStr].totalAtt += Number(log.Attention || 0);
       buckets[timeStr].count += 1;
     });
 
     return Object.values(buckets).map(b => ({
       time: b.time,
-      // คำนวณค่าเฉลี่ยเป็นเส้นเดียว
       score: ((b.totalAtt / b.count) * 100).toFixed(0)
     }));
   };
@@ -72,59 +75,121 @@ const SummarizePage = () => {
         }
 
         const targetSubject = latestRow[0].subject_id;
-        const targetDate = latestRow[0].summary_date; 
+        const targetDate = latestRow[0].summary_date;
+        const targetGroup = latestRow[0].group; 
         const stopTime = new Date(latestRow[0].created_at).toISOString();
         
+        // 🟢 B. ดึงตารางสอน (Class Schedule) มาหาเวลาเรียน
+        const { data: schedules } = await supabase
+            .from('class_schedule')
+            .select('*')
+            .eq('teacher_id', teacher_id);
+
+        let displayTime = "ไม่พบตารางเรียน";
+
+        if (schedules) {
+            // กรองหาตารางที่ตรงกับ วิชา และ กลุ่ม (โดยไม่สนวันที่บันทึก)
+            const matchedSchedules = schedules.filter(s => {
+                const isSubjectMatch = String(s.subject_id).trim() === String(targetSubject).trim();
+                const sGroup = String(s.group || "").trim();
+                const tGroup = String(targetGroup).trim();
+                const isGroupMatch = (sGroup === tGroup) || (parseInt(sGroup) === parseInt(tGroup));
+                return isSubjectMatch && isGroupMatch;
+            });
+
+            if (matchedSchedules.length > 0) {
+                // สร้าง String แสดงผล "วัน HH:mm - HH:mm"
+                displayTime = matchedSchedules.map(s => {
+                    const day = s.day; 
+                    const start = String(s.start_time).slice(0, 5);
+                    const end = String(s.end_time).slice(0, 5);
+                    return `${day} ${start} - ${end}`;
+                }).join(", ");
+            }
+        }
+
+        // อัปเดต Header Info
         setHeaderInfo({
           subject: targetSubject,
+          group: targetGroup,
           date: new Date(targetDate).toLocaleDateString("th-TH", {
             year: "numeric", month: "long", day: "numeric",
-          })
+          }),
+          scheduleTime: displayTime // 🟢 เก็บเวลาเรียน
         });
 
-        // B. ดึง Summary ทุกกล้อง
+        // C. ดึง Summary ทุกกล้อง (กรองด้วย Subject, Date, Group)
         const { data: allSummaries } = await supabase
           .from('camera_daily_summary')
           .select('*')
           .eq('teacher_id', teacher_id)
           .eq('subject_id', targetSubject)
-          .eq('summary_date', targetDate);
+          .eq('summary_date', targetDate)
+          .eq('group', targetGroup); 
 
-        // C. ดึง Logs Timeline
+        // D. ดึง Logs Timeline (กรองด้วย Group)
         const startOfDay = new Date(targetDate).toISOString();
         const { data: logs } = await supabase
           .from('camera_logs')
           .select('*')
           .eq('teacher_id', teacher_id)
           .eq('subject_id', targetSubject)
+          .eq('group', targetGroup)
           .gte('created_at', startOfDay)   
           .lte('created_at', stopTime)
           .order('created_at', { ascending: true });
 
-        // D. ประมวลผล
-        const processed = allSummaries.map((sumItem) => {
-          const camId = sumItem.camera_id;
-          
-          // -- Timeline Data (3 นาที) --
-          const camLogs = logs ? logs.filter(l => l.camera_id === camId) : [];
+        // E. ประมวลผล (Group Aggregation)
+        const groupedByCamera = {};
+
+        allSummaries.forEach((item) => {
+            const camId = item.camera_id;
+            
+            if (!groupedByCamera[camId]) {
+                groupedByCamera[camId] = {
+                    totalAtt: 0,    
+                    countRow: 0,    
+                    jsonSum: {      
+                        Focused: 0, Looking_at_the_board: 0, Taking_notes: 0,
+                        LookingAway: 0, UsingPhone: 0, Talking: 0
+                    }
+                };
+            }
+
+            groupedByCamera[camId].totalAtt += Number(item.avg_attention || 0);
+            groupedByCamera[camId].countRow += 1;
+
+            const json = item.class_json_summary || {};
+            groupedByCamera[camId].jsonSum.Focused += Number(json.Focused || 0);
+            groupedByCamera[camId].jsonSum.Looking_at_the_board += Number(json.Looking_at_the_board || 0);
+            groupedByCamera[camId].jsonSum.Taking_notes += Number(json.Taking_notes || 0);
+            groupedByCamera[camId].jsonSum.LookingAway += Number(json.LookingAway || 0);
+            groupedByCamera[camId].jsonSum.UsingPhone += Number(json.UsingPhone || 0);
+            groupedByCamera[camId].jsonSum.Talking += Number(json.Talking || 0);
+        });
+
+        const processed = Object.keys(groupedByCamera).map((camId) => {
+          const group = groupedByCamera[camId];
+          const avgDecimal = group.countRow > 0 ? (group.totalAtt / group.countRow) : 0;
+          const finalAvgAtt = (avgDecimal * 100).toFixed(0);
+
+          const camLogs = logs ? logs.filter(l => String(l.camera_id) === String(camId)) : [];
           const lineChartData = processDataTo3MinIntervals(camLogs);
 
-          // -- Pie Chart Data (Map ชื่อให้ตรงกับสี) --
-          const json = sumItem.class_json_summary || {};
-          const totalActions = Object.values(json).reduce((a, b) => Number(a) + Number(b), 0) || 1;
+          const totalActions = Object.values(group.jsonSum).reduce((a, b) => a + b, 0) || 1;
           
           const pieChartData = [
-            { name: "ตั้งใจเรียน", value: (json.Focused || 0) / totalActions },
-            { name: "มองกระดาน", value: (json.Looking_at_the_board || 0) / totalActions },
-            { name: "จดเลคเชอร์", value: (json.Taking_notes || 0) / totalActions },
-            { name: "มองทางอื่น", value: (json.LookingAway || 0) / totalActions },
-            { name: "เล่นมือถือ", value: (json.UsingPhone || 0) / totalActions },
-            { name: "คุยกัน", value: (json.Talking || 0) / totalActions },
+            { name: "ตั้งใจเรียน", value: group.jsonSum.Focused / totalActions },
+            { name: "มองกระดาน", value: group.jsonSum.Looking_at_the_board / totalActions },
+            { name: "จดเลคเชอร์", value: group.jsonSum.Taking_notes / totalActions },
+            { name: "มองทางอื่น", value: group.jsonSum.LookingAway / totalActions },
+            { name: "เล่นมือถือ", value: group.jsonSum.UsingPhone / totalActions },
+            { name: "คุยกัน", value: group.jsonSum.Talking / totalActions },
           ].filter(d => d.value > 0);
 
           return {
             cameraId: camId,
-            avgAtt: (Number(sumItem.avg_attention) * 100).toFixed(0),
+            avgAtt: finalAvgAtt,
             lineChartData,
             pieChartData
           };
@@ -157,36 +222,78 @@ const SummarizePage = () => {
     );
   };
 
+  const handleGoToResults = () => {
+    navigate('/user/ResultsPage', { 
+      state: { 
+        filterSubject: headerInfo.subject, 
+        filterDate: headerInfo.date,
+        filterSection: headerInfo.group 
+      } 
+    });
+  };
+
   return (
-    // 1. เพิ่ม overflow-hidden ที่ตัวแม่ เพื่อกันหน้าจอเลื่อนซ้อน
     <div className="flex flex-col h-screen bg-[#F6F6F4] overflow-hidden">
       <Navbar />
       
-      {/* 2. แก้ตรงนี้: ลบ style height: 100vh ออก เปลี่ยนมาใช้ flex-1 แทน */}
       <div className="flex-1 flex flex-col p-6 overflow-hidden">
         <MyBreadcrumb />
         
         {/* Main Content Area */}
-        {/* ตรงนี้คือส่วนที่ Scroll ได้เพียงจุดเดียว */}
         <div className="flex-1 pt-6 overflow-y-auto scrollbar-hide pb-20">
             
             {/* Header Section */}
             <div className="bg-white rounded-[20px] p-4 shadow-sm border border-[#e9e9e9] flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                <div className='flex items-center gap-2'>
-                  <BarChartOutlined className="text-2xl text-blue-500" />
-                  <h2 className="text-xl font-semibold text-gray-700">
-                    สรุปผลการสอนล่าสุด: <span className="text-[#38A738] ml-2">{headerInfo.subject || "กำลังโหลด..."}</span>
-                  </h2>
+                <div className='flex flex-col sm:flex-row sm:items-center gap-2'>
+                  <div className="flex items-center gap-2">
+                    <BarChartOutlined className="text-2xl text-blue-500" />
+                    <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2 flex-wrap">
+                      สรุปผลการสอนล่าสุด: 
+                      <span className="text-[#38A738]">{headerInfo.subject || "กำลังโหลด..."}</span>
+                      
+                      {headerInfo.group && (
+                         <span className="flex items-center gap-1 bg-purple-100 text-purple-700 text-sm font-medium px-3 py-1 rounded-full border border-purple-200 ml-1">
+                            <TeamOutlined /> กลุ่ม {headerInfo.group}
+                         </span>
+                      )}
+                    </h2>
+                  </div>
+                  
+                  {/* 🟢 ส่วนแสดงวันที่และเวลาเรียน */}
+                  <div className="text-gray-500 text-sm font-medium flex items-center gap-4 md:ml-4">
+                      {/* วันที่บันทึก */}
+                      <span className="flex items-center gap-1">
+                        <CalendarOutlined /> {headerInfo.date}
+                      </span>
+                      
+                      {/* เส้นคั่น */}
+                      <div className="w-[1px] h-4 bg-gray-300"></div>
+
+                      {/* เวลาเรียนตามตาราง */}
+                      <span className="flex items-center gap-1 text-gray-500 font-medium">
+                        <ClockCircleOutlined /> {headerInfo.scheduleTime}
+                      </span>
+                  </div>
                 </div>
-                <div className="text-gray-500 text-sm flex items-center gap-2">
-                    <CalendarOutlined /> {headerInfo.date}
+
+                <div className="flex items-center gap-3 self-end md:self-auto">
+                    <span className="text-sm text-gray-400">
+                    ข้อมูลบนหน้านี้คือข้อมูลดิบของแต่ละกล้อง คุณสามารถดูภาพรวมทั้งหมดพร้อมตัวกรองได้ที่หน้าสรุปผล
+                    </span>
+
+                    <button
+                        onClick={handleGoToResults}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-full text-sm font-medium hover:bg-blue-600 transition duration-200 shadow-md flex-shrink-0"
+                    >
+                        <SendOutlined className="text-sm" />
+                        ไปยังหน้ารวมสรุปผล
+                    </button>
                 </div>
             </div>
 
             {/* Cards Container */}
             <div className="flex flex-col gap-6">
                 {sessionData.length > 0 ? (
-                    // ใช้ key เป็น "เลขกล้อง-ลำดับ"
                     sessionData.map((data, index) => (
                     <div key={`${data.cameraId}-${index}`} className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6">
                         

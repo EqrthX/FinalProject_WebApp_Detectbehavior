@@ -7,12 +7,15 @@ import {
   DownOutlined, 
   CheckOutlined, 
   BookOutlined,
-  TeamOutlined 
+  TeamOutlined,
+  UserOutlined,
+  ClockCircleOutlined 
 } from '@ant-design/icons';
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, PieChart, Pie, Cell, BarChart, Bar } from "recharts";
 import { supabase } from "../../config/supabase"; 
+import { useLocation } from 'react-router-dom';
 
-// --- 1. Custom Select (คงเดิม) ---
+// --- CustomSelect Component (เหมือนเดิม) ---
 const CustomSelect = ({ options, value, onChange, prefixIcon, placeholder }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -70,24 +73,25 @@ const BEHAVIOR_COLORS = {
   "เล่นมือถือ": "#ef4444",                   
 };
 
-// --- 2. Main Component ---
 const ResultsPage = () => {
   const teacher_id = localStorage.getItem("teacher_id")
+  const location = useLocation();
 
   const [rawLogs, setRawLogs] = useState([]);        
-  const [summaries, setSummaries] = useState([]);    
+  const [summaries, setSummaries] = useState([]); 
+  const [schedules, setSchedules] = useState([]); 
   const [groupedData, setGroupedData] = useState({}); 
 
   // State Filters
   const [uniqueSubjects, setUniqueSubjects] = useState([]); 
   const [uniqueDates, setUniqueDates] = useState([]); 
-  const [uniqueSections, setUniqueSections] = useState([]); // 🟢 เพิ่ม State กลุ่มเรียน
+  const [uniqueSections, setUniqueSections] = useState([]); 
 
   const [selectedDate, setSelectedDate] = useState("all"); 
   const [selectedSubject, setSelectedSubject] = useState("all"); 
-  const [selectedSection, setSelectedSection] = useState("all"); // 🟢 เพิ่ม Selected Section
+  const [selectedSection, setSelectedSection] = useState("all"); 
 
-  // --- Effect 1: Fetch Data ---
+  // --- Main Fetch Data ---
   useEffect(() => {
     const fetchData = async () => {
       if (!teacher_id) return; 
@@ -98,7 +102,7 @@ const ResultsPage = () => {
           .select("*")
           .eq("teacher_id", teacher_id) 
           .order("created_at", { ascending: false }) 
-          .limit(3000); // เพิ่ม limit นิดหน่อยเผื่อข้อมูลเยอะ
+          .limit(5000); 
 
         const summaryReq = supabase
           .from("camera_daily_summary")
@@ -106,30 +110,55 @@ const ResultsPage = () => {
           .eq("teacher_id", teacher_id)
           .order("summary_date", { ascending: false });
 
-        const [logsRes, summaryRes] = await Promise.all([logsReq, summaryReq]);
+        const scheduleReq = supabase
+          .from("class_schedule")
+          .select("*")
+          .eq("teacher_id", teacher_id);
 
-        if (logsRes.error) console.error("Error logs:", logsRes.error);
-        if (summaryRes.error) console.error("Error summary:", summaryRes.error);
+        const [logsRes, summaryRes, scheduleRes] = await Promise.all([logsReq, summaryReq, scheduleReq]);
 
         if (logsRes.data && summaryRes.data) {
-          const sortedLogs = logsRes.data.reverse(); 
-          setRawLogs(sortedLogs);
-          setSummaries(summaryRes.data);
+          
+          const mappedSummaries = summaryRes.data.map(item => ({
+            ...item,
+            section: item.group ? item.group.toString() : 'N/A'
+          }));
+          
+          const mappedLogs = logsRes.data.reverse().map(log => ({
+            ...log,
+            section: log.group ? log.group.toString() : 'N/A' 
+          }));
 
-          // 1. Extract Unique Subjects
-          const subjects = [...new Set(summaryRes.data.map(item => item.subject_id))].filter(Boolean);
+          setRawLogs(mappedLogs);
+          setSummaries(mappedSummaries);
+          if (scheduleRes.data) setSchedules(scheduleRes.data);
+
+          const subjects = [...new Set(mappedSummaries.map(item => item.subject_id))].filter(Boolean);
           setUniqueSubjects(subjects);
 
-          // 2. Extract Unique Dates
-          const dates = [...new Set(summaryRes.data.map(item => 
+          const dates = [...new Set(mappedSummaries.map(item => 
             new Date(item.summary_date).toLocaleDateString('th-TH')
           ))];
           setUniqueDates(dates);
 
-          // 3. 🟢 Extract Unique Sections (สมมติว่าใน DB มี field ชื่อ 'section')
-          // *หมายเหตุ: ถ้าใน DB ไม่มี column 'section' ให้แก้ตรง item.section เป็น field ที่ถูกต้อง หรือเว้นว่างไว้
-          const sections = [...new Set(summaryRes.data.map(item => item.section))].filter(Boolean);
-          setUniqueSections(sections);
+          const sections = [...new Set(mappedSummaries.map(item => item.section))].filter(s => s !== 'N/A');
+          setUniqueSections(sections.sort());
+          
+          if (location.state) {
+            const { filterSubject, filterDate } = location.state;
+            let shouldNavigate = false;
+            if (filterSubject && subjects.includes(filterSubject)) {
+                setSelectedSubject(filterSubject);
+                shouldNavigate = true;
+            }
+            if (filterDate && dates.includes(filterDate)) { 
+                setSelectedDate(filterDate);
+                shouldNavigate = true;
+            }
+            if (shouldNavigate) {
+                window.history.replaceState({}, document.title);
+            }
+          }
         }
       } catch (err) {
         console.error("System error:", err);
@@ -138,42 +167,31 @@ const ResultsPage = () => {
     fetchData();
   }, [teacher_id]);
 
-  // --- Helper: กราฟเส้น (3 นาที - เส้นเฉลี่ยเดียว) ---
+  // --- Helper Functions ---
   const processDataTo3MinIntervals = (logs) => {
     const buckets = {};
     logs.forEach(log => {
       const date = new Date(log.created_at);
-      const coeff = 1000 * 60 * 3; // 3 นาที
+      const coeff = 1000 * 60 * 3; 
       const roundedDate = new Date(Math.floor(date.getTime() / coeff) * coeff);
       const timeStr = roundedDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
       if (!buckets[timeStr]) buckets[timeStr] = { time: timeStr, totalAtt: 0, count: 0 };
-      
-      // เก็บแค่ค่าความตั้งใจ
       buckets[timeStr].totalAtt += Number(log.Attention || 0);
       buckets[timeStr].count += 1;
     });
-
     return Object.values(buckets).map(b => ({
       time: b.time,
-      score: ((b.totalAtt / b.count) * 100).toFixed(0) // ค่าเฉลี่ยจุดเดียว
+      score: ((b.totalAtt / b.count) * 100).toFixed(0) 
     }));
   };
 
-  // --- Helper: Pie Chart ---
   const processSummaryData = (summaryList) => {
     const totals = { 
         Focused: 0, Looking_at_the_board: 0, Taking_notes: 0, 
         LookingAway: 0, Talking: 0, UsingPhone: 0 
     };
-    
-    let sumAvgAtt = 0;
-    let count = 0;
-
     summaryList.forEach(item => {
-        sumAvgAtt += Number(item.avg_attention || 0);
-        count++;
-
         const json = item.class_json_summary || {};
         totals.Focused += Number(json.Focused || 0);
         totals.Looking_at_the_board += Number(json.Looking_at_the_board || 0);
@@ -182,7 +200,6 @@ const ResultsPage = () => {
         totals.Talking += Number(json.Talking || 0);
         totals.UsingPhone += Number(json.UsingPhone || 0);
     });
-
     const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
     const pieChartData = [
       { name: "ตั้งใจเรียน", value: totals.Focused / grandTotal },
@@ -193,94 +210,144 @@ const ResultsPage = () => {
       { name: "คุยกัน", value: totals.Talking / grandTotal },
     ].filter(item => item.value > 0);
 
-    const avgAtt = count > 0 ? ((sumAvgAtt / count) * 100).toFixed(0) : 0;
-
+    const studentsByCamera = {};
+    summaryList.forEach(row => {
+        const camId = row.camera_id; 
+        if (!studentsByCamera[camId]) studentsByCamera[camId] = { totalAtt: 0, count: 0 };
+        studentsByCamera[camId].totalAtt += Number(row.avg_attention);
+        studentsByCamera[camId].count += 1;
+    });
+    let sumFinalPersonalScores = 0;
+    const uniqueStudentCount = Object.keys(studentsByCamera).length;
+    Object.values(studentsByCamera).forEach(student => {
+        const personalAvg = student.totalAtt / student.count; 
+        sumFinalPersonalScores += personalAvg;
+    });
+    const avgAtt = uniqueStudentCount > 0 ? ((sumFinalPersonalScores / uniqueStudentCount) * 100).toFixed(0) : 0;
     return { pieChartData, avgAtt };
   };
 
-// --- Effect 2: Mapping Logic & Filtering ---
-useEffect(() => {
-  if (rawLogs.length === 0 && summaries.length === 0) return;
+  // --- Main Logic: Grouping & Counting ---
+  useEffect(() => {
+    if (rawLogs.length === 0 && summaries.length === 0) return;
 
-  let filteredSummaries = summaries;
-  let filteredLogs = rawLogs;
+    let filteredSummaries = summaries;
+    let filteredLogs = rawLogs; 
 
-  // Filter Subject
-  if (selectedSubject !== "all") {
-      filteredSummaries = filteredSummaries.filter(s => s.subject_id === selectedSubject);
-      filteredLogs = filteredLogs.filter(l => l.subject_id === selectedSubject);
-  }
-  // Filter Date
-  if (selectedDate !== "all") {
-      filteredSummaries = filteredSummaries.filter(s => 
-          new Date(s.summary_date).toLocaleDateString('th-TH') === selectedDate
-      );
-      filteredLogs = filteredLogs.filter(l => 
-          new Date(l.created_at).toLocaleDateString('th-TH') === selectedDate
-      );
-  }
-  // Filter Section
-  if (selectedSection !== "all") {
-      filteredSummaries = filteredSummaries.filter(s => s.section === selectedSection);
-      // เช็คเผื่อว่า logs ไม่มี field section
-      filteredLogs = filteredLogs.filter(l => l.section === selectedSection); 
-  }
+    if (selectedSubject !== "all") {
+        filteredSummaries = filteredSummaries.filter(s => s.subject_id === selectedSubject);
+        filteredLogs = filteredLogs.filter(l => l.subject_id === selectedSubject);
+    }
+    if (selectedDate !== "all") {
+        filteredSummaries = filteredSummaries.filter(s => new Date(s.summary_date).toLocaleDateString('th-TH') === selectedDate);
+        filteredLogs = filteredLogs.filter(l => new Date(l.created_at).toLocaleDateString('th-TH') === selectedDate);
+    }
+    if (selectedSection !== "all") {
+        filteredSummaries = filteredSummaries.filter(s => s.section === selectedSection);
+        filteredLogs = filteredLogs.filter(l => l.section === selectedSection); 
+    }
 
-  const grouped = {};
+    const grouped = {};
 
-  // 1. สร้างโครงกล่อง (Card) จาก Summary
-  filteredSummaries.forEach(sum => {
-      // สร้าง Key ระบุตัวตนของแต่ละ Card
-      const key = `${sum.subject_id}|${sum.section || 'N/A'}|${sum.camera_id}|${new Date(sum.summary_date).toDateString()}`;
-      if (!grouped[key]) {
-          grouped[key] = { summaries: [], logs: [] };
-      }
-      grouped[key].summaries.push(sum);
-  });
+    filteredSummaries.forEach(sum => {
+        const key = `${sum.subject_id}|${sum.section}|${new Date(sum.summary_date).toDateString()}`;
+        if (!grouped[key]) grouped[key] = { summaries: [], logs: [] };
+        grouped[key].summaries.push(sum);
+    });
 
-  // 2. ยัด Logs ลงกล่อง (แก้ไขการจับคู่)
-  filteredLogs.forEach(log => {
-      const logDate = new Date(log.created_at).toDateString();
-      
-      // วนหา Key ที่ถูกต้อง
-      const matchKey = Object.keys(grouped).find(k => {
-          const [sub, sec, cam, d] = k.split('|');
-          
-          // 🟢 แก้ไขจุดสำคัญ: แปลงเป็น String ก่อนเปรียบเทียบ (กันพลาดเรื่อง Type Number/String)
-          return (
-              String(sub) === String(log.subject_id) && 
-              String(cam) === String(log.camera_id) && 
-              d === logDate
-          );
-      });
+    filteredLogs.forEach(log => {
+        const logDate = new Date(log.created_at).toDateString();
+        const matchKey = Object.keys(grouped).find(k => {
+            const [sub, sec, d] = k.split('|');
+            return (String(sub) === String(log.subject_id) && d === logDate && String(sec) === String(log.section));
+        });
+        if (matchKey && grouped[matchKey]) grouped[matchKey].logs.push(log);
+    });
 
-      if (matchKey && grouped[matchKey]) {
-          grouped[matchKey].logs.push(log);
-      }
-  });
+    const finalData = Object.fromEntries(
+        Object.entries(grouped).map(([key, data]) => {
+            const [subjectId, section] = key.split('|');
+            
+            const studentsByCamera = {};
+            data.summaries.forEach(row => {
+                const camId = row.camera_id; 
+                if (!studentsByCamera[camId]) studentsByCamera[camId] = { totalAtt: 0, count: 0 };
+                studentsByCamera[camId].totalAtt += Number(row.avg_attention);
+                studentsByCamera[camId].count += 1;
+            });
 
-  const finalData = Object.fromEntries(
-      Object.entries(grouped).map(([key, data]) => {
-          const [subjectId, section, cameraId] = key.split('|');
-          const { pieChartData, avgAtt } = processSummaryData(data.summaries);
-          const lineChartData = processDataTo3MinIntervals(data.logs);
+            let attentiveCount = 0;
+            let inattentiveCount = 0;
+            const totalUniqueStudents = Object.keys(studentsByCamera).length;
 
-          return [key, {
-              subjectId, section, cameraId,
-              pieChartData, avgAtt, lineChartData,
-              date: new Date(data.summaries[0].summary_date).toLocaleDateString('th-TH')
-          }];
-      })
-  );
+            Object.values(studentsByCamera).forEach(student => {
+                const personalAvg = student.totalAtt / student.count;
+                if (personalAvg * 100 >= 50) attentiveCount++;
+                else inattentiveCount++;
+            });
 
-  setGroupedData(finalData); 
-}, [rawLogs, summaries, selectedSubject, selectedDate, selectedSection]);
-  const COLORS = ['#0068c9','#4299E1', '#63B3ED', '#FE0056', '#FF8000', '#F6E05E'];
-  const RADIAN = Math.PI / 180;
-  
+            const barChartData = [
+                { name: "ตั้งใจเรียน", count: attentiveCount, fill: "#38A738" },
+                { name: "ไม่ตั้งใจ", count: inattentiveCount, fill: "#FF4D4F" }
+            ];
+
+            const { pieChartData, avgAtt } = processSummaryData(data.summaries);
+            const lineChartData = processDataTo3MinIntervals(data.logs);
+
+            // =========================================================
+            // 🟢 ส่วนที่แก้ไข: ดึงวันและเวลาจากตารางสอน โดยไม่เทียบวัน
+            // =========================================================
+            
+            // ค้นหาตารางเรียนที่ตรงกับ: วิชา และ กลุ่ม (ไม่ต้องเทียบวัน)
+            // ใช้ .filter เผื่อมีเรียนหลายวัน (เช่น จันทร์กับพุธ)
+            const matchedSchedules = schedules.filter(s => {
+                // 1. เทียบวิชา
+                const isSubjectMatch = String(s.subject_id).trim() === String(subjectId).trim();
+                
+                // 2. เทียบกลุ่ม
+                const sGroup = String(s.group || "").trim();
+                const tGroup = String(section).trim();
+                const isGroupMatch = (sGroup === tGroup) || (parseInt(sGroup) === parseInt(tGroup));
+
+                return isSubjectMatch && isGroupMatch;
+            });
+
+            let displayTime = "-";
+
+            if (matchedSchedules.length > 0) {
+                // เอาวันและเวลาของทุก Slot มาต่อกัน (กรณีเรียนหลายวัน)
+                // รูปแบบ: "วัน HH:mm - HH:mm"
+                displayTime = matchedSchedules.map(s => {
+                    const day = s.day; // เอาชื่อวันจาก DB ตรงๆ
+                    const start = String(s.start_time).slice(0, 5);
+                    const end = String(s.end_time).slice(0, 5);
+                    return `${day} ${start} - ${end}`;
+                }).join(", "); // ถ้ามีหลายวันให้คั่นด้วยลูกน้ำ
+            } else {
+                displayTime = "ไม่พบตารางเรียน";
+            }
+            // =========================================================
+
+            return [key, {
+                subjectId, 
+                section, 
+                pieChartData, avgAtt, lineChartData, barChartData, 
+                totalStudents: totalUniqueStudents, 
+                date: new Date(data.summaries[0].summary_date).toLocaleDateString('th-TH', {
+                    year: 'numeric', month: 'long', day: 'numeric'
+                }),
+                scheduleTime: displayTime // 🟢 แสดงวันและเวลาจากตารางสอน
+            }];
+        })
+    );
+
+    setGroupedData(finalData); 
+  }, [rawLogs, summaries, schedules, selectedSubject, selectedDate, selectedSection]);
+
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
     if(percent < 0.05) return null;
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const RADIAN = Math.PI / 180;
     const x = cx + radius * Math.cos(-(midAngle ?? 0) * RADIAN);
     const y = cy + radius * Math.sin(-(midAngle ?? 0) * RADIAN);
     return (
@@ -293,17 +360,14 @@ useEffect(() => {
   return (
     <div className="flex flex-col h-screen bg-[#F6F6F4] overflow-hidden">
       
-      {/* 🟢 แก้ไขตรงนี้: เพิ่ม div ครอบ Navbar และใส่ z-index สูงๆ */}
       <div className="relative z-[1000]"> 
         <Navbar /> 
       </div>
 
       <div className="flex-1 p-6 overflow-hidden flex flex-col">
         
-        {/* --- Header & Filters --- */}
-        {/* ตรงนี้เดิมมี z-50 ถ้า Navbar ไม่สูงกว่านี้ เมนูจะจม */}
+        {/* Header Filters */}
         <div className="bg-white rounded-[20px] p-4 shadow-sm border border-[#e9e9e9] flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 flex-shrink-0 z-50">
-           {/* ... code ภายใน Header ... */}
            <div className='flex items-center gap-2'>
               <BarChartOutlined className="text-2xl text-blue-500" />
               <h2 className="text-xl font-semibold text-gray-700">ผลลัพธ์การเรียนการสอน</h2>
@@ -315,12 +379,11 @@ useEffect(() => {
            </div>
         </div>
 
-        {/* --- Content Area (List of Paired Charts) --- */}
+        {/* Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide pb-20">
           {Object.values(groupedData).length > 0 ? (
             <div className="flex flex-col gap-6">
               {Object.values(groupedData).map((data, index) => (
-                // 🟢 Card ใหญ่ 1 ใบ ต่อ 1 Session
                 <div key={index} className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6">
                   
                   {/* Card Header */}
@@ -333,92 +396,99 @@ useEffect(() => {
                                     กลุ่ม {data.section}
                                 </span>
                             )}
-                            <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">CAM {data.cameraId}</span>
                         </div>
-                        <span className="text-sm text-gray-500 ml-1">
-                           <CalendarOutlined className='mr-2'/>{data.date}
-                        </span>
+                        
+                        {/* 🟢 แสดงวันที่ (ซ้าย) และ ตารางเรียน (ขวา) */}
+                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                           {/* วันที่บันทึก (Recording Date) */}
+                           <div className="flex items-center gap-1.5" title="วันที่บันทึกข้อมูล">
+                              <CalendarOutlined className="text-blue-500"/> 
+                              <span>{data.date}</span>
+                           </div>
+                           
+                           <div className="w-[1px] h-4 bg-gray-300"></div> 
+                           
+                           {/* ตารางเรียนปกติ (Class Schedule) */}
+                           <div className="flex items-center gap-1.5" title="วันและเวลาเรียนตามตาราง">
+                              <ClockCircleOutlined className="text-orange-500"/> 
+                              <span>{data.scheduleTime}</span> 
+                           </div>
+                        </div>
+
                     </div>
                     <div className="flex flex-col items-end">
-                      <span className="text-gray-400 text-xs mb-1">คะแนนเฉลี่ยรวม</span>
+                      <span className="text-gray-400 text-xs mb-1">คะแนนเฉลี่ยทั้งห้อง</span>
                       <span className={`text-2xl font-bold ${Number(data.avgAtt) >= 50 ? 'text-green-600' : 'text-red-500'}`}>
                         {data.avgAtt}%
                       </span>
                     </div>
                   </div>
 
-                  {/* 🟢 Chart Area: แบ่งซ้ายขวา (Grid) */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* Graphs Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                     
-                    {/* Left: Line Chart (Timeline) - เอาพื้นที่ 2 ส่วน */}
-                    <div className="lg:col-span-2">
-                        <h4 className="text-sm font-semibold text-gray-600 mb-4 flex items-center gap-2">
-                            <BarChartOutlined /> Timeline ความตั้งใจ (เฉลี่ยทุก 3 นาที)
+                    {/* Line Chart */}
+                    <div className="lg:col-span-2 xl:col-span-1 h-[250px] bg-gray-50 rounded-xl border border-gray-100 p-2">
+                        <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2 px-2">
+                            <BarChartOutlined /> Timeline ความตั้งใจเฉลี่ย
                         </h4>
-                        <div className="h-[250px] bg-gray-50 rounded-xl border border-gray-100 p-2">
-                            <ResponsiveContainer width="100%" height="100%">
-                                {data.lineChartData.length > 0 ? (
-                                    <LineChart data={data.lineChartData}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" vertical={false} />
-                                    <XAxis dataKey="time" tick={{ fontSize: 12, fill: '#888' }} axisLine={false} tickLine={false} dy={10} />
-                                    <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: '#888' }} axisLine={false} tickLine={false} />
-                                    <Tooltip 
-                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} 
-                                        formatter={(value) => [`${value}%`, 'ความสนใจเฉลี่ย']}
-                                    />
-                                    {/* 🟢 กราฟเส้นเดียว */}
-                                    <Line 
-                                        type="monotone" 
-                                        dataKey="score" 
-                                        stroke="#0068c9" 
-                                        strokeWidth={3} 
-                                        dot={{ r: 3, fill: '#0068c9', strokeWidth: 0 }} 
-                                        activeDot={{ r: 6, strokeWidth: 0 }} 
-                                    />
-                                    </LineChart>
-                                ) : <div className="flex items-center justify-center h-full text-gray-400">ไม่พบข้อมูล Timeline</div>}
-                            </ResponsiveContainer>
-                        </div>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <LineChart data={data.lineChartData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" vertical={false} />
+                                <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#888' }} axisLine={false} tickLine={false} dy={10} minTickGap={30}/>
+                                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#888' }} axisLine={false} tickLine={false} />
+                                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} formatter={(value) => [`${value}%`, 'ความสนใจ']} />
+                                <Line type="monotone" dataKey="score" stroke="#0068c9" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+                            </LineChart>
+                        </ResponsiveContainer>
                     </div>
 
-                    {/* Right: Pie Chart */}
-                    <div className="lg:col-span-1 border-l border-gray-100 pl-0 lg:pl-8">
+                    {/* Bar Chart */}
+                    <div className="h-[250px] bg-white rounded-xl border border-gray-100 p-2 relative">
+                        <div className="flex justify-between items-center mb-2 px-2">
+                            <h4 className="text-sm font-semibold text-gray-600 flex items-center gap-2">
+                                <UserOutlined /> จำนวนนักศึกษา
+                            </h4>
+                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+                                ทั้งหมด {data.totalStudents} คน
+                            </span>
+                        </div>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <BarChart data={data.barChartData} barGap={20}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0"/>
+                                <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} dy={5}/>
+                                <YAxis allowDecimals={false} axisLine={false} tickLine={false} />
+                                <Tooltip cursor={{fill: 'transparent'}} formatter={(value) => [`${value} คน`]} />
+                                <Bar dataKey="count" radius={[5, 5, 0, 0]} barSize={60}>
+                                    {data.barChartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+
+                    {/* Pie Chart */}
+                    <div className="h-[250px] w-full relative border-l border-gray-100 lg:border-none pl-4 lg:pl-0">
                          <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2">
-                            <PieChartOutlined /> สัดส่วนพฤติกรรม
+                            <PieChartOutlined /> สัดส่วนพฤติกรรม (รวมทั้งคาบ)
                         </h4>
-                        <div className="h-[250px] w-full relative">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                <Pie
-                                    data={data.pieChartData}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={50}
-                                    outerRadius={75}
-                                    paddingAngle={3}
-                                    dataKey="value"
-                                    labelLine={false}
-                                    label={renderCustomizedLabel}
-                                >
-                                    {/* 2. 🟢 วนลูปสร้าง Cell โดยดึงสีจากชื่อ */}
+                        <ResponsiveContainer width="100%" height="90%">
+                            <PieChart>
+                                <Pie data={data.pieChartData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={3} dataKey="value" labelLine={false} label={renderCustomizedLabel}>
                                     {data.pieChartData.map((entry, index) => (
-                                    <Cell 
-                                        key={index} 
-                                        fill={BEHAVIOR_COLORS[entry.name] || BEHAVIOR_COLORS["default"]} 
-                                        stroke="none" 
-                                    />
+                                        <Cell key={index} fill={BEHAVIOR_COLORS[entry.name] || BEHAVIOR_COLORS["default"]} stroke="none" />
                                     ))}
                                 </Pie>
                                 <Tooltip formatter={(value) => `${(value * 100).toFixed(1)}%`} />
-                                <Legend layout="horizontal" verticalAlign="bottom" align="center" iconSize={8} wrapperStyle={{fontSize: '11px', paddingTop: '10px'}}/>
-                                </PieChart>
-                            </ResponsiveContainer>
-                            {/* Text ตรงกลางโดนัท */}
-                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 -mt-4 text-center pointer-events-none">
-                                <div className="text-gray-400 text-[10px]">รวม</div>
-                                <div className="text-gray-700 font-bold text-lg">100%</div>
-                            </div>
-                        </div>
+                                <Legend layout="vertical" verticalAlign="middle" align="right" iconSize={8} wrapperStyle={{fontSize: '11px', right: 0}}/>
+                            </PieChart>
+                            
+                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 -mt-1 text-center pointer-events-none pr-18 pt-27">
+                          <div className="text-gray-400 text-[10px]">รวม</div>
+                          <div className="text-gray-700 font-bold text-lg">100%</div>
+                      </div>
+                        </ResponsiveContainer>
                     </div>
 
                   </div>

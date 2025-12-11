@@ -2,13 +2,34 @@ import React, { useState, useEffect } from 'react'
 import Navbar from '../../components/Navbar'
 import BookMark from "../../assets/BookMark.png";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { PieChartOutlined } from '@ant-design/icons'; // เพิ่ม icon ให้เหมือนต้นฉบับ
 import Schedule from '../../components/schedule'; 
 import { supabase } from "../../config/supabase";
+
+// --- 1. เพิ่มค่าสีและการแปลงชื่อให้เหมือนต้นฉบับ ---
+const BEHAVIOR_COLORS = {
+  "ตั้งใจเรียน": "#22c55e",       
+  "มองกระดาน": "#3b82f6",        
+  "จดเลคเชอร์": "#a855f7",       
+  "มองทางอื่น": "#f59e0b",       
+  "คุยกัน": "#f97316",           
+  "เล่นมือถือ": "#ef4444",                   
+  "default": "#cccccc"
+};
+
+// Map ชื่อจาก Database (Eng) -> ชื่อที่จะแสดง (Thai)
+const KEY_MAPPING = {
+  "Focused": "ตั้งใจเรียน",
+  "Looking_at_the_board": "มองกระดาน",
+  "Taking_notes": "จดเลคเชอร์",
+  "LookingAway": "มองทางอื่น",
+  "Talking": "คุยกัน",
+  "UsingPhone": "เล่นมือถือ"
+};
 
 const HomePage = () => {
   const teacher_id = localStorage.getItem("teacher_id");
 
-  // --- State สำหรับข้อมูล ---
   const [todayStats, setTodayStats] = useState({
     avgFocused: 0,
     avgNonFocused: 0,
@@ -25,16 +46,9 @@ const HomePage = () => {
 
   const [pieData, setPieData] = useState([]);
 
-  // สีสำหรับกราฟ
-  const COLORS = ['#0068c9','#fe2b2b', '#8622FF', '#739206ff', '#FE0056', '#00B7EB', '#FF8000', '#00FFCE', '#FFFF00'];
-  const RADIAN = Math.PI / 180;
-
-  // --- useEffect: ดึงข้อมูลเมื่อโหลดหน้า ---
   useEffect(() => {
     const fetchTodayData = async () => {
       if (!teacher_id) return;
-
-      // หาวันที่ปัจจุบัน (YYYY-MM-DD)
       const todayStr = new Date().toLocaleDateString('en-CA'); 
 
       try {
@@ -49,7 +63,6 @@ const HomePage = () => {
         if (data && data.length > 0) {
           processData(data);
         } else {
-          // Reset ค่าถ้าไม่เจอข้อมูลวันนี้
           setTodayStats({ avgFocused: 0, avgNonFocused: 0 });
           setBestWorstTime({ bestTime: "-",bestSubject: "", bestScore: 0, worstTime: "-",worstSubject: "", worstScore: 0 });
           setPieData([]);
@@ -63,12 +76,9 @@ const HomePage = () => {
     fetchTodayData();
   }, [teacher_id]);
 
-  // --- ฟังก์ชันคำนวณข้อมูล (Logic) ---
   const processData = (records) => {
     let sumAvgAtt = 0;
     let sumAvgNon = 0;
-    
-    // ตัวแปรสำหรับหา Best/Worst Time
     let maxScore = -1;
     let minScore = 101;
     let bestT = "-";
@@ -76,11 +86,9 @@ const HomePage = () => {
     let bestSubject = "";
     let worstSubject = "";
 
-    // ตัวแปรสำหรับรวม JSON (Pie Chart)
     const jsonTotals = {};
 
     records.forEach(record => {
-      // 1. จัดการคะแนน (แปลง 0-1 เป็น 0-100 ถ้าจำเป็น)
       let attScore = Number(record.avg_attention);
       let nonScore = Number(record.avg_non_attention);
 
@@ -90,26 +98,22 @@ const HomePage = () => {
       sumAvgAtt += attScore;
       sumAvgNon += nonScore;
 
-      // 2. จัดรูปแบบเวลา (HH:mm) จาก created_at
       const timeStr = record.created_at 
         ? new Date(record.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
         : "-";
 
-      // 3. หา Best Time (คะแนนสูงสุด)
       if (attScore > maxScore) {
         maxScore = attScore;
         bestT = timeStr;
         bestSubject = record.subject_id;
       }
 
-      // 4. หา Worst Time (คะแนนต่ำสุด)
       if (attScore < minScore) {
         minScore = attScore;
         worstT = timeStr;
         worstSubject = record.subject_id;
       }
 
-      // 5. รวม JSON สำหรับ Pie Chart
       const behaviors = record.class_json_summary || {};
       Object.keys(behaviors).forEach(key => {
         const val = Number(behaviors[key] || 0);
@@ -119,15 +123,11 @@ const HomePage = () => {
 
     const count = records.length;
 
-    // --- อัปเดต State ---
-    
-    // A. ค่าเฉลี่ยรวม
     setTodayStats({
       avgFocused: (sumAvgAtt / count).toFixed(0),
       avgNonFocused: (sumAvgNon / count).toFixed(0),
     });
 
-    // B. Best/Worst (ใส่ข้อมูลจริงลงไปใน Format เดิม)
     setBestWorstTime({
       bestTime: bestT,
       bestSubject:  bestSubject,
@@ -137,8 +137,6 @@ const HomePage = () => {
       worstScore: minScore.toFixed(0)
     });
 
-    // C. Pie Chart
-    // แปลง jsonTotals เป็น Array และ Recharts จะคำนวณ % จาก value ให้เอง
     const chartData = Object.keys(jsonTotals).map(key => ({
       name: key,
       value: jsonTotals[key]
@@ -149,20 +147,28 @@ const HomePage = () => {
 
   const cardStyle = "bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6 flex flex-col items-center justify-center";
 
-  // ฟังก์ชัน Custom Label สำหรับ Pie Chart (แสดง %)
+  // --- 2. Label แบบเดียวกับ Reference ---
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+    if(percent < 0.05) return null;
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const RADIAN = Math.PI / 180;
     const x = cx + radius * Math.cos(-(midAngle ?? 0) * RADIAN);
     const y = cy + radius * Math.sin(-(midAngle ?? 0) * RADIAN);
-
-    if (percent < 0.05) return null; // ซ่อนถ้าเล็กกว่า 5%
-
     return (
-      <text x={x} y={y} fill="white" fontSize={12} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
-        {`${(percent * 100).toFixed(0)}%`}
+      <text x={x} y={y} fill="white" fontSize={10} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
+        {`${((percent ?? 0) * 100).toFixed(0)}%`}
       </text>
     );
   };
+
+  // เตรียมข้อมูลสำหรับกราฟ (แปลงชื่อ และหาผลรวมเพื่อคำนวณ %)
+  const displayPieData = pieData.map(item => ({
+    name: KEY_MAPPING[item.name] || item.name,
+    value: item.value
+  }));
+
+  // หา Total รวมเพื่อใช้คำนวณ % ใน Tooltip (ถ้าต้องการ)
+  const totalValue = displayPieData.reduce((acc, cur) => acc + cur.value, 0);
 
   return (
     <div className="flex flex-col h-screen bg-[#F6F6F4] overflow-hidden">
@@ -172,7 +178,6 @@ const HomePage = () => {
       <div className="flex-1 p-6 overflow-y-auto scrollbar-hide">
         <div className="space-y-6 max-w-screen-2xl mx-auto">
           
-          {/* --- Section 1: การ์ดคะแนน --- */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className={cardStyle}>
               <span className="text-4xl font-bold text-[#1D971D]">{todayStats.avgFocused}%</span>
@@ -184,7 +189,6 @@ const HomePage = () => {
             </div>
           </div>
 
-          {/* --- Section 2: ตารางสอน และ กราฟ --- */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             
             <div className="lg:col-span-2 h-full">
@@ -193,32 +197,46 @@ const HomePage = () => {
                     
             <div className="flex flex-col space-y-4">
               
-              {/* กราฟวงกลม */}
-              <div className={`${cardStyle} !justify-start`} style={{ minHeight: '350px' }}>
-                <h2 className="text-lg font-semibold text-[#767676] mb-2 self-start w-full text-center border-b pb-2 border-gray-100">
-                  ผลรวมรายวัน
-                </h2>
-                <div className="w-full flex-1 min-h-[250px]">
+              {/* --- 3. ส่วน Pie Chart ที่แก้ใหม่ (เหมือน ResultsPage) --- */}
+              <div className={`${cardStyle} !p-0 !items-start relative overflow-hidden`} style={{ minHeight: '300px' }}>
+                <div className="w-full p-4 pb-0">
+                   <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2">
+                      <PieChartOutlined /> สัดส่วนพฤติกรรม (รายวัน)
+                   </h4>
+                </div>
+                
+                <div className="w-full h-[250px] relative"> 
                   <ResponsiveContainer width="100%" height="100%">
-                    {pieData.length > 0 ? (
+                    {displayPieData.length > 0 ? (
                       <PieChart>
                         <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={renderCustomizedLabel} // แสดง % ในกราฟ
+                          data={displayPieData}
+                          cx="50%" // จัดกึ่งกลางซ้าย-ขวา
+                          cy="50%" 
+                          innerRadius={60} // ทำเป็นโดนัท
                           outerRadius={80}
-                          innerRadius={50}
+                          paddingAngle={3}
                           dataKey="value"
-                          paddingAngle={2}
+                          labelLine={false}
+                          label={renderCustomizedLabel}
                         >    
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
+                          {displayPieData.map((entry, index) => (
+                             <Cell 
+                                key={`cell-${index}`} 
+                                fill={BEHAVIOR_COLORS[entry.name] || BEHAVIOR_COLORS["default"]} 
+                                stroke="none" 
+                             />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(val) => `${val} ครั้ง`} />
-                        <Legend verticalAlign="bottom" height={36}/>
+                        {/* Tooltip ปรับให้โชว์ % เหมือนต้นฉบับ โดยคำนวณจากค่าที่มี */}
+                        <Tooltip formatter={(value) => `${((value / totalValue) * 100).toFixed(1)}%`} />
+                        <Legend 
+                            layout="vertical" 
+                            verticalAlign="middle" 
+                            align="right" 
+                            iconSize={8} 
+                            wrapperStyle={{ fontSize: '11px', right: 0, paddingRight: '10px' }}
+                        />
                       </PieChart>
                     ) : (
                       <div className="flex h-full items-center justify-center text-gray-400">
@@ -226,23 +244,29 @@ const HomePage = () => {
                       </div>
                     )}
                   </ResponsiveContainer>
+
+                  {/* Text ตรงกลางโดนัท */}
+                  {displayPieData.length > 0 && (
+                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 -mt-1 text-center pointer-events-none pr-20">
+                          <div className="text-gray-400 text-[10px]">รวม</div>
+                          <div className="text-gray-700 font-bold text-lg">100%</div>
+                      </div>
+                  )}
                 </div>
               </div>
 
-              {/* กล่องสรุปผล (ใช้รูปแบบเดิม 100% ตามคำขอ) */}
+              {/* กล่องสรุปผล (คงเดิม) */}
               <div className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6 flex flex-col">
                 <div className="flex items-center space-x-2 border-b border-gray-100 pb-3 mb-3">
                   <img src={BookMark} alt="Bookmark" className="w-6 h-6" />
                   <h2 className="text-lg font-semibold text-black mb-0">สรุปผล</h2>
                 </div>
                 <div className="space-y-3">
-                  {/* แถวเขียว: ดีที่สุด */}
                   <div className="bg-green-50 border border-green-200 text-[#085E0E] px-4 py-3 rounded-xl flex justify-between items-center text-sm font-medium">
                     <span>ช่วงเวลาที่ดีที่สุด {bestWorstTime.bestTime} ({bestWorstTime.bestSubject})</span>
                     <span className="font-bold">{bestWorstTime.bestScore}%</span>
                   </div>
                   
-                  {/* แถวแดง: แย่ที่สุด */}
                   <div className="bg-red-50 border border-red-200 text-[#74393C] px-4 py-3 rounded-xl flex justify-between items-center text-sm font-medium">
                      <span>ช่วงเวลาที่แย่ที่สุด {bestWorstTime.worstTime} ({bestWorstTime.worstSubject})</span>
                      <span className="font-bold">{bestWorstTime.worstScore}%</span>

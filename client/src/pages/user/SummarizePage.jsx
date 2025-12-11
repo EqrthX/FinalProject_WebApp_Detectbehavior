@@ -65,7 +65,6 @@ const SummarizePage = () => {
           .from('camera_daily_summary')
           .select('*')
           .eq('teacher_id', teacher_id)
-          .eq("group", group)
           .order('created_at', { ascending: false })
           .limit(1);
 

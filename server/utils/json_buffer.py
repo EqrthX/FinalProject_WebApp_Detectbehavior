@@ -15,7 +15,7 @@ def get_buffer_file(camera_id: str, teacher_id: str, subject_id: str, group):
     server_dir = os.path.dirname(base_dir)
     buffer_dir = os.path.join(server_dir, "jsonlogs")
     os.makedirs(buffer_dir, exist_ok=True)
-    return os.path.join(buffer_dir, f"camera_{int(camera_id) + 1}_Teacher:{teacher_id}_Subject:{subject_id}_Group:{group}.json")
+    return os.path.join(buffer_dir, f"camera_{int(camera_id) + 1}_{teacher_id}_{subject_id}_{group}.json")
 
 # -----------------------------------------------------------
 # 2. ฟังก์ชัน Save (ใช้โค้ดที่คุณเขียนมาได้เลย + ปรับนิดหน่อย)

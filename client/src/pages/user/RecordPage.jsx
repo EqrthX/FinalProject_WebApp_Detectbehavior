@@ -406,11 +406,8 @@ const RecordPage = () => {
         setTimer(0);
 
         try {
-            // เรียก API ให้หยุดตรวจจับทุกกล้อง
             await axios.get(`camera/stop-all`);
-            // เรียก API ให้สรุปข้อมูล และส่งเข้า Supabase
             const summaryRes = await axios.get(`camera/summary-to-supabase`);
-            // log ข้อมูลที่หลังบ้านตอบกลับมา
             console.log("Summary Done:", summaryRes.data);
 
             // หน่วงเวลานิดหน่อย (0.8 วินาที) เผื่อให้หลังบ้านทำงานเสร็จ
@@ -421,7 +418,6 @@ const RecordPage = () => {
                 safeCloseSummaryWS(id)
             );
 
-            // แจ้งเตือนว่าหยุดตรวจจับเรียบร้อย
             toast.success(`หยุดการตรวจจับทุกกล้อง`);
             // ส่งผู้ใช้ไปยังหน้า "สรุปผล" ของ user
             navigate(`/user/summarize/${subjectId}/${group}`);
@@ -467,18 +463,13 @@ const RecordPage = () => {
 
                 {/* layout แบ่ง 2 คอลัมน์: ซ้ายใหญ่ (กล้อง), ขวาเล็ก (summary) */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* กล่องฝั่งซ้าย: ใช้พื้นที่ 2 ใน 3 (lg:col-span-2) */}
                     <div className="lg:col-span-2 bg-white rounded-2xl shadow p-4 sm:p-6 border border-gray-200">
-                        {/* ส่วนหัว (Header) แสดงสถานะการตรวจจับ และเวลา */}
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
-                            {/* แสดงจุดไฟ บอกว่าสถานะกำลังตรวจจับ/พร้อมเริ่ม */}
                             <div className="flex items-center space-x-3">
-                                {/* วงกลมด้านนอก มี ring แสดงสีต่างกันตามสถานะ */}
                                 <div
                                     className={`w-5 h-5 rounded-full ring-2 ring-offset-2 ${isRecording ? "ring-red-300" : "ring-green-300"
                                         } flex items-center justify-center`}
                                 >
-                                    {/* วงกลมด้านใน ถ้ากำลังตรวจจับจะกระพริบสีแดง */}
                                     <div
                                         className={`w-3.5 h-3.5 rounded-full ${isRecording
                                                 ? "bg-red-500 animate-pulse"
@@ -488,11 +479,9 @@ const RecordPage = () => {
                                 </div>
                                 {/* ข้อความอธิบายสถานะ */}
                                 <div>
-                                    {/* ตัวหนังสือเล็กสีเทา บอกหัวข้อ */}
                                     <div className="text-sm text-gray-500">
                                         สถานะการตรวจจับ
                                     </div>
-                                    {/* ตัวหนังสือหนา แสดงข้อความตามสถานะ */}
                                     <div className="font-semibold text-gray-800">
                                         {isRecording ? "กำลังตรวจจับ" : "พร้อมเริ่มต้น"}
                                     </div>
@@ -501,11 +490,9 @@ const RecordPage = () => {
 
                             {/* ส่วนแสดงเวลาในการบันทึก */}
                             <div className="text-right">
-                                {/* หัวข้อเล็กสีเทา */}
                                 <div className="text-sm text-gray-500">
                                     ระยะเวลาบันทึก
                                 </div>
-                                {/* ตัวเลขเวลาแบบฟอนต์ Mono ดูเหมือนนาฬิกา */}
                                 <div className="text-2xl font-mono font-bold">
                                     {formatTime(timer)}
                                 </div>
@@ -514,7 +501,6 @@ const RecordPage = () => {
 
                         {/* แถวของปุ่มควบคุมต่าง ๆ */}
                         <div className="flex flex-wrap gap-3 mb-4">
-                            {/* ปุ่มเริ่มตรวจจับทุกกล้อง */}
                             <button
                                 className={`px-4 py-2 rounded-lg text-white font-semibold ${isRecording
                                         ? "bg-gray-400 cursor-not-allowed"
@@ -569,19 +555,15 @@ const RecordPage = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                             {/* วน loop แสดงกล้องทุกตัวใน cameras */}
                             {cameras.map((cam) => (
-                                // กล่องของกล้องแต่ละตัว
                                 <div
                                     key={cam.id} // key สำหรับ React
                                     className="border border-gray-300 rounded-2xl p-3 flex flex-col items-center bg-white shadow-sm"
                                 >
-                                    {/* ชื่อกล้อง ถ้ามี name ในข้อมูลก็ใช้เลย ไม่งั้น generate จาก id */}
                                     <h3 className="font-semibold text-lg mb-2 text-center">
                                         {getCameraName(cam.id)}
                                     </h3>
 
-                                    {/* พื้นที่โชว์ภาพจากกล้อง (ใช้ canvas ในกรอบ 16:9) */}
                                     <div className="w-full aspect-video bg-black rounded-xl overflow-hidden mb-3 flex items-center justify-center">
-                                        {/* canvas ของกล้องนี้ ใช้ ref เพื่อให้โค้ดด้านบนวาดรูปใส่ */}
                                         <canvas
                                             ref={(el) => (canvasRef.current[cam.id] = el)}
                                             width={640}  // กำหนดความกว้างเดิมของ canvas
@@ -597,7 +579,6 @@ const RecordPage = () => {
 
                     {/* กล่องฝั่งขวา: แสดงข้อมูลสรุประหว่างสอน (Summary) */}
                     <div className="bg-white rounded-2xl shadow p-4 sm:p-6 border border-gray-200">
-                        {/* หัวข้อของกล่อง summary */}
                         <h2 className="text-lg font-semibold mb-3">
                             ข้อมูลสรุประหว่างสอน
                         </h2>
@@ -611,7 +592,6 @@ const RecordPage = () => {
                                     key={index}
                                     className="bg-white shadow rounded-xl p-4 border border-gray-200 flex gap-4"
                                 >
-                                    {/* ปุ่มซ้าย: Info */}
                                     <div className="flex-1">
                                         <h3 className="text-lg font-semibold text-gray-800">
                                             กล้อง {Number(item.cameraId) + 1}

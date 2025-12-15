@@ -20,7 +20,7 @@ def get_buffer_file(camera_id: str, teacher_id: str, subject_id: str, group):
 # -----------------------------------------------------------
 # 2. ฟังก์ชัน Save (ใช้โค้ดที่คุณเขียนมาได้เลย + ปรับนิดหน่อย)
 # -----------------------------------------------------------
-def save_buffer(camera_id: str, teacher_id, ATT, NON, class_json, subject_id: str, group):
+def save_buffer(camera_id: str, teacher_id, ATT, NON, class_json, subject_id: str, group, class_duration):
     # เรียกใช้ get_buffer_file เพื่อได้ path ที่ถูกต้อง
     path = get_buffer_file(camera_id, teacher_id=teacher_id, subject_id=subject_id, group=group)
 
@@ -41,6 +41,7 @@ def save_buffer(camera_id: str, teacher_id, ATT, NON, class_json, subject_id: st
         "Attention": round(ATT, 3),
         "Non_Attention": round(NON, 3),
         "class_json": class_json,
+        "class_duration": class_duration
     })
 
     with open(path, "w", encoding="utf-8") as f:

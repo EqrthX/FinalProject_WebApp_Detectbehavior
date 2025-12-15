@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import Navbar from '../../components/Navbar'
 import BookMark from "../../assets/BookMark.png";
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer ,Label } from "recharts";
 import { PieChartOutlined } from '@ant-design/icons'; // เพิ่ม icon ให้เหมือนต้นฉบับ
 import Schedule from '../../components/schedule'; 
 import { supabase } from "../../config/supabase";
@@ -209,49 +209,50 @@ const HomePage = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     {displayPieData.length > 0 ? (
                       <PieChart>
-                        <Pie
-                          data={displayPieData}
-                          cx="50%" // จัดกึ่งกลางซ้าย-ขวา
-                          cy="50%" 
-                          innerRadius={60} // ทำเป็นโดนัท
-                          outerRadius={80}
-                          paddingAngle={3}
-                          dataKey="value"
-                          labelLine={false}
-                          label={renderCustomizedLabel}
-                        >    
-                          {displayPieData.map((entry, index) => (
-                             <Cell 
-                                key={`cell-${index}`} 
-                                fill={BEHAVIOR_COLORS[entry.name] || BEHAVIOR_COLORS["default"]} 
-                                stroke="none" 
-                             />
-                          ))}
-                        </Pie>
-                        {/* Tooltip ปรับให้โชว์ % เหมือนต้นฉบับ โดยคำนวณจากค่าที่มี */}
-                        <Tooltip formatter={(value) => `${((value / totalValue) * 100).toFixed(1)}%`} />
-                        <Legend 
-                            layout="vertical" 
-                            verticalAlign="middle" 
-                            align="right" 
-                            iconSize={8} 
-                            wrapperStyle={{ fontSize: '11px', right: 0, paddingRight: '10px' }}
-                        />
-                      </PieChart>
+                      <Pie
+                        data={displayPieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={3}
+                        dataKey="value"
+                        labelLine={false}
+                        label={renderCustomizedLabel}
+                      >
+                        {displayPieData.map((entry, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={BEHAVIOR_COLORS[entry.name] || BEHAVIOR_COLORS["default"]} 
+                            stroke="none" 
+                          />
+                        ))}
+                      </Pie>
+                    
+                      {/* Tooltip และ Legend เหมือนเดิม */}
+                      <Tooltip 
+                          formatter={(value) => [`${((value / totalValue) * 100).toFixed(1)}%`, 'สัดส่วน']} 
+                          wrapperStyle={{ zIndex: 1000 }}
+                          contentStyle={{ 
+                              borderRadius: "12px",
+                              border: "none",
+                              boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                          }}
+                      />
+                      <Legend 
+                          layout="vertical" 
+                          verticalAlign="middle" 
+                          align="right" 
+                          iconSize={8} 
+                          wrapperStyle={{ fontSize: '11px', right: 0 }}
+                      />
+                    </PieChart>
                     ) : (
                       <div className="flex h-full items-center justify-center text-gray-400">
                         ยังไม่มีข้อมูลวันนี้
                       </div>
                     )}
                   </ResponsiveContainer>
-
-                  {/* Text ตรงกลางโดนัท */}
-                  {displayPieData.length > 0 && (
-                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 -mt-1 text-center pointer-events-none pr-20">
-                          <div className="text-gray-400 text-[10px]">รวม</div>
-                          <div className="text-gray-700 font-bold text-lg">100%</div>
-                      </div>
-                  )}
                 </div>
               </div>
 

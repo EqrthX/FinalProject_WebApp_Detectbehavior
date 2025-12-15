@@ -251,7 +251,7 @@ const AdminTeachingSchedule = () => {
                   เพิ่มรายวิชา
                 </button>
                 <button onClick={() => setShowUploadModal(true)} className="bg-[#3D42D3] hover:bg-[#2b28a0] text-white px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap">
-                  อัพโหลดตารางสอน
+                  อัปโหลดตารางสอน
                 </button>
               </div>
             </div>

@@ -106,6 +106,8 @@ class CameraThread(threading.Thread):
         self.loop: asyncio.AbstractEventLoop | None = None   # เก็บ event loop ของ FastAPI
         self.summary_ready_event: asyncio.Event | None = None# ใช้แจ้งว่า summary พร้อมส่งแล้ว
 
+        self.class_durations = defaultdict(float)
+
         # ----------------- ตัวแปรสำหรับ Behavior / Timer -----------------
         # dict เก็บสถานะของคลาสปัจจุบัน + duration + miss
         self.class_timer = {
@@ -508,7 +510,10 @@ class CameraThread(threading.Thread):
 
         if mapped:
             self.interval_results.append(mapped)
-            print(f"⏱️ Cam {self.camera_id}: class: {mapped} ({len(self.interval_results)})")
+            self.class_durations[mapped] += self.interval_seconds
+            print(
+                f"⏱️ Cam {self.camera_id}: class: {mapped} \n,total times: {self.class_durations[mapped]} ({len(self.interval_results)})"
+                )
 
         if len(self.interval_results) > self.max_intervals:
             self.interval_results.pop(0)
@@ -518,6 +523,7 @@ class CameraThread(threading.Thread):
             self.save_summary()
             self.interval_count = 0
             self.interval_results.clear()
+            self.class_durations.clear()
             self.class_timer["miss"] = 0
             self.class_timer["duration"] = 0.0
     # ----------------------------------------------------------------------
@@ -556,6 +562,7 @@ class CameraThread(threading.Thread):
         # สร้าง class_json ที่เก็บสัดส่วนของแต่ละ class
         class_json = {k: round(v / total, 3) for k, v in count.items()}
 
+        class_duration_json = {k: round(v, 1) for k, v in self.class_durations.items()}
         # เตรียมตัวแปรสำหรับเก็บภาพที่แปลงเป็น base64
         img_base64 = None
 
@@ -571,6 +578,7 @@ class CameraThread(threading.Thread):
                 "Time": datetime.now().strftime("%H:%M:%S"),     # เวลา ณ นาทีนี้
                 "Attention": att,                                # สัดส่วน ATTENDENCE
                 "Non_Attention": non,                            # สัดส่วน NON_ATTENDENCE
+                "class_duration": class_duration_json,
                 "image": img_base64,                             # รูป base64
             }
 
@@ -592,7 +600,8 @@ class CameraThread(threading.Thread):
                     NON=non,
                     class_json=class_json,
                     subject_id=self.subject_id,
-                    group=self.group
+                    group=self.group,
+                    class_duration=class_duration_json
                 )
             except Exception as e:
                 print(f"❌ save_buffer error cam {self.camera_id}: {e}")
@@ -935,6 +944,7 @@ async def summary_to_supabase_route():
                     "Attention": record["Attention"],
                     "Non_Attention": record["Non_Attention"],
                     "class_json": record["class_json"],
+                    "class_duration": record["class_duration"],
                     "created_at": record["created_at"],
                 })
 
@@ -967,7 +977,7 @@ async def summary_to_supabase_route():
             total_non = 0.0
             count = len(rows)
             class_totals = defaultdict(float)
-
+            class_duration_totals = defaultdict(float)
             for r in rows:
                 total_att += float(r.get("Attention") or 0.0)
                 total_non += float(r.get("Non_Attention") or 0.0)
@@ -981,6 +991,15 @@ async def summary_to_supabase_route():
                 
                 for k, v in cj.items():
                     class_totals[k] += float(v or 0.0)
+
+                cd = r.get("class_duration") or {}
+                if isinstance(cd, str):
+                    try:
+                        cd = json.loads(cd)
+                    except:
+                        cd = {}
+                for k, v in cd.items():
+                    class_duration_totals[k] += float(v or 0.0)
 
             avg_att = total_att / count if count > 0 else 0.0
             avg_non = total_non / count if count > 0 else 0.0
@@ -998,6 +1017,9 @@ async def summary_to_supabase_route():
                 "avg_attention": round(avg_att, 3),
                 "avg_non_attention": round(avg_non, 3),
                 "class_json_summary": class_summary,
+                "class_duration_summary": {
+                    k: round(v, 1) for k, v in class_duration_totals.items()
+                },
                 "group": g
             })
 

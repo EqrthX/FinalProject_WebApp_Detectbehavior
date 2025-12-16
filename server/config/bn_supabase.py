@@ -9,7 +9,7 @@ load_dotenv()
 SUPABASE_URL: str | None = os.getenv("SUPABASE_URL")
 
 # 🟢 เพิ่มบรรทัดนี้: ดึง Key ลับ (Service Role)
-SUPABASE_SERVICE_ROLE_KEY: str | None = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_SERVICE_ROLE_KEY: str | None = os.getenv("SUPABASE_SERVICE_KEY")
 
 # 3. สร้าง Client
 # ตัวที่ 1: Client ทั่วไป (ใช้ Key ปกติ)

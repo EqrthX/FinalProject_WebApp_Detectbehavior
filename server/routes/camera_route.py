@@ -60,7 +60,7 @@ class CameraThread(threading.Thread):
     - เก็บภาพล่าสุด (annotated frame) ไว้ใน self.jpeg_buffer ให้ WebSocket live / summary ใช้
     """
 
-    def __init__(self, camera_id: str, teacher_id=None, subject_id=None):
+    def __init__(self, camera_id: str, teacher_id=None, subject_id=None, group=None):
         """
         ฟังก์ชันเริ่มต้นของ Thread กล้อง
         - รับ camera_id เป็น string (เช่น "0", "1")
@@ -76,6 +76,7 @@ class CameraThread(threading.Thread):
         # ข้อมูลที่ใช้ผูกกับตารางใน Supabase
         self.teacher_id = teacher_id
         self.subject_id = subject_id
+        self.group = group
 
         # ----------------- flag และ state ทั่วไป -----------------
         self.running = False                     # บอกว่า Thread นี้กำลังทำงานอยู่ไหม
@@ -105,6 +106,8 @@ class CameraThread(threading.Thread):
         self.loop: asyncio.AbstractEventLoop | None = None   # เก็บ event loop ของ FastAPI
         self.summary_ready_event: asyncio.Event | None = None# ใช้แจ้งว่า summary พร้อมส่งแล้ว
 
+        self.class_durations = defaultdict(float)
+
         # ----------------- ตัวแปรสำหรับ Behavior / Timer -----------------
         # dict เก็บสถานะของคลาสปัจจุบัน + duration + miss
         self.class_timer = {
@@ -117,13 +120,13 @@ class CameraThread(threading.Thread):
         self.interval_results: list[str] = []
 
         # ความถี่ในการสรุป interval (วินาที)
-        self.interval_seconds = 5
+        self.interval_seconds = 3
         # เวลา timestamp ล่าสุดที่สรุป interval ไปแล้ว
         self.last_interval_time = time.time()
         # นับจำนวน interval ที่ผ่านไปแล้วในรอบ "1 นาที"
         self.interval_count = 0
-        # จำนวน interval สูงสุดใน 1 รอบสรุป (12 x 5 วิ = 1 นาที)
-        self.max_intervals = 12
+        # จำนวน interval สูงสุดใน 1 รอบสรุป (60 / วินาทีที่กำหนด)
+        self.max_intervals = int(60 / self.interval_seconds)
 
         # เก็บค่า confidence ล่าสุดของ target (ไว้ print log)
         self.last_target_conf = 0.0
@@ -507,7 +510,10 @@ class CameraThread(threading.Thread):
 
         if mapped:
             self.interval_results.append(mapped)
-            print(f"⏱️ Cam {self.camera_id}: class: {mapped} ({len(self.interval_results)})")
+            self.class_durations[mapped] += self.interval_seconds
+            print(
+                f"⏱️ Cam {self.camera_id}: class: {mapped} \n,total times: {self.class_durations[mapped]} ({len(self.interval_results)})"
+                )
 
         if len(self.interval_results) > self.max_intervals:
             self.interval_results.pop(0)
@@ -517,6 +523,7 @@ class CameraThread(threading.Thread):
             self.save_summary()
             self.interval_count = 0
             self.interval_results.clear()
+            self.class_durations.clear()
             self.class_timer["miss"] = 0
             self.class_timer["duration"] = 0.0
     # ----------------------------------------------------------------------
@@ -555,6 +562,7 @@ class CameraThread(threading.Thread):
         # สร้าง class_json ที่เก็บสัดส่วนของแต่ละ class
         class_json = {k: round(v / total, 3) for k, v in count.items()}
 
+        class_duration_json = {k: round(v, 1) for k, v in self.class_durations.items()}
         # เตรียมตัวแปรสำหรับเก็บภาพที่แปลงเป็น base64
         img_base64 = None
 
@@ -570,6 +578,7 @@ class CameraThread(threading.Thread):
                 "Time": datetime.now().strftime("%H:%M:%S"),     # เวลา ณ นาทีนี้
                 "Attention": att,                                # สัดส่วน ATTENDENCE
                 "Non_Attention": non,                            # สัดส่วน NON_ATTENDENCE
+                "class_duration": class_duration_json,
                 "image": img_base64,                             # รูป base64
             }
 
@@ -591,6 +600,8 @@ class CameraThread(threading.Thread):
                     NON=non,
                     class_json=class_json,
                     subject_id=self.subject_id,
+                    group=self.group,
+                    class_duration=class_duration_json
                 )
             except Exception as e:
                 print(f"❌ save_buffer error cam {self.camera_id}: {e}")
@@ -645,6 +656,7 @@ async def list_camera():
 @camera_router.get("/start-all")
 async def start_all_detections(
     subject_id: Optional[str] = None,
+    group: Optional[str] = None,
     user=Depends(verify_token),
 ):
     """
@@ -680,7 +692,7 @@ async def start_all_detections(
         # ถ้า cid ยังไม่มีใน camera_threads หรือ Thread ตายไปแล้ว
         if cid not in camera_threads or not camera_threads[cid].is_alive():
             # สร้าง CameraThread ใหม่
-            th = CameraThread(cid, teacher_id=t_id, subject_id=subject_id)
+            th = CameraThread(cid, teacher_id=t_id, subject_id=subject_id, group=group)
 
             # ให้ Thread รู้จัก event loop และ summary_ready_event
             th.loop = loop
@@ -766,11 +778,12 @@ async def ws_camera(websocket: WebSocket, camera_id: str):
     # ดึง query params teacher_id, subject_id (ถ้ามี) จาก URL
     teacher_id = websocket.query_params.get("teacher_id")
     subject_id = websocket.query_params.get("subject_id")
+    group = websocket.query_params.get("group")
 
     # ----------------- สร้าง Thread ให้กล้องนี้ ถ้ายังไม่มี -----------------
     if camera_id not in camera_threads or not camera_threads[camera_id].is_alive():
         # สร้าง CameraThread ใหม่ (detecting=False → preview)
-        th = CameraThread(camera_id, teacher_id=teacher_id, subject_id=subject_id)
+        th = CameraThread(camera_id, teacher_id=teacher_id, subject_id=subject_id, group=group)
         th.loop = loop
         th.summary_ready_event = asyncio.Event()
         th.detecting = False     # แสดงภาพอย่างเดียว ยังไม่ detect/track
@@ -878,9 +891,6 @@ async def ws_summary(websocket: WebSocket, camera_id: str):
 # ==============================================================================
 # Endpoint: ดึง summary จาก buffer แล้ว insert ลง Supabase
 # ==============================================================================
-# ==============================================================================
-# Endpoint: ดึง summary จาก buffer แล้ว insert ลง Supabase
-# ==============================================================================
 @camera_router.get("/summary-to-supabase")
 async def summary_to_supabase_route():
     """
@@ -923,15 +933,18 @@ async def summary_to_supabase_route():
             camera_id = summary["camera_id"]
             teacher_id = summary["teacher_id"]
             subject_id = (summary.get("subject_id") or "").strip()
+            group = summary["group"]
 
             for record in summary["records"]:
                 insert_payload.append({
                     "camera_id": camera_id,
                     "teacher_id": teacher_id,
                     "subject_id": subject_id,
+                    "group": group,
                     "Attention": record["Attention"],
                     "Non_Attention": record["Non_Attention"],
                     "class_json": record["class_json"],
+                    "class_duration": record["class_duration"],
                     "created_at": record["created_at"],
                 })
 
@@ -945,7 +958,8 @@ async def summary_to_supabase_route():
             t_id = row["teacher_id"]
             s_id = row["subject_id"]
             c_id = row["camera_id"]
-            
+            g = row["group"]
+
             # แปลง created_at เป็น datetime
             dt = (
                 row["created_at"]
@@ -954,16 +968,16 @@ async def summary_to_supabase_route():
             )
             date_key = dt.date().isoformat()
             
-            key = (t_id, s_id, c_id, date_key)
+            key = (t_id, s_id, c_id, date_key, g)
             grops[key].append(row)
 
         daily_rows = []
-        for (t_id, s_id, c_id, s_date), rows in grops.items():
+        for (t_id, s_id, c_id, s_date, g), rows in grops.items():
             total_att = 0.0
             total_non = 0.0
             count = len(rows)
             class_totals = defaultdict(float)
-
+            class_duration_totals = defaultdict(float)
             for r in rows:
                 total_att += float(r.get("Attention") or 0.0)
                 total_non += float(r.get("Non_Attention") or 0.0)
@@ -977,6 +991,15 @@ async def summary_to_supabase_route():
                 
                 for k, v in cj.items():
                     class_totals[k] += float(v or 0.0)
+
+                cd = r.get("class_duration") or {}
+                if isinstance(cd, str):
+                    try:
+                        cd = json.loads(cd)
+                    except:
+                        cd = {}
+                for k, v in cd.items():
+                    class_duration_totals[k] += float(v or 0.0)
 
             avg_att = total_att / count if count > 0 else 0.0
             avg_non = total_non / count if count > 0 else 0.0
@@ -994,6 +1017,10 @@ async def summary_to_supabase_route():
                 "avg_attention": round(avg_att, 3),
                 "avg_non_attention": round(avg_non, 3),
                 "class_json_summary": class_summary,
+                "class_duration_summary": {
+                    k: round(v, 1) for k, v in class_duration_totals.items()
+                },
+                "group": g
             })
 
         # Insert ลง camera_daily_summary

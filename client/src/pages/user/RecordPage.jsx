@@ -1,25 +1,16 @@
-// นำเข้า React และ Hook ที่ใช้จาก React
 import React, { useEffect, useRef, useState } from "react";
-// นำเข้า Navbar ด้านบนของหน้า จากโฟลเดอร์ components
 import Navbar from "../../components/Navbar";
-// นำเข้า Breadcrumb (แสดงเส้นทางหน้า เช่น หน้าแรก > ตารางสอน > บันทึก)
 import MyBreadcrumb from "../../components/MyBreadcrumb";
-// นำเข้า axios เวอร์ชันที่เราตั้งค่า baseURL ไว้แล้ว
 import axios from "../../util/axios";
-// นำเข้า toast สำหรับแจ้งเตือน Popup มุมจอ (เช่น ข้อความสำเร็จ/ผิดพลาด)
 import toast from "react-hot-toast";
-// นำเข้า hook ใช้เปลี่ยนหน้า (navigate) และดึงค่าจาก URL (useParams)
 import { useNavigate, useParams } from "react-router-dom";
 
-// ประกาศ Component หลักของหน้านี้ ชื่อ RecordPage
 const RecordPage = () => {
-    // ใช้ hook useNavigate เพื่อให้เราสามารถสั่งเปลี่ยนหน้าได้ด้วยโค้ด
     const navigate = useNavigate();
 
-    // ดึงค่าจาก URL parameter เช่น /user/record/:subjectId
-    const { subjectId } = useParams();
-
-    // ดึงค่า teacher_id จาก localStorage (หลังจาก Login แล้วเคยเก็บไว้)
+    // ดึงค่าจาก URL parameter เช่น /user/record/:subjectId/:group
+    const { subjectId, group } = useParams();
+    
     const teacherId = localStorage.getItem("teacher_id");
 
     // state สำหรับเก็บ "รายการกล้อง" ที่ค้นเจอในเครื่อง (array)
@@ -111,7 +102,7 @@ const RecordPage = () => {
         // ประกอบ URL สำหรับ WebSocket ของกล้อง + query string teacher_id, subject_id
         const wsUrl =
             `${wsProtocol}://${wsBase}/camera/ws/camera/${cameraId}` +
-            `?teacher_id=${teacherId}&subject_id=${subjectId}`;
+            `?teacher_id=${teacherId}&subject_id=${subjectId}&group=${group}`;
 
         // log ดูว่ากำลังจะเชื่อมต่อไปที่ไหน
         console.log("[connectWebSocket] connecting", wsUrl);
@@ -189,7 +180,7 @@ const RecordPage = () => {
         // ประกอบ URL สำหรับ summary WebSocket
         const wsUrl =
             `${wsProtocol}://${wsBase}/camera/ws/camera/summary/${cameraId}` +
-            `?teacher_id=${teacherId}&subject_id=${subjectId}`;
+            `?teacher_id=${teacherId}&subject_id=${subjectId}&group=${group}`;
 
         // log ว่ากำลังเชื่อมจะต่อ summary socket
         console.log("[connectSummarySocket] connecting", wsUrl);
@@ -350,40 +341,6 @@ const RecordPage = () => {
 
     // ---------------------- ฟังก์ชันสำหรับปุ่มต่าง ๆ ----------------------
 
-    // ปุ่ม "เชื่อมต่อใหม่" สำหรับกล้องบางตัว
-    const handleReconnect = async (cameraId) => {
-        try {
-            // เรียกหลังบ้านให้เปิดกล้องทั้งหมด (เผื่อกล้องไหนปิด/หลุด)
-            await axios.get("camera/open-all");
-            // เชื่อมต่อ WebSocket ใหม่สำหรับกล้องนี้
-            connectWebSocket(cameraId);
-            // แจ้งผู้ใช้ว่าทำสำเร็จ
-            toast.success(`เชื่อมต่อใหม่ กล้อง ${getCameraName(cameraId)} แล้ว`);
-        } catch {
-            // ถ้ามีปัญหาให้แจ้งเตือนว่าล้มเหลว
-            toast.error(`เชื่อมต่อใหม่กล้อง ${getCameraName(cameraId)} ไม่สำเร็จ`);
-        }
-    };
-
-    // ปุ่ม "ปิดตัวนี้" สำหรับปิดกล้องทีละตัว
-    const handleCloseCamera = async (cameraId) => {
-        try {
-            // เรียก API ปิดกล้องตัวที่ระบุ
-            await axios.get(`camera/close-camera/${cameraId}`);
-            // ปิด WebSocket สตรีมภาพของกล้องนี้
-            safeCloseWS(cameraId);
-            // ปิด WebSocket summary ของกล้องนี้
-            safeCloseSummaryWS(cameraId);
-            // แจ้งเตือนว่าปิดกล้องแล้ว
-            toast.success(`ปิดกล้อง ${getCameraName(cameraId)} แล้ว`);
-        } catch (err) {
-            // แจ้งเตือนว่าปิดกล้องไม่สำเร็จ
-            toast.error("ปิดกล้องไม่สำเร็จ");
-            // log error เพื่อ debug
-            console.error("ปิดกล้องไม่สำเร็จ :", err);
-        }
-    };
-
     // ปุ่ม "ปิดกล้องทั้งหมด"
     const handleCloseAll = async () => {
         // ตั้งสถานะว่าไม่ได้กำลังบันทึก/ตรวจจับแล้ว
@@ -422,8 +379,6 @@ const RecordPage = () => {
 
             // เรียก API ให้เริ่มตรวจจับทุกกล้อง
             const resStartDetect = await axios.get(`camera/start-all`);
-            // รับรายการ id กล้องที่เริ่มตรวจจับสำเร็จจากหลังบ้าน
-            const started_ids = resStartDetect.data.started || [];
 
             // แจ้งเตือนว่าการเริ่มตรวจจับสำเร็จ
             toast.success(`เริ่มตรวจจับทุกกล้อง`);
@@ -451,11 +406,8 @@ const RecordPage = () => {
         setTimer(0);
 
         try {
-            // เรียก API ให้หยุดตรวจจับทุกกล้อง
             await axios.get(`camera/stop-all`);
-            // เรียก API ให้สรุปข้อมูล และส่งเข้า Supabase
             const summaryRes = await axios.get(`camera/summary-to-supabase`);
-            // log ข้อมูลที่หลังบ้านตอบกลับมา
             console.log("Summary Done:", summaryRes.data);
 
             // หน่วงเวลานิดหน่อย (0.8 วินาที) เผื่อให้หลังบ้านทำงานเสร็จ
@@ -466,10 +418,9 @@ const RecordPage = () => {
                 safeCloseSummaryWS(id)
             );
 
-            // แจ้งเตือนว่าหยุดตรวจจับเรียบร้อย
             toast.success(`หยุดการตรวจจับทุกกล้อง`);
             // ส่งผู้ใช้ไปยังหน้า "สรุปผล" ของ user
-            navigate("/user/summarize/");
+            navigate(`/user/summarize/${subjectId}/${group}`);
         } catch (error) {
             // ถ้ามีปัญหาระหว่างหยุดตรวจจับ ให้ log ไว้
             console.error("การหยุดตรวจจับเกิดข้อผิดพลาด", error);
@@ -512,18 +463,13 @@ const RecordPage = () => {
 
                 {/* layout แบ่ง 2 คอลัมน์: ซ้ายใหญ่ (กล้อง), ขวาเล็ก (summary) */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* กล่องฝั่งซ้าย: ใช้พื้นที่ 2 ใน 3 (lg:col-span-2) */}
                     <div className="lg:col-span-2 bg-white rounded-2xl shadow p-4 sm:p-6 border border-gray-200">
-                        {/* ส่วนหัว (Header) แสดงสถานะการตรวจจับ และเวลา */}
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
-                            {/* แสดงจุดไฟ บอกว่าสถานะกำลังตรวจจับ/พร้อมเริ่ม */}
                             <div className="flex items-center space-x-3">
-                                {/* วงกลมด้านนอก มี ring แสดงสีต่างกันตามสถานะ */}
                                 <div
                                     className={`w-5 h-5 rounded-full ring-2 ring-offset-2 ${isRecording ? "ring-red-300" : "ring-green-300"
                                         } flex items-center justify-center`}
                                 >
-                                    {/* วงกลมด้านใน ถ้ากำลังตรวจจับจะกระพริบสีแดง */}
                                     <div
                                         className={`w-3.5 h-3.5 rounded-full ${isRecording
                                                 ? "bg-red-500 animate-pulse"
@@ -533,11 +479,9 @@ const RecordPage = () => {
                                 </div>
                                 {/* ข้อความอธิบายสถานะ */}
                                 <div>
-                                    {/* ตัวหนังสือเล็กสีเทา บอกหัวข้อ */}
                                     <div className="text-sm text-gray-500">
                                         สถานะการตรวจจับ
                                     </div>
-                                    {/* ตัวหนังสือหนา แสดงข้อความตามสถานะ */}
                                     <div className="font-semibold text-gray-800">
                                         {isRecording ? "กำลังตรวจจับ" : "พร้อมเริ่มต้น"}
                                     </div>
@@ -546,11 +490,9 @@ const RecordPage = () => {
 
                             {/* ส่วนแสดงเวลาในการบันทึก */}
                             <div className="text-right">
-                                {/* หัวข้อเล็กสีเทา */}
                                 <div className="text-sm text-gray-500">
                                     ระยะเวลาบันทึก
                                 </div>
-                                {/* ตัวเลขเวลาแบบฟอนต์ Mono ดูเหมือนนาฬิกา */}
                                 <div className="text-2xl font-mono font-bold">
                                     {formatTime(timer)}
                                 </div>
@@ -559,7 +501,6 @@ const RecordPage = () => {
 
                         {/* แถวของปุ่มควบคุมต่าง ๆ */}
                         <div className="flex flex-wrap gap-3 mb-4">
-                            {/* ปุ่มเริ่มตรวจจับทุกกล้อง */}
                             <button
                                 className={`px-4 py-2 rounded-lg text-white font-semibold ${isRecording
                                         ? "bg-gray-400 cursor-not-allowed"
@@ -614,19 +555,15 @@ const RecordPage = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                             {/* วน loop แสดงกล้องทุกตัวใน cameras */}
                             {cameras.map((cam) => (
-                                // กล่องของกล้องแต่ละตัว
                                 <div
                                     key={cam.id} // key สำหรับ React
                                     className="border border-gray-300 rounded-2xl p-3 flex flex-col items-center bg-white shadow-sm"
                                 >
-                                    {/* ชื่อกล้อง ถ้ามี name ในข้อมูลก็ใช้เลย ไม่งั้น generate จาก id */}
                                     <h3 className="font-semibold text-lg mb-2 text-center">
                                         {getCameraName(cam.id)}
                                     </h3>
 
-                                    {/* พื้นที่โชว์ภาพจากกล้อง (ใช้ canvas ในกรอบ 16:9) */}
                                     <div className="w-full aspect-video bg-black rounded-xl overflow-hidden mb-3 flex items-center justify-center">
-                                        {/* canvas ของกล้องนี้ ใช้ ref เพื่อให้โค้ดด้านบนวาดรูปใส่ */}
                                         <canvas
                                             ref={(el) => (canvasRef.current[cam.id] = el)}
                                             width={640}  // กำหนดความกว้างเดิมของ canvas
@@ -642,7 +579,6 @@ const RecordPage = () => {
 
                     {/* กล่องฝั่งขวา: แสดงข้อมูลสรุประหว่างสอน (Summary) */}
                     <div className="bg-white rounded-2xl shadow p-4 sm:p-6 border border-gray-200">
-                        {/* หัวข้อของกล่อง summary */}
                         <h2 className="text-lg font-semibold mb-3">
                             ข้อมูลสรุประหว่างสอน
                         </h2>
@@ -656,7 +592,6 @@ const RecordPage = () => {
                                     key={index}
                                     className="bg-white shadow rounded-xl p-4 border border-gray-200 flex gap-4"
                                 >
-                                    {/* ปุ่มซ้าย: Info */}
                                     <div className="flex-1">
                                         <h3 className="text-lg font-semibold text-gray-800">
                                             กล้อง {Number(item.cameraId) + 1}

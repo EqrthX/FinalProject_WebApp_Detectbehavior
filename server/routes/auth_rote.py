@@ -24,7 +24,7 @@ async def login_by_teacher_id(
             user_uuid = teacher.data[0]["id"]
             print(f"เจออาจารย์ {teacher.data[0]}")
         else:
-            print("ไม่เจออาจารย์ - ลองแอดมินเข้าสู่ระบบ")
+            print("แอดมินเข้าสู่ระบบ")
 
         email = None
         if user_uuid:

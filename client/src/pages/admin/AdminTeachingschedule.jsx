@@ -1,439 +1,360 @@
-import React, { useState } from "react";
-import AdminNavbar from "../../components/AdminNavbar";
-import { TimePicker } from "antd";
-import dayjs from "dayjs";
+import React, { useState, useEffect, useMemo } from "react";
+import AdminNavbar from "../../components/AdminNavbar"; 
+import { Pagination, Select } from "antd"; // 🟢 เพิ่ม Select ของ Antd
+import toast, { Toaster } from "react-hot-toast"; 
+import { supabase } from "../../config/supabase.js"; 
 
-import { supabase } from "../../config/supabase.js";
+import { UploadScheduleAction, EditScheduleAction } from "../../components/ScheduleAction.jsx";
+import { AddSubjectAction } from "../../components/AddSubjectAction.jsx";
 
-const AdminTeachers = () => {
+const AdminTeachingSchedule = () => {
+  // --- State Management ---
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [subjectList, setSubjectList] = useState([]);
-  const [selectedCode, setSelectedCode] = useState("");
-  const [subjectName, setSubjectName] = useState("");
-  const [subjectcredit, setSubjectcredit] = useState("");
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedSchedule, setSelectedSchedule] = useState(null);
 
-  const [newSubject, setNewSubject] = useState({
-    subject_id: "",
-    subject_name: "",
-    credit: "",
-    category: "",
-  });
+  const [schedules, setSchedules] = useState([]);      
+  const [subjectList, setSubjectList] = useState([]);  
+  const [teacherList, setTeacherList] = useState([]);  
+  const [groupedSubjects, setGroupedSubjects] = useState({}); 
+  const [isLoading, setIsLoading] = useState(false);   
+
+  const [currentPage, setCurrentPage] = useState(1);   
+  const [pageSize, setPageSize] = useState(10);        
+  const [searchTerm, setSearchTerm] = useState("");    
+
+  // 🟢 Filter State
+  const [filterTeacher, setFilterTeacher] = useState(null); // เปลี่ยนเป็น null เพื่อรองรับการ clear
+  const [isFilterFocused, setIsFilterFocused] = useState(false); // 🟢 State สำหรับ Animation Label
+
+  // --- FETCHING DATA FUNCTIONS ---
+  const fetchTeachers = async () => {
+    const { data, error } = await supabase.from("teacher").select(`id, first_name, last_name, teacher_id`);
+    if (error) console.error("Error fetching teachers:", error);
+    else {
+      const formattedTeachers = data.map((t) => ({
+        value: t.teacher_id,
+        label: `${t.first_name} ${t.last_name} (${t.teacher_id})`, // search จากชื่อหรือรหัสได้
+        fullName: `${t.first_name} ${t.last_name}`,
+        teacherId: t.teacher_id,
+      }));
+      setTeacherList(formattedTeachers);
+    }
+  };
 
   const fetchSubjects = async () => {
-    const { data, error } = await supabase
-      .from("subjects")
-      .select("subject_id, subject_name, credit");
-
-    if (error) console.error(error);
-    else setSubjectList(data);
+    const { data, error } = await supabase.from("subjects").select("subject_id, subject_name, credit, category");
+    if (error) console.error("Error fetching subjects:", error);
+    else {
+      setSubjectList(data); 
+      groupSubjectsByCategory(data); 
+    }
   };
 
-  React.useEffect(() => {
+  const groupSubjectsByCategory = (subjects) => {
+    const grouped = subjects.reduce((acc, subject) => {
+      const category = subject.category || "ไม่ระบุหมวดหมู่";
+      if (!acc[category]) acc[category] = [];
+      acc[category].push(subject);
+      return acc;
+    }, {});
+    setGroupedSubjects(grouped);
+  };
+
+  const fetchSchedules = async () => {
+    setIsLoading(true); 
+    try {
+      const { data, error } = await supabase.from("class_schedule").select(`*`);
+
+      if (error) {
+        toast.error("เกิดข้อผิดพลาดในการดึงข้อมูลตารางสอน");
+        setSchedules([]);
+        return;
+      }
+
+      const formattedSchedules = data.map((schedule) => {
+        const teacherDisplay = schedule.teacher_name || schedule.teacher_id || "- ไม่พบอาจารย์ -";
+        return {
+          id: schedule.class_schedule_id,
+          code: schedule.subject_id,
+          name: schedule.subject_name || "-",
+          year: schedule.year,
+          semester: schedule.semester,
+          group: schedule.group,
+          day: schedule.day,
+          time: `${schedule.start_time ? schedule.start_time.substring(0, 5) : ""} - ${
+            schedule.end_time ? schedule.end_time.substring(0, 5) : ""
+          }`,
+          room: schedule.room,
+          building: schedule.building,
+          credit: schedule.credit,
+          teacher: teacherDisplay,
+          teacherIdRaw: schedule.teacher_id, 
+          startTimeStr: schedule.start_time,
+          endTimeStr: schedule.end_time,
+        };
+      });
+
+      setSchedules(formattedSchedules);
+    } catch (error) {
+      console.error("Fetch Schedules error:", error);
+      toast.error("เกิดข้อผิดพลาดในการประมวลผลข้อมูล");
+    } finally {
+      setIsLoading(false); 
+    }
+  };
+
+  // --- ACTION HANDLERS ---
+  const handleEditClick = (schedule) => {
+    setSelectedSchedule(schedule);
+    setShowEditModal(true);
+  };
+
+  const handleDeleteClick = async (id) => {
+    if (window.confirm("คุณต้องการลบตารางสอนนี้ใช่หรือไม่?")) {
+        const { error } = await supabase.from("class_schedule").delete().eq("class_schedule_id", id);
+        if (error) toast.error("ลบข้อมูลไม่สำเร็จ");
+        else {
+            toast.success("ลบข้อมูลเรียบร้อย");
+            fetchSchedules(); 
+        }
+    }
+  };
+
+  useEffect(() => {
     fetchSubjects();
+    fetchTeachers();
+    fetchSchedules();
   }, []);
 
-  React.useEffect(() => {
-    const isModalOpen = showAddModal || showUploadModal;
+  useEffect(() => {
+    const isModalOpen = showAddModal || showUploadModal || showEditModal;
     document.body.style.overflow = isModalOpen ? "hidden" : "unset";
     return () => (document.body.style.overflow = "unset");
-  }, [showAddModal, showUploadModal]);
+  }, [showAddModal, showUploadModal, showEditModal]);
 
-  const handleAddSubject = async (e) => {
-    e.preventDefault();
 
-    if (
-      !newSubject.subject_id ||
-      !newSubject.subject_name ||
-      !newSubject.credit ||
-      !newSubject.category
-    ) {
-      alert("กรุณากรอกข้อมูลให้ครบ");
-      return;
-    }
+  // --- FILTERING LOGIC ---
+  const filteredSchedules = schedules.filter((schedule) => {
+    const lowerSearchTerm = searchTerm.toLowerCase();
 
-    const { error } = await supabase.from("subjects").insert([
-      {
-        subject_id: newSubject.subject_id,
-        subject_name: newSubject.subject_name,
-        credit: newSubject.credit,
-        category: newSubject.category,
-      },
-    ]);
+    // 1. กรองคำค้นหา
+    const searchMatch = 
+      !searchTerm ||
+      schedule.code.toLowerCase().includes(lowerSearchTerm) ||
+      schedule.name.toLowerCase().includes(lowerSearchTerm) ||
+      schedule.teacher.toLowerCase().includes(lowerSearchTerm);
 
-    if (error) {
-      alert("เกิดข้อผิดพลาด");
-      console.error(error);
-    } else {
-      alert("เพิ่มรายวิชาสำเร็จ!");
-      setNewSubject({
-        subject_id: "",
-        subject_name: "",
-        credit: "",
-        category: "",
-      });
-      setShowAddModal(false);
-      fetchSubjects();
-    }
+    // 2. กรองอาจารย์ (จาก Dropdown ใหม่)
+    const teacherMatch = !filterTeacher || schedule.teacherIdRaw === filterTeacher;
+
+    return searchMatch && teacherMatch;
+  });
+
+  const indexOfLastItem = currentPage * pageSize;
+  const indexOfFirstItem = indexOfLastItem - pageSize;
+  const currentSchedules = filteredSchedules.slice(indexOfFirstItem, indexOfLastItem);
+
+  const handlePaginationChange = (page, size) => {
+    setCurrentPage(page);
+    setPageSize(size);
   };
 
-  const teachers = Array.from({ length: 15 }).map((_, i) => ({
-    id: i + 1,
-    code: "si123-59",
-    name: "สอนวิชานานาชาติ",
-    year: "2568",
-    semester: "1",
-    group: "1",
-    day: "อังคาร",
-    time: "12:00-16:10",
-    room: "1303",
-    building: "1",
-    credit: "3(3-0-6)",
-    teacher: "นาย ก นามสมุด",
-  }));
-
-  const format = "HH:mm:ss";
-  const startTime = dayjs("12:08:23", "HH:mm:ss");
-  const endTime = dayjs("12:08:23", "HH:mm:ss");
+  // --- RENDERING ---
 
   return (
-    <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4">
-      <aside className="w-full md:w-64">
+    // 🟢 1. Main Container: ใช้ h-screen (เต็มจอ) และ overflow-hidden (ห้าม scroll หน้าหลัก)
+    <div className="h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-1 p-4 overflow-hidden">
+      <Toaster /> 
+
+      <style>{`
+            /* CSS สำหรับ Dropdown ของ Ant Design ให้สวยงาม */
+            .ant-select-custom .ant-select-selector {
+                background-color: #f9fafb !important;
+                border-color: #d1d5db !important;
+                border-radius: 9999px !important;
+                height: 42px !important;
+                display: flex !important;
+                align-items: center !important;
+                padding-left: 1rem !important;
+            }
+            .ant-select-custom .ant-select-selector input {
+                height: 100% !important;
+            }
+            .ant-select-custom .ant-select-selection-item {
+                line-height: 40px !important;
+            }
+      `}</style>
+
+      <aside className="w-full md:w-64 shrink-0">
         <AdminNavbar />
       </aside>
 
-      {/* --------- MAIN CONTENT --------- */}
-      <div className="flex-1 transition-all lg:pl-[0rem] md:pl-0 sm:pl-0 h-screen overflow-y-auto">
-        <div className="max-w-screen-2xl mx-auto px-6 md:px-4">
-          {/* Header */}
-          <div className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 flex items-center justify-between sticky top-[20px] z-30">
-            <h1 className="text-[22px] md:text-[18px] font-semibold">รายวิชา</h1>
+      {/* 🟢 2. Content Zone: ใช้ flex-col และ h-full เพื่อให้เนื้อหาข้างในขยายได้ */}
+      <main className="flex-1 transition-all lg:pl-[0rem] h-full flex flex-col min-w-0">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-4 w-full h-full flex flex-col mt-5">
+          
+          
+
+          {/* Header Bar */}
+          <div className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 flex items-center justify-between sticky top-[20px] z-30 shrink-0">
+            <h1 className="text-[22px] md:text-[18px] font-semibold">ตารางสอน</h1>
           </div>
 
-          {/* Main Table Container */}
-          <div className="bg-white mt-9 p-4 rounded-[20px] shadow-sm border border-[#e9e9e9]">
-            {/* TOP BAR */}
-            <div className="flex justify-between items-center mb-4 flex-wrap gap-2 sticky top-[90px] z-20 bg-white pb-4 border-b border-gray-100 ml-3">
-              <div className="flex items-center gap-3 flex-wrap">
+          {/* 🟢 3. White Card: ใช้ flex-1 เพื่อให้ยืดเต็มพื้นที่ที่เหลือ (แก้ปัญหาจอเล็ก) */}
+          <div className="bg-white mt-4 p-4 rounded-[20px] shadow-sm border border-[#e9e9e9] flex flex-col flex-1 overflow-hidden">
+            
+            {/* Toolbar (Search & Filter) */}
+            <div className="flex justify-between items-center mb-4 flex-wrap gap-2 shrink-0 border-b border-gray-100 pb-4">
+              <div className="flex items-center gap-3 flex-wrap w-full xl:w-auto">
                 <div className="p-2 font-bold text-gray-800">วิชาสอน</div>
+                
                 <input
                   type="text"
                   placeholder="🔍 ค้นหา"
-                  className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-full bg-[#F6F6F4]"
+                  className="w-full md:w-48 px-3 py-2 border border-gray-300 rounded-full bg-[#F6F6F4] focus:outline-none focus:ring-2 focus:ring-[#38A738] h-[42px]"
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                 />
+
+                <div className="relative w-full md:w-64">
+                    <Select
+                        showSearch
+                        allowClear
+                        placeholder=" "
+                        optionFilterProp="label"
+                        value={filterTeacher}
+                        onFocus={() => setIsFilterFocused(true)}
+                        onBlur={() => setIsFilterFocused(false)}
+                        onChange={(val) => { setFilterTeacher(val); setCurrentPage(1); }}
+                        options={teacherList}
+                        className="ant-select-custom w-full"
+                        style={{ height: "42px" }}
+                        filterOption={(input, option) =>
+                            (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                        }
+                    />
+                    <label className={`absolute left-4 bg-[#f9fafb] px-1 transition-all pointer-events-none rounded-sm z-10
+                        ${filterTeacher || isFilterFocused 
+                            ? "-top-2.5 text-xs  text-gray-400 font-medium" 
+                            : "top-2.5 text-base text-gray-400"
+                        }
+                    `}>
+                        อาจารย์ผู้สอน
+                    </label>
+                </div>
               </div>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="bg-[#38A738] hover:bg-[#2d7c2d] text-white px-4 py-2 rounded-lg text-sm font-medium"
-                >
+              <div className="flex gap-2 mt-2 xl:mt-0">
+                <button onClick={() => setShowAddModal(true)} className="bg-[#38A738] hover:bg-[#2d7c2d] text-white px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap">
                   เพิ่มรายวิชา
                 </button>
-
-                <button
-                  onClick={() => setShowUploadModal(true)}
-                  className="bg-[#3D42D3] hover:bg-[#2b28a0] text-white px-4 py-2 rounded-lg text-sm font-medium"
-                >
-                  อัพโหลดตารางสอน
+                <button onClick={() => setShowUploadModal(true)} className="bg-[#3D42D3] hover:bg-[#2b28a0] text-white px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap">
+                  อัปโหลดตารางสอน
                 </button>
               </div>
             </div>
 
-            {/* TABLE */}
-            <div className="max-h-[620px] overflow-y-scroll overflow-x-auto relative">
-              <table className="min-w-full border border-gray-200">
-                <thead className="bg-[#f2f2f2] sticky top-0 z-[5]">
+            {/* 🟢 4. Table Wrapper: ใช้ flex-1 และ overflow-auto (ลบ h- fixed ออก) */}
+            {/* min-h-0 สำคัญมาก เพื่อให้ flex item หดตัวได้ใน Firefox/Safari */}
+            <div className="flex-1 overflow-y-auto overflow-x-auto relative shadow-inner border border-gray-300 rounded-lg min-h-0">
+              <table className="min-w-full border-separate border-spacing-0 text-sm"> 
+                <thead className="bg-[#f2f2f2] sticky top-0 z-[30] text-gray-700 font-semibold"> 
                   <tr>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      รหัสวิชา
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      ชื่อวิชา
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      ปีการศึกษา
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      ภาคการศึกษา
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      กลุ่ม
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      วัน
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      เวลาเรียน
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      ห้องเรียน
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      ตึก
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      หน่วยกิต
-                    </th>
-                    <th className="text-left px-4 py-2 border border-gray-300">
-                      อาจารย์ผู้สอน
-                    </th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 whitespace-nowrap sticky left-0 z-40 bg-[#f2f2f2] w-[120px] min-w-[120px]">รหัสวิชา</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[250px] sticky left-[120px] z-40 bg-[#f2f2f2] shadow-[4px_0_5px_-2px_rgba(0,0,0,0.1)]">ชื่อวิชา</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[40px]">ปี</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[40px]">เทอม</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[40px]">กลุ่ม</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[80px]">วัน</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[120px] whitespace-nowrap">เวลา</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[100px]">ห้อง</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[60px]">ตึก</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[80px]">หน่วยกิต</th>
+                    <th className="text-center px-4 py-3 border-b border-r border-gray-300 min-w-[200px] whitespace-nowrap">ผู้สอน</th>
+                    <th className="text-center px-4 py-3 border-b border-gray-300 w-[100px] sticky right-0 z-40 bg-[#f2f2f2] shadow-[-4px_0_5px_-2px_rgba(0,0,0,0.1)]">จัดการ</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {teachers.map((t) => (
-                    <tr key={t.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.code}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.name}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.year}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.semester}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.group}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.day}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.time}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.room}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.building}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.credit}
-                      </td>
-                      <td className="px-4 py-2 border border-gray-300">
-                        {t.teacher}
-                      </td>
-                    </tr>
-                  ))}
+                  {isLoading ? (
+                    <tr><td colSpan="12" className="px-4 py-8 text-center text-gray-500 border-b border-gray-300">กำลังดึงข้อมูล...</td></tr>
+                  ) : currentSchedules.length === 0 ? (
+                    <tr><td colSpan="12" className="px-4 py-8 text-center text-gray-500 border-b border-gray-300">ไม่พบข้อมูล</td></tr>
+                  ) : (
+                    currentSchedules.map((t) => (
+                      <tr key={t.id} className="hover:bg-gray-50 group transition-colors">
+                        <td className="px-4 py-3 border-b border-r border-gray-300 sticky left-0 z-20 bg-white group-hover:bg-gray-50 font-semibold text-gray-700">{t.code}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 sticky left-[120px] z-20 bg-white group-hover:bg-gray-50 shadow-[4px_0_5px_-2px_rgba(0,0,0,0.1)] font-semibold text-gray-700">{t.name}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.year}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.semester}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.group}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.day}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center font-semibold text-gray-700">{t.time}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center font-semibold text-gray-700">{t.room}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.building}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 text-center">{t.credit}</td>
+                        <td className="px-4 py-3 border-b border-r border-gray-300 font-semibold text-gray-700">{t.teacher}</td>
+                        <td className="px-4 py-3 border-b border-gray-300 text-center sticky right-0 z-20 bg-white group-hover:bg-gray-50 shadow-[-4px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                          <div className="flex items-center justify-center gap-2">
+                             <button onClick={() => handleEditClick(t)} className="text-blue-600 hover:text-blue-800 p-1.5 rounded-md hover:bg-blue-100 transition-all hover:scale-110"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+                             <button onClick={() => handleDeleteClick(t.id)} className="text-red-600 hover:text-red-800 p-1.5 rounded-md hover:bg-red-100 transition-all hover:scale-110"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* ---------------------------------------------------------- */}
-      {/*                     MODAL: เพิ่มรายวิชา                     */}
-      {/* ---------------------------------------------------------- */}
-
-      {showAddModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#f8f8f8] p-8 rounded-lg shadow-lg w-[90%] max-w-xl border border-gray-300">
-            <h2 className="text-2xl font-bold mb-6">เพิ่มรายวิชา</h2>
-
-            <form onSubmit={handleAddSubject} className="grid grid-cols-1 gap-4">
-              <input
-                type="text"
-                placeholder="กรอกรหัสวิชา"
-                required
-                value={newSubject.subject_id}
-                onChange={(e) =>
-                  setNewSubject({ ...newSubject, subject_id: e.target.value })
-                }
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
+            {/* Pagination: ให้มันลอยอยู่ด้านล่างเสมอ และไม่ดันตารางจนตกขอบ */}
+            <div className="flex justify-center mt-4 pb-2 shrink-0">
+              <Pagination
+                current={currentPage}
+                pageSize={pageSize}
+                total={filteredSchedules.length}
+                showSizeChanger
+                pageSizeOptions={["5", "10", "20", "50", "100"]}
+                onChange={handlePaginationChange}
+                showTotal={(total) => `ทั้งหมด ${total} รายการ`}
               />
-
-              <input
-                type="text"
-                placeholder="กรอกชื่อวิชา"
-                required
-                value={newSubject.subject_name}
-                onChange={(e) =>
-                  setNewSubject({
-                    ...newSubject,
-                    subject_name: e.target.value,
-                  })
-                }
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
-              />
-
-              <input
-                type="number"
-                placeholder="หน่วยกิต"
-                required
-                value={newSubject.credit}
-                onChange={(e) =>
-                  setNewSubject({ ...newSubject, credit: e.target.value })
-                }
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
-              />
-
-              <select
-                required
-                value={newSubject.category}
-                onChange={(e) =>
-                  setNewSubject({ ...newSubject, category: e.target.value })
-                }
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
-              >
-                <option value="">เลือกหมวดหมู่</option>
-                <option value="วิชาทั่วไป">วิชาทั่วไป</option>
-                <option value="วิชาเฉพาะ">วิชาเฉพาะ</option>
-                <option value="วิชาเสรี">วิชาเสรี</option>
-              </select>
-
-              <div className="flex justify-end mt-6 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setNewSubject({
-                      subject_id: "",
-                      subject_name: "",
-                      credit: "",
-                      category: "",
-                    });
-                  }}
-                  className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
-                >
-                  ยกเลิก
-                </button>
-
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#38A738] text-white rounded-md hover:bg-[#2d7c2d]"
-                >
-                  เพิ่ม
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ---------------------------------------------------------- */}
-      {/*                MODAL: อัพโหลดตารางสอน                      */}
-      {/* ---------------------------------------------------------- */}
-
-      {showUploadModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#f8f8f8] p-8 rounded-lg shadow-lg w-[90%] max-w-2xl border border-gray-300">
-            <h2 className="text-2xl font-bold mb-6">อัพโหลดตารางสอน</h2>
-
-            <form className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <select
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
-                value={selectedCode}
-                onChange={(e) => {
-                  const code = e.target.value;
-                  setSelectedCode(code);
-
-                  const selected = subjectList.find(
-                    (item) => item.subject_id === code
-                  );
-                  setSubjectName(selected?.subject_name || "");
-                  setSubjectcredit(selected?.credit || "");
-                }}
-              >
-                <option value="">เลือกรหัสวิชา</option>
-
-                {subjectList.map((sub) => (
-                  <option key={sub.subject_id} value={sub.subject_id}>
-                    {sub.subject_id}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                type="text"
-                placeholder="ชื่อวิชา"
-                value={subjectName}
-                readOnly
-                className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200"
-              />
-
-              <input
-                type="text"
-                placeholder="ปีการศึกษา"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
-              />
-              <input
-                type="text"
-                placeholder="ภาคการศึกษา"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
-              />
-
-              <input
-                type="text"
-                placeholder="กลุ่ม"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
-              />
-
-              <input
-                type="text"
-                placeholder="วัน (จ-อา)"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
-              />
-
-              <TimePicker.RangePicker
-                defaultValue={[startTime, endTime]}
-                format={format}
-                style={{ width: "100%" }}
-              />
-
-              <input
-                type="text"
-                placeholder="ห้องเรียน"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
-              />
-
-              <input
-                type="text"
-                placeholder="ตึก"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
-              />
-
-              <input
-                type="text"
-                placeholder="หน่วยกิต"
-                value={subjectcredit}
-                readOnly
-                className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200"
-              />
-
-              <input
-                type="text"
-                placeholder="อาจารย์ผู้สอน"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md"
-              />
-            </form>
-
-            <div className="flex justify-end mt-6 gap-2">
-              <button
-                onClick={() => {
-                  setShowUploadModal(false);
-                  setSelectedCode("");
-                  setSubjectName("");
-                  setSubjectcredit("");
-                }}
-                className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
-              >
-                ยกเลิก
-              </button>
-
-              <button className="px-5 py-2 bg-[#3F37C9] text-white rounded-md hover:bg-[#2b28a0]">
-                ยืนยัน
-              </button>
             </div>
+
           </div>
         </div>
-      )}
+      </main>
+
+      <AddSubjectAction
+        isOpen={showAddModal} 
+        onClose={() => setShowAddModal(false)}
+        onSuccess={() => fetchSubjects()}
+      />
+
+      <UploadScheduleAction
+        isOpen={showUploadModal} 
+        onClose={() => setShowUploadModal(false)}
+        onSuccess={() => fetchSchedules()}
+        subjectList={subjectList}
+        groupedSubjects={groupedSubjects}
+        teacherList={teacherList}
+      />
+
+      <EditScheduleAction
+        isOpen={showEditModal}
+        onClose={() => {
+            setShowEditModal(false);
+            setSelectedSchedule(null);
+        }}
+        onSuccess={() => fetchSchedules()}
+        scheduleData={selectedSchedule}
+        subjectList={subjectList}
+        groupedSubjects={groupedSubjects}
+        teacherList={teacherList}
+      />
     </div>
   );
 };
 
-export default AdminTeachers;
+export default AdminTeachingSchedule;

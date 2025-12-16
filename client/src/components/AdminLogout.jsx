@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ReactDOM from "react-dom";
 import logout from "../assets/logout.png";
-import {supabase} from "../config/supabase";
+import { supabase } from "../config/supabase";
 
 const LogoutModal = ({ onCancel, onConfirm }) => {
   return ReactDOM.createPortal(
@@ -63,8 +63,8 @@ const AdminLogout = () => {
   const handleCancelLogout = () => setShowConfirmModal(false);
 
   const handleConfirmLogout = async () => {
-    const {error} = await supabase.auth.signOut();
-    if (error) console.error("Logout:",error);
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error("Logout:", error);
 
     localStorage.removeItem("supabase.auth.token");
     localStorage.removeItem("supabase.auth.refresh_token");
@@ -82,18 +82,19 @@ const AdminLogout = () => {
       {/* ปุ่มออกจากระบบ */}
       <div
         className="fixed bottom-6 left-8 bg-white rounded-[20px] border border-[#e9e9e9] shadow-sm
-                   transition-all duration-300 w-44 h-12 md:w-48 md:h-12 lg:w-56 lg:h-14 z-40"
+                   transition-all duration-300 w-44 h-12 md:w-48 md:h-12 lg:w-56 lg:h-14 z-40 "
       >
         <button
           onClick={handleLogoutClick}
-          className="inline-flex items-center justify-center gap-2
-                     w-full h-full text-black font-medium
-                     hover:bg-[#FE2B2B] hover:text-white
-                     rounded-[20px] transition-colors duration-200
-                     text-sm md:text-base"
+          className="group inline-flex items-center justify-center gap-2
+             w-full h-full text-black font-medium
+             hover:bg-[#FE2B2B] hover:text-white
+             rounded-[20px] transition-colors duration-200
+             text-sm md:text-base"
         >
           <img
-            className="w-4 h-4 md:w-3.5 md:h-3.5"
+            className="w-4 h-4 md:w-3.5 md:h-3.5 transition-all 
+               group-hover:filter group-hover:brightness-0 group-hover:invert"
             src={logout}
             alt="logout"
           />

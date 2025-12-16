@@ -4,14 +4,13 @@ import { NavLink, useLocation } from 'react-router-dom';
 
 const steps = [
   { key: 'TeachingSchedule', to: '/user/TeachingSchedule', label: 'ตารางสอน' },
-  { key: 'Record', to: '/user/Record', label: 'เริ่มบันทึก' },
+  { key: 'Record', to: '/user/Record/:subjectId', label: 'เริ่มบันทึก' },
   { key: 'summarize', to: '/user/summarize', label: 'สรุปผล' },
 ];
 
 const MyBreadcrumb = () => {
   const { pathname } = useLocation();
 
-  // หา “ขั้น” ปัจจุบันจาก pathname แล้วแสดงตั้งแต่ขั้นแรกจนถึงขั้นนั้น
   const currentIndex =
     steps.findIndex(s => pathname.toLowerCase().includes(s.key.toLowerCase()));
 

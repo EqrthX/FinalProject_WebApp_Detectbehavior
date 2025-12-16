@@ -4,6 +4,7 @@ venv311/
 # Ignore .env files (เช่น ใช้เก็บข้อมูล sensitive)
 .env
 
+
 # Ignore VSCode settings
 .vscode/
 

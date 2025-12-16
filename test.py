@@ -1,107 +1,109 @@
-import pillow_heif
-from PIL import Image
-import os
 
-def convert_file(input_file, output_file, format="JPEG"):
-    """
-    แปลงไฟล์ HEIC เป็น Format ที่ระบุ (JPEG, PNG)
-    
-    Args:
-        input_path (str): Path ไปยังไฟล์ .heic ต้นทาง
-        output_path (str): Path ที่จะบันทึกไฟล์ใหม่
-        format (str): Format ที่ต้องการ ("JPEG", "PNG")
-    """
-    try:
-        # 1. อ่านไฟล์ HEIC (ได้เป็น "ตู้คอนเทนเนอร์" หรือ HeifFile)
-        heif_file = pillow_heif.read_heif(input_file)
 
-        # 2. 🔥 จุดแก้ไขสำคัญ 🔥
-        # ดึงเอารูปภาพ "รูปแรก" หรือ "รูปหลัก" ออกมาจากตู้
-        # (ถ้าไฟล์มีรูปเดียว heif_file[0] ก็คือรูปนั้น)
-        primary_image = heif_file[0] 
+# ตรวจว่าไฟล์ .ftyp เป็น HEIC จริงไหม
+# def is_heic_file(path):
+#     try:
+#         with open(path, "rb") as f:
+#             header = f.read(32)
+#             return b"ftypheic" in header or b"ftypmif1" in header
+#     except:
+#         return False
 
-        # 3. แปลง HeifImage (primary_image) เป็น PIL Image object
-        image = Image.frombytes(
-            primary_image.mode,
-            primary_image.size,
-            primary_image.data,
-            "raw",
-        )
-        
-        # 4. ดึงข้อมูล EXIF จาก "รูปหลัก"
-        exif_data = None
-        if hasattr(primary_image, "exif"):
-            exif_data = primary_image.exif  # ดึงข้อมูล EXIF (เป็น bytes)
 
-        # 5. กำหนด Format ที่จะบันทึก
-        save_format = "JPEG" if format.upper() in ["JPEG", "JPG"] else format.upper()
+# def load_any_image(path):
+#     """
+#     โหลดรูปภาพรองรับ:
+#     - HEIC (ผ่าน pillow_heif)
+#     - JFIF (ผ่าน PIL)
+#     - PNG, JPG, JPEG
+#     """
+#     ext = os.path.splitext(path)[1].lower()
 
-        # 6. บันทึกไฟล์ (และแก้ typo 'quanlity' เป็น 'quality')
-        if save_format == "JPEG":
-            if exif_data:
-                image.save(output_file, format=save_format, quality=95, exif=exif_data)
-            else:
-                image.save(output_file, format=save_format, quality=95) # <-- แก้ไข typo
-        
-        elif save_format == "PNG":
-            image.save(output_file, format=save_format)
-            
-        else:
-            print(f"Error: Format '{save_format}' is not supported (only JPEG, JPG, PNG).")
-            return
+#     # HEIC/FTYP check
+#     if ext == ".ftyp" or ext == ".heic" or ext == ".heif":
+#         heif_file = pillow_heif.read_heif(path)
+#         primary_image = heif_file[0]
+#         return Image.frombytes(
+#             primary_image.mode,
+#             primary_image.size,
+#             primary_image.data,
+#             "raw",
+#         )
 
-        # ไม่ต้อง print ถ้าสำเร็จ เพื่อไม่ให้ log ยาวเกินไป
-        # print(f"✅ Success: Converted '{input_file}' to '{output_file}' as {save_format}")
+#     # JFIF, JPG, PNG
+#     return Image.open(path)
 
-    except Exception as e:
-        # 🔥 พิมพ์ Error ให้ชัดเจนว่าไฟล์ไหนมีปัญหา
-        print(f"❌ Error converting file: {input_file}")
-        print(f"   Error message: {e}")
-        print(f"   Skipping this file...")
-        
 
-# --- ส่วนของการวน Loop (โค้ดเดิมของคุณถูกต้องแล้ว) ---
+# def convert_to_jpg(input_file, output_file):
+#     try:
+#         image = load_any_image(input_file)
+#         image = image.convert("RGB")
+#         image.save(output_file, "JPEG", quality=95)
+#         return True
+#     except Exception as e:
+#         print(f"❌ Error converting {input_file}: {e}")
+#         return False
 
-input_directory = "หันหน้า"
-output_directory = "หันหน้า" # บันทึกไว้ที่เดิม (หรือเปลี่ยนเป็นโฟลเดอร์ใหม่ก็ได้)
-# os.makedirs(output_directory, exist_ok=True) # ถ้าใช้โฟลเดอร์ใหม่
 
-contents = os.listdir(input_directory)
+# ------------------------
+#     MAIN LOOP
+# ------------------------
 
-files_to_convert = []
-for item in contents:
-    if item.lower().endswith((".heic", ".heif")): # รองรับ .heif ด้วย
-        full_path = os.path.join(input_directory, item)
-        if os.path.isfile(full_path):
-            files_to_convert.append(item) 
+# input_directory = "big"
+# output_directory = "big"
 
-print(f"Found {len(files_to_convert)} .HEIC/.HEIF files to convert.")
-converted_count = 0
-deleted_count = 0
-# วน Loop เพื่อแปลงไฟล์
-for file_name in files_to_convert:
-    
-    input_path = os.path.join(input_directory, file_name)
-    
-    base_name = os.path.splitext(file_name)[0]
-    output_name = base_name + ".jpg" # ตั้งชื่อ .jpg ไปเลยง่ายๆ
-    output_path = os.path.join(output_directory, output_name)
-    
-    # 3. เรียกใช้ฟังก์ชันด้วย Path ที่ถูกต้อง
-    print(f"Converting: {file_name} ...")
-    success = convert_file(input_path, output_path, format="JPG")
+# contents = os.listdir(input_directory)
+# files_to_convert = []
 
-    if success:
-        print(f"Converted to : {output_path}")
-        converted_count += 1 
-        try:
-            os.remove(input_path)
-            print(f"  🗑️ Deleted original: {file_name}")
-            deleted_count += 1
-        except Exception as e:
-            print(f"  ❌ Error deleting file {input_path}: {e}")
-    else:
-        print(f"  Conversion failed for {file_name}. Original file was NOT deleted.")
-print("--- Conversion Complete! ---")
-print(f"Total files converted: {converted_count}")
-print(f"Total original files deleted: {deleted_count}")
+# for item in contents:
+#     ext = item.lower()
+
+#     if ext.endswith((".jfif", ".ftyp")):
+#         full_path = os.path.join(input_directory, item)
+
+#         # กรณี .ftyp ต้องเช็คว่าเป็น HEIC จริงไหม
+#         if ext.endswith(".ftyp") and not is_heic_file(full_path):
+#             print(f"⚠️ Skip {item}: .ftyp file is NOT HEIC format")
+#             continue
+
+#         if os.path.isfile(full_path):
+#             files_to_convert.append(item)
+
+# print(f"Found {len(files_to_convert)} files to convert.")
+
+# converted = 0
+# deleted = 0
+
+# for file_name in files_to_convert:
+#     input_path = os.path.join(input_directory, file_name)
+#     output_path = os.path.join(input_directory, os.path.splitext(file_name)[0] + ".jpg")
+
+#     print(f"Converting: {file_name}")
+
+#     success = convert_to_jpg(input_path, output_path)
+
+#     if success:
+#         print(f"  ✔ Converted to {output_path}")
+#         converted += 1
+
+#         try:
+#             os.remove(input_path)
+#             print(f"  🗑️ Deleted original: {file_name}")
+#             deleted += 1
+#         except Exception as e:
+#             print(f"  ❌ Cannot delete {file_name}: {e}")
+
+#     else:
+#         print(f"  ❌ Failed: {file_name}")
+
+
+# print("---- COMPLETE ----")
+# print(f"Converted: {converted}")
+# print(f"Deleted:   {deleted}")
+
+from ultralytics import YOLO
+
+m = YOLO("dataset/detect/train/weights/best.pt")
+print("Ultralytics:", m.ckpt.get("version"))
+print("Torch:", m.ckpt.get("torch_version"))
+print("Python:", m.ckpt.get("python_version"))

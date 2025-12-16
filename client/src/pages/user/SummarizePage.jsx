@@ -3,10 +3,10 @@ import Navbar from '../../components/Navbar.jsx'
 import MyBreadcrumb from '../../components/MyBreadcrumb.jsx'
 import { 
   BarChartOutlined, 
-  PieChartOutlined,
-  CalendarOutlined,
-  SendOutlined,
-  TeamOutlined,
+  PieChartOutlined, 
+  CalendarOutlined, 
+  SendOutlined, 
+  TeamOutlined, 
   ClockCircleOutlined 
 } from '@ant-design/icons';
 import { 
@@ -20,13 +20,12 @@ import {
   YAxis, 
   PieChart, 
   Pie, 
-  Cell,
-  Label // ✅ Import Label เข้ามาใช้งาน
+  Cell
 } from "recharts";
 import { supabase } from "../../config/supabase.js"
 import { useNavigate } from "react-router-dom";
 
-// --- 1. กำหนดชุดสีมาตรฐาน ---
+// --- 1. กำหนดชุดสีมาตรฐาน (เหมือน ResultsPage) ---
 const BEHAVIOR_COLORS = {
   "ตั้งใจเรียน": "#22c55e",       
   "มองกระดาน": "#3b82f6",        
@@ -59,12 +58,12 @@ const SummarizePage = () => {
   const [headerInfo, setHeaderInfo] = useState({ subject: "", date: "", group: "", scheduleTime: "" }); 
   const [loading, setLoading] = useState(true);
 
-  // --- 2. ฟังก์ชันจัดกลุ่มข้อมูลกราฟเส้น ---
+  // --- 2. ฟังก์ชันจัดกลุ่มข้อมูลกราฟเส้น (3 นาที) ---
   const processDataTo3MinIntervals = (logs) => {
     const buckets = {};
     logs.forEach(log => {
       const date = new Date(log.created_at);
-      const coeff = 1000 * 60 * 3; 
+      const coeff = 1000 * 60 * 3; // 3 นาที
       const roundedDate = new Date(Math.floor(date.getTime() / coeff) * coeff);
       const timeStr = roundedDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
@@ -86,12 +85,12 @@ const SummarizePage = () => {
     const fetchLatestSession = async () => {
       setLoading(true);
       try {
-        // A. หา Session ล่าสุดจาก summary (เพื่อเอา Subject/Date ล่าสุด)
+        // A. หา Session ล่าสุดจาก summary
         const { data: latestRow, error: summaryError } = await supabase
           .from('camera_daily_summary')
           .select('*')
           .eq('teacher_id', teacher_id)
-          .order('created_at', { ascending: false })
+          .order('created_at', { ascending: false }) // เอาใหม่ล่าสุด
           .limit(1);
 
         if (summaryError || !latestRow || latestRow.length === 0) {
@@ -102,10 +101,10 @@ const SummarizePage = () => {
 
         const targetSubject = latestRow[0].subject_id;
         const targetDate = latestRow[0].summary_date;
-        const targetGroup = latestRow[0].group; 
+        const targetGroup = latestRow[0].group ? String(latestRow[0].group) : "N/A";
         const stopTime = new Date(latestRow[0].created_at).toISOString();
         
-        // B. ดึงตารางสอน
+        // B. ดึงตารางสอนเพื่อแสดงเวลาเรียน (ถ้ามี)
         const { data: schedules } = await supabase
             .from('class_schedule')
             .select('*')
@@ -118,6 +117,7 @@ const SummarizePage = () => {
                 const isSubjectMatch = String(s.subject_id).trim() === String(targetSubject).trim();
                 const sGroup = String(s.group || "").trim();
                 const tGroup = String(targetGroup).trim();
+                // เช็คกลุ่ม (เผื่อเป็นเลขหรือ String)
                 const isGroupMatch = (sGroup === tGroup) || (parseInt(sGroup) === parseInt(tGroup));
                 return isSubjectMatch && isGroupMatch;
             });
@@ -141,19 +141,21 @@ const SummarizePage = () => {
           scheduleTime: displayTime
         });
 
-        // D. ดึง Logs Timeline และ Duration (จาก camera_logs ตาม schema)
+        // C. ดึง Logs Timeline และ Duration
+        // ใช้ startOfDay เพื่อให้แน่ใจว่าเป็นของวันนั้น
         const startOfDay = new Date(targetDate).toISOString();
+        
         const { data: logs } = await supabase
           .from('camera_logs')
           .select('*')
           .eq('teacher_id', teacher_id)
           .eq('subject_id', targetSubject)
-          .eq('group', targetGroup)
+          .eq('group', targetGroup) // ต้องตรงกลุ่มด้วย
           .gte('created_at', startOfDay)   
           .lte('created_at', stopTime)
           .order('created_at', { ascending: true });
 
-        // E. ประมวลผล (Aggregation จาก Logs โดยตรง)
+        // D. ประมวลผล (Aggregation)
         const groupedByCamera = {};
 
         if (logs) {
@@ -164,18 +166,18 @@ const SummarizePage = () => {
                     groupedByCamera[camId] = {
                         totalAtt: 0,    
                         countRow: 0,    
-                        durationSum: { // เก็บผลรวมวินาที      
+                        durationSum: { // 🟢 เก็บผลรวมวินาที      
                             Focused: 0, Looking_at_the_board: 0, Taking_notes: 0,
                             LookingAway: 0, UsingPhone: 0, Talking: 0
                         }
                     };
                 }
 
-                // คำนวณค่าเฉลี่ยความตั้งใจ
+                // คำนวณค่าเฉลี่ยความตั้งใจ (จาก 0-1)
                 groupedByCamera[camId].totalAtt += Number(log.Attention || 0);
                 groupedByCamera[camId].countRow += 1;
 
-                // 🟢 คำนวณเวลา: ดึงจาก class_duration ใน camera_logs
+                // 🟢 ดึง duration (วินาที) จาก JSON
                 const duration = log.class_duration || {};
                 groupedByCamera[camId].durationSum.Focused += Number(duration.Focused || 0);
                 groupedByCamera[camId].durationSum.Looking_at_the_board += Number(duration.Looking_at_the_board || 0);
@@ -194,7 +196,7 @@ const SummarizePage = () => {
           const camLogs = logs ? logs.filter(l => String(l.camera_id) === String(camId)) : [];
           const lineChartData = processDataTo3MinIntervals(camLogs);
 
-          // สร้างข้อมูล Pie Chart จากผลรวมวินาที
+          // 🟢 สร้างข้อมูล Pie Chart จากผลรวมวินาที (Duration)
           const pieChartData = [
             { name: "ตั้งใจเรียน", value: group.durationSum.Focused },
             { name: "มองกระดาน", value: group.durationSum.Looking_at_the_board },
@@ -226,6 +228,7 @@ const SummarizePage = () => {
     }
   }, [teacher_id]);
   
+  // Custom Label สำหรับ Pie Chart
   const RADIAN = Math.PI / 180;
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
     if (percent < 0.05) return null;
@@ -243,7 +246,7 @@ const SummarizePage = () => {
     navigate('/user/ResultsPage', { 
       state: { 
         filterSubject: headerInfo.subject, 
-        filterDate: headerInfo.date,
+        filterDate: new Date(headerInfo.date).toLocaleDateString("th-TH"), // ส่งวันที่แบบ string ปกติไป
         filterSection: headerInfo.group 
       } 
     });
@@ -267,7 +270,7 @@ const SummarizePage = () => {
                       สรุปผลการสอนล่าสุด: 
                       <span className="text-[#38A738]">{headerInfo.subject || "กำลังโหลด..."}</span>
                       
-                      {headerInfo.group && (
+                      {headerInfo.group && headerInfo.group !== "N/A" && (
                          <span className="flex items-center gap-1 bg-purple-100 text-purple-700 text-sm font-medium px-3 py-1 rounded-full border border-purple-200 ml-1">
                             <TeamOutlined /> กลุ่ม {headerInfo.group}
                          </span>
@@ -287,8 +290,8 @@ const SummarizePage = () => {
                 </div>
 
                 <div className="flex items-center gap-3 self-end md:self-auto">
-                    <span className="text-sm text-gray-400">
-                    ข้อมูลบนหน้านี้คือข้อมูลดิบของแต่ละกล้อง คุณสามารถดูภาพรวมทั้งหมดพร้อมตัวกรองได้ที่หน้าสรุปผล
+                    <span className="text-sm text-gray-400 hidden lg:inline">
+                    ข้อมูลนี้คือข้อมูลดิบรายกล้อง คุณสามารถดูภาพรวมได้ที่หน้าสรุปผล
                     </span>
 
                     <button
@@ -374,7 +377,7 @@ const SummarizePage = () => {
                                                 innerRadius={50}
                                                 outerRadius={75}
                                                 paddingAngle={3}
-                                                dataKey="value" // value คือวินาทีรวม
+                                                dataKey="value" 
                                                 labelLine={false}
                                                 label={renderCustomizedLabel}
                                             >
@@ -387,7 +390,7 @@ const SummarizePage = () => {
                                                 ))}
                                             </Pie>
                                             
-                                            {/* ✅ Tooltip แสดงเวลา (นาที/วินาที) และมีสไตล์เหมือนกราฟเส้น */}
+                                            {/* ✅ Tooltip แสดงเวลา (นาที/วินาที) */}
                                             <Tooltip 
                                                 formatter={(value) => formatDuration(value)} 
                                                 wrapperStyle={{ zIndex: 1000 }} 

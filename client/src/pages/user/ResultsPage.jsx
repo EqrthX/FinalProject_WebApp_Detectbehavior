@@ -25,12 +25,11 @@ import {
   Cell,
   BarChart,
   Bar,
-  Label
 } from "recharts";
 import { supabase } from "../../config/supabase";
 import { useLocation } from "react-router-dom";
 
-// --- CustomSelect Component (เหมือนเดิม) ---
+// --- CustomSelect Component ---
 const CustomSelect = ({
   options,
   value,
@@ -142,7 +141,7 @@ const BEHAVIOR_COLORS = {
   default: "#cbd5e1",
 };
 
-// 🟢 1. เพิ่มฟังก์ชันแปลงเวลา
+// ฟังก์ชันแปลงเวลา
 const formatDuration = (seconds) => {
   const roundedSeconds = Math.round(seconds);
   if (roundedSeconds < 60) {
@@ -163,7 +162,9 @@ const ResultsPage = () => {
   const [rawLogs, setRawLogs] = useState([]);
   const [summaries, setSummaries] = useState([]);
   const [schedules, setSchedules] = useState([]);
-  const [groupedData, setGroupedData] = useState({});
+  
+  // 🟢 1. เปลี่ยนเป็น Array เพื่อรองรับการ Sort
+  const [groupedData, setGroupedData] = useState([]);
 
   // State Filters
   const [uniqueSubjects, setUniqueSubjects] = useState([]);
@@ -249,7 +250,6 @@ const ResultsPage = () => {
               setSelectedDate(filterDate);
               shouldNavigate = true;
             }
-            // เพิ่มการรับค่า filterSection ถ้าส่งมาจากหน้า Summarize
             if (filterSection && sections.includes(String(filterSection))) {
               setSelectedSection(String(filterSection));
               shouldNavigate = true;
@@ -291,7 +291,6 @@ const ResultsPage = () => {
   };
 
   const processSummaryData = (summaryList) => {
-    // 🟢 2. เปลี่ยน Logic การรวมข้อมูลจาก class_json_summary (จำนวนครั้ง) เป็น class_duration_summary (วินาที)
     const totalDuration = {
       Focused: 0,
       Looking_at_the_board: 0,
@@ -302,7 +301,6 @@ const ResultsPage = () => {
     };
 
     summaryList.forEach((item) => {
-      // ใช้ class_duration_summary แทน
       const json = item.class_duration_summary || {};
       totalDuration.Focused += Number(json.Focused || 0);
       totalDuration.Looking_at_the_board += Number(
@@ -314,7 +312,6 @@ const ResultsPage = () => {
       totalDuration.UsingPhone += Number(json.UsingPhone || 0);
     });
 
-    // ส่งค่าเป็นวินาที (value) ไปให้ Pie Chart คำนวณ % เอง
     const pieChartData = [
       { name: "ตั้งใจเรียน", value: totalDuration.Focused },
       { name: "มองกระดาน", value: totalDuration.Looking_at_the_board },
@@ -324,7 +321,6 @@ const ResultsPage = () => {
       { name: "คุยกัน", value: totalDuration.Talking },
     ].filter((item) => item.value > 0);
 
-    // ส่วนคำนวณคะแนนเฉลี่ยยังคงเดิม (ใช้ avg_attention)
     const studentsByCamera = {};
     summaryList.forEach((row) => {
       const camId = row.camera_id;
@@ -354,6 +350,7 @@ const ResultsPage = () => {
     let filteredSummaries = summaries;
     let filteredLogs = rawLogs;
 
+    // Filter Logic
     if (selectedSubject !== "all") {
       filteredSummaries = filteredSummaries.filter(
         (s) => s.subject_id === selectedSubject
@@ -402,87 +399,99 @@ const ResultsPage = () => {
       if (matchKey && grouped[matchKey]) grouped[matchKey].logs.push(log);
     });
 
-    const finalData = Object.fromEntries(
-      Object.entries(grouped).map(([key, data]) => {
-        const [subjectId, section] = key.split("|");
+    // 🟢 2. เปลี่ยนเป็น Array.map และเพิ่ม Logic หาเวลาล่าสุด (Latest Time)
+    const finalArray = Object.entries(grouped).map(([key, data]) => {
+      const [subjectId, section] = key.split("|");
 
-        const studentsByCamera = {};
-        data.summaries.forEach((row) => {
-          const camId = row.camera_id;
-          if (!studentsByCamera[camId])
-            studentsByCamera[camId] = { totalAtt: 0, count: 0 };
-          studentsByCamera[camId].totalAtt += Number(row.avg_attention);
-          studentsByCamera[camId].count += 1;
-        });
+      // ...Logic คำนวณกราฟ (เหมือนเดิม)...
+      const studentsByCamera = {};
+      data.summaries.forEach((row) => {
+        const camId = row.camera_id;
+        if (!studentsByCamera[camId])
+          studentsByCamera[camId] = { totalAtt: 0, count: 0 };
+        studentsByCamera[camId].totalAtt += Number(row.avg_attention);
+        studentsByCamera[camId].count += 1;
+      });
 
-        let attentiveCount = 0;
-        let inattentiveCount = 0;
-        const totalUniqueStudents = Object.keys(studentsByCamera).length;
+      let attentiveCount = 0;
+      let inattentiveCount = 0;
+      const totalUniqueStudents = Object.keys(studentsByCamera).length;
 
-        Object.values(studentsByCamera).forEach((student) => {
-          const personalAvg = student.totalAtt / student.count;
-          if (personalAvg * 100 >= 50) attentiveCount++;
-          else inattentiveCount++;
-        });
+      Object.values(studentsByCamera).forEach((student) => {
+        const personalAvg = student.totalAtt / student.count;
+        if (personalAvg * 100 >= 50) attentiveCount++;
+        else inattentiveCount++;
+      });
 
-        const barChartData = [
-          { name: "ตั้งใจเรียน", count: attentiveCount, fill: "#38A738" },
-          { name: "ไม่ตั้งใจ", count: inattentiveCount, fill: "#FF4D4F" },
-        ];
+      const barChartData = [
+        { name: "ตั้งใจเรียน", count: attentiveCount, fill: "#38A738" },
+        { name: "ไม่ตั้งใจ", count: inattentiveCount, fill: "#FF4D4F" },
+      ];
 
-        const { pieChartData, avgAtt } = processSummaryData(data.summaries);
-        const lineChartData = processDataTo3MinIntervals(data.logs);
+      const { pieChartData, avgAtt } = processSummaryData(data.summaries);
+      const lineChartData = processDataTo3MinIntervals(data.logs);
 
-        const matchedSchedules = schedules.filter((s) => {
-          const isSubjectMatch =
-            String(s.subject_id).trim() === String(subjectId).trim();
-          const sGroup = String(s.group || "").trim();
-          const tGroup = String(section).trim();
-          const isGroupMatch =
-            sGroup === tGroup || parseInt(sGroup) === parseInt(tGroup);
-          return isSubjectMatch && isGroupMatch;
-        });
+      const matchedSchedules = schedules.filter((s) => {
+        const isSubjectMatch =
+          String(s.subject_id).trim() === String(subjectId).trim();
+        const sGroup = String(s.group || "").trim();
+        const tGroup = String(section).trim();
+        const isGroupMatch =
+          sGroup === tGroup || parseInt(sGroup) === parseInt(tGroup);
+        return isSubjectMatch && isGroupMatch;
+      });
 
-        let displayTime = "-";
+      let displayTime = "-";
+      if (matchedSchedules.length > 0) {
+        displayTime = matchedSchedules
+          .map((s) => {
+            const day = s.day;
+            const start = String(s.start_time).slice(0, 5);
+            const end = String(s.end_time).slice(0, 5);
+            return `${day} ${start} - ${end}`;
+          })
+          .join(", ");
+      } else {
+        displayTime = "ไม่พบตารางเรียน";
+      }
 
-        if (matchedSchedules.length > 0) {
-          displayTime = matchedSchedules
-            .map((s) => {
-              const day = s.day;
-              const start = String(s.start_time).slice(0, 5);
-              const end = String(s.end_time).slice(0, 5);
-              return `${day} ${start} - ${end}`;
-            })
-            .join(", ");
-        } else {
-          displayTime = "ไม่พบตารางเรียน";
-        }
+      const rawDate = new Date(data.summaries[0].summary_date);
 
-        return [
-          key,
-          {
-            subjectId,
-            section,
-            pieChartData,
-            avgAtt,
-            lineChartData,
-            barChartData,
-            totalStudents: totalUniqueStudents,
-            date: new Date(data.summaries[0].summary_date).toLocaleDateString(
-              "th-TH",
-              {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              }
-            ),
-            scheduleTime: displayTime,
-          },
-        ];
-      })
-    );
+      // 🔥 Highlight Fix: หาเวลาล่าสุดจาก Logs เพื่อใช้ Sort ในระดับวินาที
+      let latestTimeForSort = rawDate.getTime(); // ค่าเริ่มต้นคือวันนั้น 00:00
+      
+      if (data.logs && data.logs.length > 0) {
+        // ถ้ามี Logs ให้เอาเวลา created_at ที่มากที่สุด (ล่าสุด) มาเป็นตัวแทนของ Card นี้
+        const logTimes = data.logs.map(l => new Date(l.created_at).getTime());
+        latestTimeForSort = Math.max(...logTimes);
+      }
 
-    setGroupedData(finalData);
+      return {
+        key,
+        subjectId,
+        section,
+        pieChartData,
+        avgAtt,
+        lineChartData,
+        barChartData,
+        totalStudents: totalUniqueStudents,
+        
+        // ใช้เวลาที่หามาได้ในการ Sort
+        timestamp: latestTimeForSort,
+        
+        date: rawDate.toLocaleDateString("th-TH", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+        }),
+        scheduleTime: displayTime,
+      };
+    });
+
+    // 🟢 สั่ง Sort: เวลาล่าสุด (มากสุด) ขึ้นก่อน
+    finalArray.sort((a, b) => b.timestamp - a.timestamp);
+
+    setGroupedData(finalArray);
   }, [
     rawLogs,
     summaries,
@@ -567,9 +576,10 @@ const ResultsPage = () => {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide pb-20">
-          {Object.values(groupedData).length > 0 ? (
+          {/* 🟢 3. ปรับ JSX ให้ใช้ Array.map โดยตรง */}
+          {groupedData.length > 0 ? (
             <div className="flex flex-col gap-6">
-              {Object.values(groupedData).map((data, index) => (
+              {groupedData.map((data, index) => (
                 <div
                   key={index}
                   className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6"
@@ -702,11 +712,11 @@ const ResultsPage = () => {
                           <Tooltip
                             cursor={{ fill: "transparent" }}
                             formatter={(value) => [`${value} คน`]}
-                            contentStyle={{ // <--- เพิ่มตัวนี้เข้าไป
+                            contentStyle={{
                               borderRadius: "12px",
                               border: "none",
                               boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-                          }}
+                            }}
                           />
                           <Bar
                             dataKey="count"
@@ -722,53 +732,54 @@ const ResultsPage = () => {
                     </div>
 
                     {/* Pie Chart */}
-<div className="h-[250px] w-full relative border-l border-gray-100 lg:border-none pl-4 lg:pl-0">
-  <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2">
-    <PieChartOutlined /> สัดส่วนเวลาพฤติกรรม (รวมทั้งคาบ)
-  </h4>
+                    <div className="h-[250px] w-full relative border-l border-gray-100 lg:border-none pl-4 lg:pl-0">
+                      <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2">
+                        <PieChartOutlined /> สัดส่วนเวลาพฤติกรรม (รวมทั้งคาบ)
+                      </h4>
 
-  <ResponsiveContainer width="100%" height="90%">
-    <PieChart>
-      <Pie
-        data={data.pieChartData}
-        cx="50%"
-        cy="50%"
-        innerRadius={60}
-        outerRadius={80}
-        paddingAngle={3}
-        dataKey="value"
-        labelLine={false}
-        label={renderCustomizedLabel}
-      >
-        {data.pieChartData.map((entry, index) => (
-          <Cell
-            key={index}
-            fill={BEHAVIOR_COLORS[entry.name] || BEHAVIOR_COLORS["default"]}
-            stroke="none"
-          />
-        ))}
-      </Pie>
-
-      {/* 💚 ตรงนี้คือส่วนที่แก้ไข: เพิ่ม contentStyle ให้เหมือน Line Chart */}
-      <Tooltip 
-        formatter={(value) => formatDuration(value)} 
-        wrapperStyle={{ zIndex: 1000 }} 
-        contentStyle={{ 
-            borderRadius: "12px",
-            border: "none",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-        }}
-      />
-      <Legend
-        layout="vertical"
-        verticalAlign="middle"
-        align="right"
-        iconSize={8}
-        wrapperStyle={{ fontSize: "11px", right: 0 }}
-      />
-    </PieChart>
-  </ResponsiveContainer>
-</div>
+                      <ResponsiveContainer width="100%" height="90%">
+                        <PieChart>
+                          <Pie
+                            data={data.pieChartData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={3}
+                            dataKey="value"
+                            labelLine={false}
+                            label={renderCustomizedLabel}
+                          >
+                            {data.pieChartData.map((entry, index) => (
+                              <Cell
+                                key={index}
+                                fill={
+                                  BEHAVIOR_COLORS[entry.name] ||
+                                  BEHAVIOR_COLORS["default"]
+                                }
+                                stroke="none"
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(value) => formatDuration(value)}
+                            wrapperStyle={{ zIndex: 1000 }}
+                            contentStyle={{
+                              borderRadius: "12px",
+                              border: "none",
+                              boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                            }}
+                          />
+                          <Legend
+                            layout="vertical"
+                            verticalAlign="middle"
+                            align="right"
+                            iconSize={8}
+                            wrapperStyle={{ fontSize: "11px", right: 0 }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </div>
               ))}

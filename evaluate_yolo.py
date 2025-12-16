@@ -61,8 +61,8 @@ def evaluate(model_path, data_yaml, save_json=True, json_path="metrics.json"):
 
 if __name__ == "__main__":
     result = evaluate(
-        model_path="dataset/detect/train/weights/best.pt",
-        data_yaml="Project_Detection.v11-model-v4-color.yolov11/data.yaml",
+        model_path="datasetv6.1/datasetv6.1/detect/train/weights/best.pt",
+        data_yaml="Project_Detection.v14-model-v-6.1.yolov11/data.yaml",
         json_path="metrics_output.json"
     )
 

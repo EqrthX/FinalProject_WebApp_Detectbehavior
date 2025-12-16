@@ -158,7 +158,7 @@ export const TeacherActionModal = ({
     <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-sm">
       <div className="bg-[#f8f8f8] p-8 rounded-lg shadow-lg w-[90%] max-w-md border border-gray-300">
         <h2 className="text-2xl font-bold mb-6">
-            {isEditMode ? "แก้ไขรายชื่ออาจารย์" : "อัพโหลดรายชื่อ"}
+            {isEditMode ? "แก้ไขรายชื่ออาจารย์" : "อัปโหลดรายชื่อ"}
         </h2>
 
         <form className="space-y-4" onSubmit={handleSubmit}>

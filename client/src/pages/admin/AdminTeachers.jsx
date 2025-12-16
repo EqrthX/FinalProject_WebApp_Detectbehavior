@@ -279,7 +279,7 @@ const AdminTeachers = () => {
                 onClick={() => { setSelectedTeacher(null); setShowModal(true); }}
                 className="bg-[#3D42D3] hover:bg-[#2b28a0] text-white px-4 py-2 rounded-lg text-sm font-medium shadow-md transition-transform active:scale-95"
               >
-                อัพโหลดรายชื่อ
+                อัปโหลดรายชื่อ
               </button>
             </div>
 

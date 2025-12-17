@@ -512,7 +512,7 @@ class CameraThread(threading.Thread):
             self.interval_results.append(mapped)
             self.class_durations[mapped] += self.interval_seconds
             print(
-                f"⏱️ Cam {self.camera_id}: class: {mapped} \n,total times: {self.class_durations[mapped]} ({len(self.interval_results)})"
+                f"⏱️ Cam {self.camera_id}: class: {mapped},total times: {self.class_durations[mapped]} ({len(self.interval_results)})"
                 )
 
         if len(self.interval_results) > self.max_intervals:

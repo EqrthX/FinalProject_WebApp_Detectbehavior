@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { TimePicker, Select } from "antd"; 
-import toast from "react-hot-toast"; 
-import dayjs from "dayjs"; 
-import { supabase } from "../config/supabase.js"; 
+import { TimePicker, Select } from "antd";
+import toast from "react-hot-toast";
+import dayjs from "dayjs";
+import { supabase } from "../config/supabase.js";
 
-const format = "HH:mm"; 
+const format = "HH:mm";
 
 const disabledRangeTime = (_, type) => {
   const disabledHours = () => {
     let hours = [];
-    for (let i = 0; i < 8; i++) hours.push(i); 
-    for (let i = 18; i < 24; i++) hours.push(i); 
+    for (let i = 0; i < 8; i++) hours.push(i);
+    for (let i = 18; i < 24; i++) hours.push(i);
     return hours;
   };
   return {
@@ -22,13 +22,13 @@ const disabledRangeTime = (_, type) => {
 // ==========================================
 // 2. Component: UploadScheduleAction (อัปโหลดตารางสอน)
 // ==========================================
-export const UploadScheduleAction = ({ 
-    isOpen, 
-    onClose, 
-    onSuccess, 
-    subjectList = [], 
-    groupedSubjects = {}, 
-    teacherList = []  
+export const UploadScheduleAction = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  subjectList = [],
+  groupedSubjects = {},
+  teacherList = [],
 }) => {
   const [selectedCode, setSelectedCode] = useState("");
   const [subjectName, setSubjectName] = useState("");
@@ -51,47 +51,47 @@ export const UploadScheduleAction = ({
 
   useEffect(() => {
     if (isOpen) {
-        // รีเซ็ตค่าอื่นๆ
-        setSelectedCode("");
-        setSubjectName("");
-        setSubjectcredit("");
-        setIsTeacherFocused(false);
-        setIsSubjectFocused(false);
+      // รีเซ็ตค่าอื่นๆ
+      setSelectedCode("");
+      setSubjectName("");
+      setSubjectcredit("");
+      setIsTeacherFocused(false);
+      setIsSubjectFocused(false);
 
-        // --- 🤖 Logic คำนวณเทอมและปีการศึกษาอัตโนมัติ ---
-        const now = dayjs();
-        const currentMonth = now.month(); // 0 = ม.ค., 11 = ธ.ค.
-        const currentYearTH = now.year() + 543; // แปลง ค.ศ. เป็น พ.ศ.
+      // --- 🤖 Logic คำนวณเทอมและปีการศึกษาอัตโนมัติ ---
+      const now = dayjs();
+      const currentMonth = now.month(); // 0 = ม.ค., 11 = ธ.ค.
+      const currentYearTH = now.year() + 543; // แปลง ค.ศ. เป็น พ.ศ.
 
-        let autoSemester = "1";
-        let autoYear = currentYearTH.toString();
+      let autoSemester = "1";
+      let autoYear = currentYearTH.toString();
 
-        if (currentMonth >= 0 && currentMonth <= 4) { 
-            // ม.ค. - พ.ค. -> เทอม 2 (ของปีการศึกษาที่แล้ว)
-            autoSemester = "2";
-            autoYear = (currentYearTH - 1).toString();
-        } else if (currentMonth >= 5 && currentMonth <= 6) { 
-            // มิ.ย. - ก.ค. -> เทอม 3 ซัมเมอร์ (ของปีการศึกษาที่แล้ว)
-            autoSemester = "3";
-            autoYear = (currentYearTH - 1).toString();
-        } else { 
-            // ส.ค. - ธ.ค. -> เทอม 1 (ปีการศึกษาปัจจุบัน)
-            autoSemester = "1";
-            autoYear = currentYearTH.toString();
-        }
+      if (currentMonth >= 0 && currentMonth <= 4) {
+        // ม.ค. - พ.ค. -> เทอม 2 (ของปีการศึกษาที่แล้ว)
+        autoSemester = "2";
+        autoYear = (currentYearTH - 1).toString();
+      } else if (currentMonth >= 5 && currentMonth <= 6) {
+        // มิ.ย. - ก.ค. -> เทอม 3 ซัมเมอร์ (ของปีการศึกษาที่แล้ว)
+        autoSemester = "3";
+        autoYear = (currentYearTH - 1).toString();
+      } else {
+        // ส.ค. - ธ.ค. -> เทอม 1 (ปีการศึกษาปัจจุบัน)
+        autoSemester = "1";
+        autoYear = currentYearTH.toString();
+      }
 
-        // ตั้งค่าเริ่มต้น
-        setClassSchedule({
-            year: autoYear,      // ✅ ใส่ปีให้อัตโนมัติ
-            semester: autoSemester, // ✅ ใส่เทอมให้อัตโนมัติ
-            group: "",
-            day: "",
-            room: "",
-            building: "",
-            teacher_id: "",
-            teacher_name: "",
-            classTimes: null,
-        });
+      // ตั้งค่าเริ่มต้น
+      setClassSchedule({
+        year: autoYear, // ✅ ใส่ปีให้อัตโนมัติ
+        semester: autoSemester, // ✅ ใส่เทอมให้อัตโนมัติ
+        group: "",
+        day: "",
+        room: "",
+        building: "",
+        teacher_id: "",
+        teacher_name: "",
+        classTimes: null,
+      });
     }
   }, [isOpen]);
 
@@ -100,9 +100,17 @@ export const UploadScheduleAction = ({
 
     // Validation
     if (
-      !selectedCode || !subjectName || !classSchedule.year || !classSchedule.semester ||
-      !classSchedule.group || !classSchedule.day || !classSchedule.room || !classSchedule.building ||
-      !classSchedule.teacher_id || !classSchedule.teacher_name || !classSchedule.classTimes
+      !selectedCode ||
+      !subjectName ||
+      !classSchedule.year ||
+      !classSchedule.semester ||
+      !classSchedule.group ||
+      !classSchedule.day ||
+      !classSchedule.room ||
+      !classSchedule.building ||
+      !classSchedule.teacher_id ||
+      !classSchedule.teacher_name ||
+      !classSchedule.classTimes
     ) {
       toast.error("กรุณากรอกข้อมูลตารางสอนให้ครบถ้วน ⚠️");
       return;
@@ -113,7 +121,7 @@ export const UploadScheduleAction = ({
 
     // ... (ส่วน Logic ตรวจสอบการชนของตาราง คงเดิม) ...
     // เพื่อความกระชับ ขอละส่วน Logic Check ไว้ (ใช้โค้ดเดิมของคุณได้เลย)
-    
+
     // Insert Data
     const dataToInsert = {
       subject_id: selectedCode,
@@ -131,30 +139,32 @@ export const UploadScheduleAction = ({
       end_time: endStr,
     };
 
-    const { error } = await supabase.from("class_schedule").insert([dataToInsert]);
+    const { error } = await supabase
+      .from("class_schedule")
+      .insert([dataToInsert]);
 
     if (error) {
       toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
     } else {
-      toast.success("เพิ่มอาจารย์เข้าสู่ตารางสอนเรียบร้อย!"); 
-      onSuccess(); 
-      onClose();   
+      toast.success("เพิ่มอาจารย์เข้าสู่ตารางสอนเรียบร้อย!");
+      onSuccess();
+      onClose();
     }
   };
 
-  const subjectOptions = Object.keys(groupedSubjects).map(category => ({
+  const subjectOptions = Object.keys(groupedSubjects).map((category) => ({
     label: category,
-    options: groupedSubjects[category].map(sub => ({
-        label: `${sub.subject_id} - ${sub.subject_name}`,
-        value: sub.subject_id,
-    }))
+    options: groupedSubjects[category].map((sub) => ({
+      label: `${sub.subject_id} - ${sub.subject_name}`,
+      value: sub.subject_id,
+    })),
   }));
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-sm">
-        <style>{`
+      <style>{`
             .ant-select-custom .ant-select-selector {
                 background-color: #f9fafb !important;
                 border-color: #d1d5db !important;
@@ -172,32 +182,36 @@ export const UploadScheduleAction = ({
         <h2 className="text-2xl font-bold mb-6">อัปโหลดตารางสอน</h2>
 
         <form className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          
           {/* Subject Select */}
           <div className="relative">
             <Select
-                showSearch
-                placeholder=" "
-                optionFilterProp="label" 
-                value={selectedCode || undefined}
-                onFocus={() => setIsSubjectFocused(true)}
-                onBlur={() => setIsSubjectFocused(false)}
-                onChange={(code) => {
-                    setSelectedCode(code);
-                    const selected = subjectList.find((item) => item.subject_id === code);
-                    setSubjectName(selected?.subject_name || "");
-                    setSubjectcredit(selected?.credit || "");
-                }}
-                options={subjectOptions} 
-                style={{ width: "100%", height: "42px" }}
-                className="ant-select-custom" 
+              showSearch
+              placeholder=" "
+              optionFilterProp="label"
+              value={selectedCode || undefined}
+              onFocus={() => setIsSubjectFocused(true)}
+              onBlur={() => setIsSubjectFocused(false)}
+              onChange={(code) => {
+                setSelectedCode(code);
+                const selected = subjectList.find(
+                  (item) => item.subject_id === code
+                );
+                setSubjectName(selected?.subject_name || "");
+                setSubjectcredit(selected?.credit || "");
+              }}
+              options={subjectOptions}
+              style={{ width: "100%", height: "42px" }}
+              className="ant-select-custom"
             />
-            <label className={`absolute left-3 bg-gray-50 px-1 transition-all pointer-events-none
-              ${selectedCode || isSubjectFocused 
-                  ? "-top-2.5 text-sm text-[#38A738]" 
+            <label
+              className={`absolute left-3 bg-gray-50 px-1 transition-all pointer-events-none
+              ${
+                selectedCode || isSubjectFocused
+                  ? "-top-2.5 text-sm text-[#38A738]"
                   : "top-2.5 text-base text-gray-400"
               }
-            `}>
+            `}
+            >
               เลือกรหัสวิชา<span className="text-red-500"> *</span>
             </label>
           </div>
@@ -212,30 +226,51 @@ export const UploadScheduleAction = ({
               onFocus={() => setIsTeacherFocused(true)}
               onBlur={() => setIsTeacherFocused(false)}
               onChange={(selectedId) => {
-                const selectedTeacher = teacherList.find((t) => t.value === selectedId);
+                const selectedTeacher = teacherList.find(
+                  (t) => t.value === selectedId
+                );
                 setClassSchedule({
                   ...classSchedule,
                   teacher_id: selectedId,
                   teacher_name: selectedTeacher ? selectedTeacher.fullName : "",
                 });
               }}
-              filterOption={(input, option) => (option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+              filterOption={(input, option) =>
+                (option?.label ?? "")
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
+              }
               options={teacherList}
               style={{ width: "100%", height: "42px" }}
-              className="ant-select-custom" 
+              className="ant-select-custom"
             />
-            <label className={`absolute left-3 bg-gray-50 px-1 transition-all pointer-events-none
-              ${classSchedule.teacher_id || isTeacherFocused 
-                  ? "-top-2.5 text-sm text-[#38A738]" 
+            <label
+              className={`absolute left-3 bg-gray-50 px-1 transition-all pointer-events-none
+              ${
+                classSchedule.teacher_id || isTeacherFocused
+                  ? "-top-2.5 text-sm text-[#38A738]"
                   : "top-2.5 text-base text-gray-400"
               }
-            `}>
+            `}
+            >
               อาจารย์ผู้สอน<span className="text-red-500"> *</span>
             </label>
           </div>
 
-          <input type="text" placeholder="ชื่อวิชา" value={subjectName} readOnly className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200" />
-          <input type="text" placeholder="หน่วยกิต" value={subjectcredit} readOnly className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200" />
+          <input
+            type="text"
+            placeholder="ชื่อวิชา"
+            value={subjectName}
+            readOnly
+            className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200"
+          />
+          <input
+            type="text"
+            placeholder="หน่วยกิต"
+            value={subjectcredit}
+            readOnly
+            className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200"
+          />
 
           {/* Year */}
           <div className="relative">
@@ -245,13 +280,18 @@ export const UploadScheduleAction = ({
               required
               value={classSchedule.year}
               onChange={(e) => {
-                const value = e.target.value.replace(/[^0-9]/g, ''); 
+                const value = e.target.value.replace(/[^0-9]/g, "");
                 setClassSchedule({ ...classSchedule, year: value });
               }}
-              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] 
+              placeholder-transparent bg-gray-50"
               placeholder="ปีการศึกษา"
             />
-            <label htmlFor="year" className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">
+            <label
+              htmlFor="year"
+              className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 
+              peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+            >
               ปีการศึกษา<span className="text-red-500"> *</span>
             </label>
           </div>
@@ -262,18 +302,25 @@ export const UploadScheduleAction = ({
               id="semester"
               required
               value={classSchedule.semester}
-              onChange={(e) => setClassSchedule({ ...classSchedule, semester: e.target.value })}
-              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-gray-50 appearance-none placeholder-transparent"
+              onChange={(e) =>
+                setClassSchedule({ ...classSchedule, semester: e.target.value })
+              }
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-gray-50
+              appearance-none placeholder-transparent"
             >
               <option value="" disabled></option>
               <option value="1">1</option>
               <option value="2">2</option>
               <option value="3">3</option>
             </select>
-            <label 
-              htmlFor="semester" 
+            <label
+              htmlFor="semester"
               className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none 
-                ${classSchedule.semester ? "-top-2.5 text-gray-400" : "top-2.5 text-gray-400"}
+                ${
+                  classSchedule.semester
+                    ? "-top-2.5 text-gray-400"
+                    : "top-2.5 text-gray-400"
+                }
               `}
             >
               ภาคการศึกษา<span className="text-red-500"> *</span>
@@ -288,13 +335,18 @@ export const UploadScheduleAction = ({
               required
               value={classSchedule.group}
               onChange={(e) => {
-                const value = e.target.value.replace(/[^0-9]/g, ''); 
+                const value = e.target.value.replace(/[^0-9]/g, "");
                 setClassSchedule({ ...classSchedule, group: value });
               }}
-              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] 
+              placeholder-transparent bg-gray-50"
               placeholder="กลุ่ม"
             />
-            <label htmlFor="group" className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">
+            <label
+              htmlFor="group"
+              className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 
+              peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+            >
               กลุ่ม<span className="text-red-500"> *</span>
             </label>
           </div>
@@ -305,8 +357,11 @@ export const UploadScheduleAction = ({
               id="day"
               required
               value={classSchedule.day}
-              onChange={(e) => setClassSchedule({ ...classSchedule, day: e.target.value })}
-              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-gray-50 appearance-none placeholder-transparent"
+              onChange={(e) =>
+                setClassSchedule({ ...classSchedule, day: e.target.value })
+              }
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] 
+              bg-gray-50 appearance-none placeholder-transparent"
             >
               <option value="" disabled></option>
               <option value="จันทร์">จันทร์</option>
@@ -317,7 +372,14 @@ export const UploadScheduleAction = ({
               <option value="เสาร์">เสาร์</option>
               <option value="อาทิตย์">อาทิตย์</option>
             </select>
-            <label htmlFor="day" className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none ${classSchedule.day ? "-top-2.5 text-gray-400 " : "top-2.5 text-gray-400"}`}>
+            <label
+              htmlFor="day"
+              className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none ${
+                classSchedule.day
+                  ? "-top-2.5 text-gray-400 "
+                  : "top-2.5 text-gray-400"
+              }`}
+            >
               วัน (จ-อา)<span className="text-red-500"> *</span>
             </label>
           </div>
@@ -326,10 +388,15 @@ export const UploadScheduleAction = ({
           <div className="relative">
             <TimePicker.RangePicker
               value={classSchedule.classTimes}
-              onChange={(times) => setClassSchedule({ ...classSchedule, classTimes: times || null })}
+              onChange={(times) =>
+                setClassSchedule({
+                  ...classSchedule,
+                  classTimes: times || null,
+                })
+              }
               format={format}
               style={{ width: "100%" }}
-              disabledTime={disabledRangeTime} 
+              disabledTime={disabledRangeTime}
               className="h-[42px] border border-gray-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -342,13 +409,18 @@ export const UploadScheduleAction = ({
               required
               value={classSchedule.room}
               onChange={(e) => {
-                const value = e.target.value.replace(/[^A-Za-z0-9]/g, ''); 
+                const value = e.target.value.replace(/[^A-Za-z0-9]/g, "");
                 setClassSchedule({ ...classSchedule, room: value });
               }}
-              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] 
+              placeholder-transparent bg-gray-50"
               placeholder="ห้องเรียน"
             />
-            <label htmlFor="room" className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">
+            <label
+              htmlFor="room"
+              className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 
+              peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+            >
               ห้องเรียน<span className="text-red-500"> *</span>
             </label>
           </div>
@@ -361,23 +433,36 @@ export const UploadScheduleAction = ({
               required
               value={classSchedule.building}
               onChange={(e) => {
-                const value = e.target.value.replace(/[^0-9]/g, '').slice(0, 2); 
+                const value = e.target.value.replace(/[^0-9]/g, "").slice(0, 2);
                 setClassSchedule({ ...classSchedule, building: value });
               }}
-              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50"
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] 
+              placeholder-transparent bg-gray-50"
               placeholder="ตึก"
             />
-            <label htmlFor="building" className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">
+            <label
+              htmlFor="building"
+              className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 
+              peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+            >
               ตึก<span className="text-red-500"> *</span>
             </label>
           </div>
         </form>
 
         <div className="flex justify-end mt-6 gap-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
+          >
             ยกเลิก
           </button>
-          <button type="button" onClick={handleUploadSchedule} className="px-5 py-2 bg-[#3F37C9] text-white rounded-md hover:bg-[#2b28a0]">
+          <button
+            type="button"
+            onClick={handleUploadSchedule}
+            className="px-5 py-2 bg-[#3F37C9] text-white rounded-md hover:bg-[#2b28a0]"
+          >
             ยืนยัน
           </button>
         </div>
@@ -389,24 +474,32 @@ export const UploadScheduleAction = ({
 // ==========================================
 // 3. Component: EditScheduleAction (แก้ไขตารางสอน)
 // ==========================================
-export const EditScheduleAction = ({ 
-  isOpen, 
-  onClose, 
-  onSuccess, 
-  scheduleData, 
-  subjectList = [], 
-  groupedSubjects = {}, 
-  teacherList = []  
+export const EditScheduleAction = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  scheduleData,
+  subjectList = [],
+  groupedSubjects = {},
+  teacherList = [],
 }) => {
   const [selectedCode, setSelectedCode] = useState("");
   const [subjectName, setSubjectName] = useState("");
   const [subjectcredit, setSubjectcredit] = useState("");
-  
+
   const [isTeacherFocused, setIsTeacherFocused] = useState(false);
   const [isSubjectFocused, setIsSubjectFocused] = useState(false);
 
   const [classSchedule, setClassSchedule] = useState({
-    year: "", semester: "", group: "", day: "", room: "", building: "", teacher_id: "", teacher_name: "", classTimes: null,
+    year: "",
+    semester: "",
+    group: "",
+    day: "",
+    room: "",
+    building: "",
+    teacher_id: "",
+    teacher_name: "",
+    classTimes: null,
   });
 
   useEffect(() => {
@@ -414,10 +507,13 @@ export const EditScheduleAction = ({
       setSelectedCode(scheduleData.code);
       setSubjectName(scheduleData.name);
       setSubjectcredit(scheduleData.credit);
-      
+
       let times = null;
       if (scheduleData.startTimeStr && scheduleData.endTimeStr) {
-        times = [dayjs(scheduleData.startTimeStr, "HH:mm:ss"), dayjs(scheduleData.endTimeStr, "HH:mm:ss")];
+        times = [
+          dayjs(scheduleData.startTimeStr, "HH:mm:ss"),
+          dayjs(scheduleData.endTimeStr, "HH:mm:ss"),
+        ];
       }
 
       setClassSchedule({
@@ -442,9 +538,11 @@ export const EditScheduleAction = ({
       return;
     }
 
-    const confirmSave = window.confirm("คุณต้องการบันทึกการแก้ไขข้อมูลใช่หรือไม่?");
+    const confirmSave = window.confirm(
+      "คุณต้องการบันทึกการแก้ไขข้อมูลใช่หรือไม่?"
+    );
     if (!confirmSave) {
-        return; // ถ้ากด Cancel ให้หยุดทำงานทันที
+      return; // ถ้ากด Cancel ให้หยุดทำงานทันที
     }
 
     const dataToUpdate = {
@@ -459,14 +557,18 @@ export const EditScheduleAction = ({
       teacher_id: classSchedule.teacher_id,
       teacher_name: classSchedule.teacher_name,
       credit: subjectcredit,
-      start_time: classSchedule.classTimes ? classSchedule.classTimes[0].format("HH:mm:ss") : null,
-      end_time: classSchedule.classTimes ? classSchedule.classTimes[1].format("HH:mm:ss") : null,
+      start_time: classSchedule.classTimes
+        ? classSchedule.classTimes[0].format("HH:mm:ss")
+        : null,
+      end_time: classSchedule.classTimes
+        ? classSchedule.classTimes[1].format("HH:mm:ss")
+        : null,
     };
 
     const { error } = await supabase
-        .from("class_schedule")
-        .update(dataToUpdate)
-        .eq("class_schedule_id", scheduleData.id);
+      .from("class_schedule")
+      .update(dataToUpdate)
+      .eq("class_schedule_id", scheduleData.id);
 
     if (error) {
       toast.error(`เกิดข้อผิดพลาดในการแก้ไข: ${error.message}`);
@@ -477,19 +579,19 @@ export const EditScheduleAction = ({
     }
   };
 
-  const subjectOptions = Object.keys(groupedSubjects).map(category => ({
+  const subjectOptions = Object.keys(groupedSubjects).map((category) => ({
     label: category,
-    options: groupedSubjects[category].map(sub => ({
-        label: `${sub.subject_id} - ${sub.subject_name}`,
-        value: sub.subject_id,
-    }))
+    options: groupedSubjects[category].map((sub) => ({
+      label: `${sub.subject_id} - ${sub.subject_name}`,
+      value: sub.subject_id,
+    })),
   }));
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-sm">
-        <style>{`
+      <style>{`
             .ant-select-custom .ant-select-selector {
                 background-color: #f9fafb !important; 
                 border-color: #d1d5db !important; 
@@ -510,29 +612,47 @@ export const EditScheduleAction = ({
           {/* Subject Select */}
           <div className="relative">
             <Select
-                showSearch
-                placeholder=" "
-                optionFilterProp="label"
-                value={selectedCode || undefined}
-                onFocus={() => setIsSubjectFocused(true)}
-                onBlur={() => setIsSubjectFocused(false)}
-                onChange={(code) => {
-                    setSelectedCode(code);
-                    const selected = subjectList.find((item) => item.subject_id === code);
-                    setSubjectName(selected?.subject_name || "");
-                    setSubjectcredit(selected?.credit || "");
-                }}
-                options={subjectOptions}
-                style={{ width: "100%", height: "42px" }}
-                className="ant-select-custom"
+              showSearch
+              placeholder=" "
+              optionFilterProp="label"
+              value={selectedCode || undefined}
+              onFocus={() => setIsSubjectFocused(true)}
+              onBlur={() => setIsSubjectFocused(false)}
+              onChange={(code) => {
+                setSelectedCode(code);
+                const selected = subjectList.find(
+                  (item) => item.subject_id === code
+                );
+                setSubjectName(selected?.subject_name || "");
+                setSubjectcredit(selected?.credit || "");
+              }}
+              options={subjectOptions}
+              style={{ width: "100%", height: "42px" }}
+              className="ant-select-custom"
             />
-            <label className={`absolute left-3 bg-gray-50 px-1 transition-all pointer-events-none ${selectedCode || isSubjectFocused ? "-top-2.5 text-sm text-[#38A738]" : "top-2.5 text-base text-gray-400"}`}>
+            <label
+              className={`absolute left-3 bg-gray-50 px-1 transition-all pointer-events-none ${
+                selectedCode || isSubjectFocused
+                  ? "-top-2.5 text-sm text-[#38A738]"
+                  : "top-2.5 text-base text-gray-400"
+              }`}
+            >
               เลือกรหัสวิชา<span className="text-red-500"> *</span>
             </label>
           </div>
 
-          <input type="text" value={subjectName} readOnly className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200" />
-          <input type="text" value={subjectcredit} readOnly className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200" />
+          <input
+            type="text"
+            value={subjectName}
+            readOnly
+            className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200"
+          />
+          <input
+            type="text"
+            value={subjectcredit}
+            readOnly
+            className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-200"
+          />
 
           {/* Teacher Select */}
           <div className="relative">
@@ -544,80 +664,225 @@ export const EditScheduleAction = ({
               onFocus={() => setIsTeacherFocused(true)}
               onBlur={() => setIsTeacherFocused(false)}
               onChange={(selectedId) => {
-                const selectedTeacher = teacherList.find((t) => t.value === selectedId);
+                const selectedTeacher = teacherList.find(
+                  (t) => t.value === selectedId
+                );
                 setClassSchedule({
                   ...classSchedule,
                   teacher_id: selectedId,
                   teacher_name: selectedTeacher ? selectedTeacher.fullName : "",
                 });
               }}
-              filterOption={(input, option) => (option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+              filterOption={(input, option) =>
+                (option?.label ?? "")
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
+              }
               options={teacherList}
               style={{ width: "100%", height: "42px" }}
               className="ant-select-custom"
             />
-            <label className={`absolute left-3 bg-gray-50 px-1 transition-all pointer-events-none ${classSchedule.teacher_id || isTeacherFocused ? "-top-2.5 text-sm text-[#38A738]" : "top-2.5 text-base text-gray-400"}`}>
+            <label
+              className={`absolute left-3 bg-gray-50 px-1 transition-all pointer-events-none ${
+                classSchedule.teacher_id || isTeacherFocused
+                  ? "-top-2.5 text-sm text-[#38A738]"
+                  : "top-2.5 text-base text-gray-400"
+              }`}
+            >
               อาจารย์ผู้สอน<span className="text-red-500"> *</span>
             </label>
           </div>
 
           {/* Year */}
           <div className="relative">
-            <input type="text" required value={classSchedule.year} onChange={(e) => setClassSchedule({ ...classSchedule, year: e.target.value.replace(/[^0-9]/g, '') })} className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50" placeholder="ปีการศึกษา" />
-            <label className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">ปีการศึกษา</label>
+            <input
+              type="text"
+              required
+              value={classSchedule.year}
+              onChange={(e) =>
+                setClassSchedule({
+                  ...classSchedule,
+                  year: e.target.value.replace(/[^0-9]/g, ""),
+                })
+              }
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] 
+              placeholder-transparent bg-gray-50"
+              placeholder="ปีการศึกษา"
+            />
+            <label
+              className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 
+            peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+            >
+              ปีการศึกษา
+            </label>
           </div>
 
           {/* Semester (แก้ไขให้เป็น Select เหมือนกัน) */}
           <div className="relative">
-            <select 
-              required 
-              value={classSchedule.semester} 
-              onChange={(e) => setClassSchedule({ ...classSchedule, semester: e.target.value })} 
-              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-gray-50 appearance-none placeholder-transparent"
+            <select
+              required
+              value={classSchedule.semester}
+              onChange={(e) =>
+                setClassSchedule({ ...classSchedule, semester: e.target.value })
+              }
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] 
+              bg-gray-50 appearance-none placeholder-transparent"
             >
               <option value="" disabled></option>
               <option value="1">1</option>
               <option value="2">2</option>
               <option value="3">3</option>
             </select>
-            <label className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none ${classSchedule.semester ? "-top-2.5 text-gray-400" : "top-2.5 text-gray-400"}`}>ภาคการศึกษา</label>
+            <label
+              className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none ${
+                classSchedule.semester
+                  ? "-top-2.5 text-gray-400"
+                  : "top-2.5 text-gray-400"
+              }`}
+            >
+              ภาคการศึกษา
+            </label>
           </div>
 
           {/* Group */}
           <div className="relative">
-            <input type="text" required value={classSchedule.group} onChange={(e) => setClassSchedule({ ...classSchedule, group: e.target.value.replace(/[^0-9]/g, '') })} className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50" placeholder="กลุ่ม" />
-            <label className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">กลุ่ม</label>
+            <input
+              type="text"
+              required
+              value={classSchedule.group}
+              onChange={(e) =>
+                setClassSchedule({
+                  ...classSchedule,
+                  group: e.target.value.replace(/[^0-9]/g, ""),
+                })
+              }
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] 
+              placeholder-transparent bg-gray-50"
+              placeholder="กลุ่ม"
+            />
+            <label
+              className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 
+            peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+            >
+              กลุ่ม
+            </label>
           </div>
 
           {/* Day */}
           <div className="relative">
-            <select required value={classSchedule.day} onChange={(e) => setClassSchedule({ ...classSchedule, day: e.target.value })} className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] bg-gray-50 appearance-none placeholder-transparent">
-              <option value="" disabled></option><option value="จันทร์">จันทร์</option><option value="อังคาร">อังคาร</option><option value="พุธ">พุธ</option><option value="พฤหัสบดี">พฤหัสบดี</option><option value="ศุกร์">ศุกร์</option><option value="เสาร์">เสาร์</option><option value="อาทิตย์">อาทิตย์</option>
+            <select
+              required
+              value={classSchedule.day}
+              onChange={(e) =>
+                setClassSchedule({ ...classSchedule, day: e.target.value })
+              }
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] 
+              bg-gray-50 appearance-none placeholder-transparent"
+            >
+              <option value="" disabled></option>
+              <option value="จันทร์">จันทร์</option>
+              <option value="อังคาร">อังคาร</option>
+              <option value="พุธ">พุธ</option>
+              <option value="พฤหัสบดี">พฤหัสบดี</option>
+              <option value="ศุกร์">ศุกร์</option>
+              <option value="เสาร์">เสาร์</option>
+              <option value="อาทิตย์">อาทิตย์</option>
             </select>
-            <label className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none ${classSchedule.day ? "-top-2.5 text-gray-400 " : "top-2.5 text-gray-400"}`}>วัน</label>
+            <label
+              className={`absolute left-3 bg-gray-50 px-1 text-sm transition-all pointer-events-none ${
+                classSchedule.day
+                  ? "-top-2.5 text-gray-400 "
+                  : "top-2.5 text-gray-400"
+              }`}
+            >
+              วัน
+            </label>
           </div>
 
           {/* Time */}
           <div className="relative">
-            <TimePicker.RangePicker value={classSchedule.classTimes} onChange={(times) => setClassSchedule({ ...classSchedule, classTimes: times || null })} format={format} style={{ width: "100%" }} disabledTime={disabledRangeTime} className="h-[42px] border border-gray-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-500" />
+            <TimePicker.RangePicker
+              value={classSchedule.classTimes}
+              onChange={(times) =>
+                setClassSchedule({
+                  ...classSchedule,
+                  classTimes: times || null,
+                })
+              }
+              format={format}
+              style={{ width: "100%" }}
+              disabledTime={disabledRangeTime}
+              className="h-[42px] border border-gray-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+            />
           </div>
 
           {/* Room */}
           <div className="relative">
-            <input type="text" required value={classSchedule.room} onChange={(e) => setClassSchedule({ ...classSchedule, room: e.target.value.replace(/[^A-Za-z0-9]/g, '') })} className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50" placeholder="ห้องเรียน" />
-            <label className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">ห้องเรียน</label>
+            <input
+              type="text"
+              required
+              value={classSchedule.room}
+              onChange={(e) =>
+                setClassSchedule({
+                  ...classSchedule,
+                  room: e.target.value.replace(/[^A-Za-z0-9]/g, ""),
+                })
+              }
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] 
+              placeholder-transparent bg-gray-50"
+              placeholder="ห้องเรียน"
+            />
+            <label
+              className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 
+            peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+            >
+              ห้องเรียน
+            </label>
           </div>
 
           {/* Building */}
           <div className="relative">
-            <input type="text" required value={classSchedule.building} onChange={(e) => setClassSchedule({ ...classSchedule, building: e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() })} className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] placeholder-transparent bg-gray-50" placeholder="ตึก" />
-            <label className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]">ตึก</label>
+            <input
+              type="text"
+              required
+              value={classSchedule.building}
+              onChange={(e) =>
+                setClassSchedule({
+                  ...classSchedule,
+                  building: e.target.value
+                    .replace(/[^A-Za-z0-9]/g, "")
+                    .slice(0, 2)
+                    .toUpperCase(),
+                })
+              }
+              className="peer w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#38A738] 
+              placeholder-transparent bg-gray-50"
+              placeholder="ตึก"
+            />
+            <label
+              className="absolute left-3 -top-2.5 bg-gray-50 px-1 text-sm text-gray-500 transition-all peer-placeholder-shown:top-2 
+            peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-[#38A738]"
+            >
+              ตึก
+            </label>
           </div>
         </form>
 
         <div className="flex justify-end mt-6 gap-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400">ยกเลิก</button>
-          <button type="button" onClick={handleUpdateSchedule} className="px-5 py-2 bg-[#3F37C9] text-white rounded-md hover:bg-[#2b28a0]">บันทึกการแก้ไข</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
+          >
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            onClick={handleUpdateSchedule}
+            className="px-5 py-2 bg-[#3F37C9] text-white rounded-md hover:bg-[#2b28a0]"
+          >
+            บันทึกการแก้ไข
+          </button>
         </div>
       </div>
     </div>

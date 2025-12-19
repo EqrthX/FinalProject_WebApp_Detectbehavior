@@ -89,12 +89,10 @@ const TeachingSchedule = () => {
     fetchSchedule();
   }, [navigate, selectedTerm]); // โหลดใหม่เมื่อเปลี่ยนเทอม
 
-    const handleCourseClick = (subjectId, group) => {
-        navigate(`/user/Record/${subjectId}/${group}`);
-    };
-  const handleCourseClick = (subjectId) => {
-    navigate(`/user/Record/${subjectId}`);
+  const handleCourseClick = (subjectId, group) => {
+    navigate(`/user/Record/${subjectId}/${group}`);
   };
+
 
   // [คงเดิมตาม Request] ใช้ Logic Render แบบเดิมเป๊ะๆ
   const renderTableBody = () => {
@@ -132,9 +130,8 @@ const TeachingSchedule = () => {
               {timeSlots.map((_, i) => (
                 <div
                   key={i}
-                  className={`flex-1 border-r border-gray-200 ${
-                    i === timeSlots.length - 1 ? "border-none" : ""
-                  }`}
+                  className={`flex-1 border-r border-gray-200 ${i === timeSlots.length - 1 ? "border-none" : ""
+                    }`}
                 ></div>
               ))}
             </div>
@@ -162,7 +159,7 @@ const TeachingSchedule = () => {
                 return (
                   <div
                     key={idx}
-                    onClick={() => handleCourseClick(item.subject_id)}
+                    onClick={() => handleCourseClick(item.subject_id, item.group)}
                     className="absolute bg-yellow-400 hover:bg-orange-500 hover:text-white 
                     border border-gray-300 shadow-sm cursor-pointer 
                     flex flex-col justify-center items-center text-center 
@@ -243,11 +240,10 @@ const TeachingSchedule = () => {
                     <button
                       key={term}
                       onClick={() => setSelectedTerm(term)}
-                      className={`font-bold px-3 py-1 rounded-md transition-all text-xs md:text-sm ${
-                        selectedTerm === term
+                      className={`font-bold px-3 py-1 rounded-md transition-all text-xs md:text-sm ${selectedTerm === term
                           ? "text-[#38A738] underline cursor-default bg-white shadow-sm"
                           : "text-gray-400 hover:text-gray-600 hover:bg-gray-200"
-                      }`}
+                        }`}
                     >
                       {term}
                     </button>

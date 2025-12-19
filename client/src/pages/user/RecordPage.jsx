@@ -6,12 +6,12 @@ import toast from "react-hot-toast";
 import { useNavigate, useParams } from "react-router-dom";
 
 const RecordPage = () => {
-    const navigate = useNavigate();
+  const navigate = useNavigate();
 
-    // ดึงค่าจาก URL parameter เช่น /user/record/:subjectId/:group
-    const { subjectId, group } = useParams();
-    
-    const teacherId = localStorage.getItem("teacher_id");
+  // ดึงค่าจาก URL parameter เช่น /user/record/:subjectId/:group
+  const { subjectId, group } = useParams();
+
+  const teacherId = localStorage.getItem("teacher_id");
 
   // state สำหรับเก็บ "รายการกล้อง" ที่ค้นเจอในเครื่อง (array)
   const [cameras, setCameras] = useState([]);
@@ -91,18 +91,18 @@ const RecordPage = () => {
 
   // ---------------------- WebSocket: สตรีมภาพ (annotated/raw) ----------------------
 
-    // ฟังก์ชันเชื่อม WebSocket สำหรับ "สตรีมภาพกล้อง" (เวอร์ชันเดิม)
-    const connectWebSocket = (cameraId) => {
-        // อ่านฐาน URL จาก .env
-        const base = import.meta.env.VITE_API_BASE;
-        // เลือกใช้ ws หรือ wss ขึ้นกับว่า base เป็น http หรือ https
-        const wsProtocol = base.startsWith("https") ? "wss" : "ws";
-        // ตัด http:// หรือ https:// ออก
-        const wsBase = base.replace(/^https?:\/\//, "");
-        // ประกอบ URL สำหรับ WebSocket ของกล้อง + query string teacher_id, subject_id
-        const wsUrl =
-            `${wsProtocol}://${wsBase}/camera/ws/camera/${cameraId}` +
-            `?teacher_id=${teacherId}&subject_id=${subjectId}&group=${group}`;
+  // ฟังก์ชันเชื่อม WebSocket สำหรับ "สตรีมภาพกล้อง" (เวอร์ชันเดิม)
+  const connectWebSocket = (cameraId) => {
+    // อ่านฐาน URL จาก .env
+    const base = import.meta.env.VITE_API_BASE;
+    // เลือกใช้ ws หรือ wss ขึ้นกับว่า base เป็น http หรือ https
+    const wsProtocol = base.startsWith("https") ? "wss" : "ws";
+    // ตัด http:// หรือ https:// ออก
+    const wsBase = base.replace(/^https?:\/\//, "");
+    // ประกอบ URL สำหรับ WebSocket ของกล้อง + query string teacher_id, subject_id
+    const wsUrl =
+      `${wsProtocol}://${wsBase}/camera/ws/camera/${cameraId}` +
+      `?teacher_id=${teacherId}&subject_id=${subjectId}&group=${group}`;
 
     // log ดูว่ากำลังจะเชื่อมต่อไปที่ไหน
     console.log("[connectWebSocket] connecting", wsUrl);
@@ -169,18 +169,18 @@ const RecordPage = () => {
 
   // ---------------------- WebSocket: รับ Summary (ข้อมูลสรุป) ----------------------
 
-    // ฟังก์ชันเชื่อม WebSocket สำหรับรับข้อมูลสรุป (summary) ของกล้องแต่ละตัว
-    const connectSummarySocket = (cameraId) => {
-        // อ่าน base URL จาก .env
-        const base = import.meta.env.VITE_API_BASE;
-        // เลือก ws หรือ wss
-        const wsProtocol = base.startsWith("https") ? "wss" : "ws";
-        // ตัด http://, https:// ออก
-        const wsBase = base.replace(/^https?:\/\//, "");
-        // ประกอบ URL สำหรับ summary WebSocket
-        const wsUrl =
-            `${wsProtocol}://${wsBase}/camera/ws/camera/summary/${cameraId}` +
-            `?teacher_id=${teacherId}&subject_id=${subjectId}&group=${group}`;
+  // ฟังก์ชันเชื่อม WebSocket สำหรับรับข้อมูลสรุป (summary) ของกล้องแต่ละตัว
+  const connectSummarySocket = (cameraId) => {
+    // อ่าน base URL จาก .env
+    const base = import.meta.env.VITE_API_BASE;
+    // เลือก ws หรือ wss
+    const wsProtocol = base.startsWith("https") ? "wss" : "ws";
+    // ตัด http://, https:// ออก
+    const wsBase = base.replace(/^https?:\/\//, "");
+    // ประกอบ URL สำหรับ summary WebSocket
+    const wsUrl =
+      `${wsProtocol}://${wsBase}/camera/ws/camera/summary/${cameraId}` +
+      `?teacher_id=${teacherId}&subject_id=${subjectId}&group=${group}`;
 
     // log ว่ากำลังเชื่อมจะต่อ summary socket
     console.log("[connectSummarySocket] connecting", wsUrl);
@@ -411,10 +411,10 @@ const RecordPage = () => {
         connectSummarySocket(cam.id);
       });
 
-            // เรียก API ให้เริ่มตรวจจับทุกกล้อง
-            const resStartDetect = await axios.get(`camera/start-all`);
-            // รับรายการ id กล้องที่เริ่มตรวจจับสำเร็จจากหลังบ้าน
-            const started_ids = resStartDetect.data.started || [];
+      // เรียก API ให้เริ่มตรวจจับทุกกล้อง
+      const resStartDetect = await axios.get(`camera/start-all`);
+      // รับรายการ id กล้องที่เริ่มตรวจจับสำเร็จจากหลังบ้าน
+      const started_ids = resStartDetect.data.started || [];
 
       // แจ้งเตือนว่าการเริ่มตรวจจับสำเร็จ
       toast.success(`เริ่มตรวจจับทุกกล้อง`);
@@ -441,13 +441,13 @@ const RecordPage = () => {
     // รีเซ็ต timer กลับไป 0
     setTimer(0);
 
-        try {
-            // เรียก API ให้หยุดตรวจจับทุกกล้อง
-            await axios.get(`camera/stop-all`);
-            // เรียก API ให้สรุปข้อมูล และส่งเข้า Supabase
-            const summaryRes = await axios.get(`camera/summary-to-supabase`);
-            // log ข้อมูลที่หลังบ้านตอบกลับมา
-            console.log("Summary Done:", summaryRes.data);
+    try {
+      // เรียก API ให้หยุดตรวจจับทุกกล้อง
+      await axios.get(`camera/stop-all`);
+      // เรียก API ให้สรุปข้อมูล และส่งเข้า Supabase
+      const summaryRes = await axios.get(`camera/summary-to-supabase`);
+      // log ข้อมูลที่หลังบ้านตอบกลับมา
+      console.log("Summary Done:", summaryRes.data);
 
       // หน่วงเวลานิดหน่อย (0.8 วินาที) เผื่อให้หลังบ้านทำงานเสร็จ
       await new Promise((resolve) => setTimeout(resolve, 800));
@@ -455,17 +455,17 @@ const RecordPage = () => {
       // ปิด WebSocket summary ทุกตัว
       Object.keys(summaryRefs.current).forEach((id) => safeCloseSummaryWS(id));
 
-            // แจ้งเตือนว่าหยุดตรวจจับเรียบร้อย
-            toast.success(`หยุดการตรวจจับทุกกล้อง`);
-            // ส่งผู้ใช้ไปยังหน้า "สรุปผล" ของ user
-            navigate("/user/summarize/");
-        } catch (error) {
-            // ถ้ามีปัญหาระหว่างหยุดตรวจจับ ให้ log ไว้
-            console.error("การหยุดตรวจจับเกิดข้อผิดพลาด", error);
-            // แจ้งเตือนผู้ใช้ว่าหยุดไม่สำเร็จ
-            toast.error("หยุดการตรวจจับไม่สำเร็จ");
-        }
-    };
+      // แจ้งเตือนว่าหยุดตรวจจับเรียบร้อย
+      toast.success(`หยุดการตรวจจับทุกกล้อง`);
+      // ส่งผู้ใช้ไปยังหน้า "สรุปผล" ของ user
+      navigate(`/user/summarize/${subjectId}/${group}`);
+    } catch (error) {
+      // ถ้ามีปัญหาระหว่างหยุดตรวจจับ ให้ log ไว้
+      console.error("การหยุดตรวจจับเกิดข้อผิดพลาด", error);
+      // แจ้งเตือนผู้ใช้ว่าหยุดไม่สำเร็จ
+      toast.error("หยุดการตรวจจับไม่สำเร็จ");
+    }
+  };
 
   // ---------------------- ระบบ Timer นับเวลาบันทึก ----------------------
 
@@ -499,74 +499,73 @@ const RecordPage = () => {
         {/* แสดงเส้นทาง Breadcrumb (เช่น หน้าแรก > ตารางสอน > บันทึก) */}
         <MyBreadcrumb />
 
-                {/* layout แบ่ง 2 คอลัมน์: ซ้ายใหญ่ (กล้อง), ขวาเล็ก (summary) */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* กล่องฝั่งซ้าย: ใช้พื้นที่ 2 ใน 3 (lg:col-span-2) */}
-                    <div className="lg:col-span-2 bg-white rounded-2xl shadow p-4 sm:p-6 border border-gray-200">
-                        {/* ส่วนหัว (Header) แสดงสถานะการตรวจจับ และเวลา */}
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
-                            {/* แสดงจุดไฟ บอกว่าสถานะกำลังตรวจจับ/พร้อมเริ่ม */}
-                            <div className="flex items-center space-x-3">
-                                {/* วงกลมด้านนอก มี ring แสดงสีต่างกันตามสถานะ */}
-                                <div
-                                    className={`w-5 h-5 rounded-full ring-2 ring-offset-2 ${isRecording ? "ring-red-300" : "ring-green-300"
-                                        } flex items-center justify-center`}
-                                >
-                                    {/* วงกลมด้านใน ถ้ากำลังตรวจจับจะกระพริบสีแดง */}
-                                    <div
-                                        className={`w-3.5 h-3.5 rounded-full ${isRecording
-                                                ? "bg-red-500 animate-pulse"
-                                                : "bg-green-500"
-                                            }`}
-                                    />
-                                </div>
-                                {/* ข้อความอธิบายสถานะ */}
-                                <div>
-                                    {/* ตัวหนังสือเล็กสีเทา บอกหัวข้อ */}
-                                    <div className="text-sm text-gray-500">
-                                        สถานะการตรวจจับ
-                                    </div>
-                                    {/* ตัวหนังสือหนา แสดงข้อความตามสถานะ */}
-                                    <div className="font-semibold text-gray-800">
-                                        {isRecording ? "กำลังตรวจจับ" : "พร้อมเริ่มต้น"}
-                                    </div>
-                                </div>
-                            </div>
+        {/* layout แบ่ง 2 คอลัมน์: ซ้ายใหญ่ (กล้อง), ขวาเล็ก (summary) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* กล่องฝั่งซ้าย: ใช้พื้นที่ 2 ใน 3 (lg:col-span-2) */}
+          <div className="lg:col-span-2 bg-white rounded-2xl shadow p-4 sm:p-6 border border-gray-200">
+            {/* ส่วนหัว (Header) แสดงสถานะการตรวจจับ และเวลา */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
+              {/* แสดงจุดไฟ บอกว่าสถานะกำลังตรวจจับ/พร้อมเริ่ม */}
+              <div className="flex items-center space-x-3">
+                {/* วงกลมด้านนอก มี ring แสดงสีต่างกันตามสถานะ */}
+                <div
+                  className={`w-5 h-5 rounded-full ring-2 ring-offset-2 ${isRecording ? "ring-red-300" : "ring-green-300"
+                    } flex items-center justify-center`}
+                >
+                  {/* วงกลมด้านใน ถ้ากำลังตรวจจับจะกระพริบสีแดง */}
+                  <div
+                    className={`w-3.5 h-3.5 rounded-full ${isRecording
+                      ? "bg-red-500 animate-pulse"
+                      : "bg-green-500"
+                      }`}
+                  />
+                </div>
+                {/* ข้อความอธิบายสถานะ */}
+                <div>
+                  {/* ตัวหนังสือเล็กสีเทา บอกหัวข้อ */}
+                  <div className="text-sm text-gray-500">
+                    สถานะการตรวจจับ
+                  </div>
+                  {/* ตัวหนังสือหนา แสดงข้อความตามสถานะ */}
+                  <div className="font-semibold text-gray-800">
+                    {isRecording ? "กำลังตรวจจับ" : "พร้อมเริ่มต้น"}
+                  </div>
+                </div>
+              </div>
 
-                            {/* ส่วนแสดงเวลาในการบันทึก */}
-                            <div className="text-right">
-                                {/* หัวข้อเล็กสีเทา */}
-                                <div className="text-sm text-gray-500">
-                                    ระยะเวลาบันทึก
-                                </div>
-                                {/* ตัวเลขเวลาแบบฟอนต์ Mono ดูเหมือนนาฬิกา */}
-                                <div className="text-2xl font-mono font-bold">
-                                    {formatTime(timer)}
-                                </div>
-                            </div>
-                        </div>
+              {/* ส่วนแสดงเวลาในการบันทึก */}
+              <div className="text-right">
+                {/* หัวข้อเล็กสีเทา */}
+                <div className="text-sm text-gray-500">
+                  ระยะเวลาบันทึก
+                </div>
+                {/* ตัวเลขเวลาแบบฟอนต์ Mono ดูเหมือนนาฬิกา */}
+                <div className="text-2xl font-mono font-bold">
+                  {formatTime(timer)}
+                </div>
+              </div>
+            </div>
 
-                        {/* แถวของปุ่มควบคุมต่าง ๆ */}
-                        <div className="flex flex-wrap gap-3 mb-4">
-                            {/* ปุ่มเริ่มตรวจจับทุกกล้อง */}
-                            <button
-                                className={`px-4 py-2 rounded-lg text-white font-semibold ${isRecording
-                                        ? "bg-gray-400 cursor-not-allowed"
-                                        : "bg-green-500"
-                                    }`}
-                                // ถ้ากำลังบันทึกอยู่ ให้ disable ปุ่ม
-                                disabled={isRecording}
-                                // เมื่อกดเรียกฟังก์ชัน handleStartDetect
-                                onClick={handleStartDetect}
-                            >
-                                เริ่มต้นตรวจจับทุกกล้อง
-                            </button>
+            {/* แถวของปุ่มควบคุมต่าง ๆ */}
+            <div className="flex flex-wrap gap-3 mb-4">
+              {/* ปุ่มเริ่มตรวจจับทุกกล้อง */}
+              <button
+                className={`px-4 py-2 rounded-lg text-white font-semibold ${isRecording
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-green-500"
+                  }`}
+                // ถ้ากำลังบันทึกอยู่ ให้ disable ปุ่ม
+                disabled={isRecording}
+                // เมื่อกดเรียกฟังก์ชัน handleStartDetect
+                onClick={handleStartDetect}
+              >
+                เริ่มต้นตรวจจับทุกกล้อง
+              </button>
 
               {/* ปุ่มหยุดการตรวจจับ */}
               <button
-                className={`px-4 py-2 rounded-lg text-white font-semibold ${
-                  !isRecording ? "bg-gray-400 cursor-not-allowed" : "bg-red-500"
-                }`}
+                className={`px-4 py-2 rounded-lg text-white font-semibold ${!isRecording ? "bg-gray-400 cursor-not-allowed" : "bg-red-500"
+                  }`}
                 // ถ้าไม่ได้บันทึกอยู่ ก็ disable ปุ่ม
                 disabled={!isRecording}
                 // เมื่อกดเรียก handleStopDetect
@@ -627,27 +626,27 @@ const RecordPage = () => {
             </div>
           </div>
 
-                    {/* กล่องฝั่งขวา: แสดงข้อมูลสรุประหว่างสอน (Summary) */}
-                    <div className="bg-white rounded-2xl shadow p-4 sm:p-6 border border-gray-200">
-                        {/* หัวข้อของกล่อง summary */}
-                        <h2 className="text-lg font-semibold mb-3">
-                            ข้อมูลสรุประหว่างสอน
-                        </h2>
+          {/* กล่องฝั่งขวา: แสดงข้อมูลสรุประหว่างสอน (Summary) */}
+          <div className="bg-white rounded-2xl shadow p-4 sm:p-6 border border-gray-200">
+            {/* หัวข้อของกล่อง summary */}
+            <h2 className="text-lg font-semibold mb-3">
+              ข้อมูลสรุประหว่างสอน
+            </h2>
 
-                        {/* โซนเลื่อนดู summary ได้สูงสุด 500px ถ้าเกินจะมี scrollbar */}
-                        <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
-                            {/* วนแสดงข้อมูล summary ที่ถูก push จาก WebSocket */}
-                            {summaryData.map((item, index) => (
-                                // กล่องแต่ละรายการ summary
-                                <div
-                                    key={index}
-                                    className="bg-white shadow rounded-xl p-4 border border-gray-200 flex gap-4"
-                                >
-                                    {/* ปุ่มซ้าย: Info */}
-                                    <div className="flex-1">
-                                        <h3 className="text-lg font-semibold text-gray-800">
-                                            กล้อง {Number(item.cameraId) + 1}
-                                        </h3>
+            {/* โซนเลื่อนดู summary ได้สูงสุด 500px ถ้าเกินจะมี scrollbar */}
+            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+              {/* วนแสดงข้อมูล summary ที่ถูก push จาก WebSocket */}
+              {summaryData.map((item, index) => (
+                // กล่องแต่ละรายการ summary
+                <div
+                  key={index}
+                  className="bg-white shadow rounded-xl p-4 border border-gray-200 flex gap-4"
+                >
+                  {/* ปุ่มซ้าย: Info */}
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-800">
+                      กล้อง {Number(item.cameraId) + 1}
+                    </h3>
 
                     <p className="text-sm text-gray-500">
                       เวลา: {item.data.Time}

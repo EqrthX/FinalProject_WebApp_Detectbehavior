@@ -10,6 +10,7 @@ import {
   TeamOutlined,
   UserOutlined,
   ClockCircleOutlined,
+  PlayCircleOutlined,
 } from "@ant-design/icons";
 import {
   CartesianGrid,
@@ -25,12 +26,11 @@ import {
   Cell,
   BarChart,
   Bar,
-  Label
 } from "recharts";
 import { supabase } from "../../config/supabase";
 import { useLocation } from "react-router-dom";
 
-// --- CustomSelect Component (เหมือนเดิม) ---
+// ... (ส่วนประกอบอื่นๆ เหมือนเดิม) ...
 const CustomSelect = ({
   options,
   value,
@@ -40,7 +40,6 @@ const CustomSelect = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
-
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -53,7 +52,6 @@ const CustomSelect = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
   const selectedOption = options.find(
     (opt) => (typeof opt === "object" ? opt.value : opt) === value
   );
@@ -64,7 +62,6 @@ const CustomSelect = ({
     : value === "all"
     ? placeholder
     : value;
-
   return (
     <div className="relative group min-w-[160px]" ref={containerRef}>
       <div
@@ -142,17 +139,18 @@ const BEHAVIOR_COLORS = {
   default: "#cbd5e1",
 };
 
-// 🟢 1. เพิ่มฟังก์ชันแปลงเวลา
 const formatDuration = (seconds) => {
   const roundedSeconds = Math.round(seconds);
-  if (roundedSeconds < 60) {
-    return `${roundedSeconds} วินาที`;
+  const hours = Math.floor(roundedSeconds / 3600);
+  const minutes = Math.floor((roundedSeconds % 3600) / 60);
+  const remainingSeconds = roundedSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours} ชม. ${minutes} นาที`;
+  } else if (minutes > 0) {
+    return `${minutes} นาที ${remainingSeconds} วินาที`;
   } else {
-    const minutes = Math.floor(roundedSeconds / 60);
-    const remainingSeconds = roundedSeconds % 60;
-    return remainingSeconds > 0
-      ? `${minutes} นาที ${remainingSeconds} วินาที`
-      : `${minutes} นาที`;
+    return `${remainingSeconds} วินาที`;
   }
 };
 
@@ -163,18 +161,15 @@ const ResultsPage = () => {
   const [rawLogs, setRawLogs] = useState([]);
   const [summaries, setSummaries] = useState([]);
   const [schedules, setSchedules] = useState([]);
-  const [groupedData, setGroupedData] = useState({});
+  const [groupedData, setGroupedData] = useState([]);
 
-  // State Filters
   const [uniqueSubjects, setUniqueSubjects] = useState([]);
   const [uniqueDates, setUniqueDates] = useState([]);
   const [uniqueSections, setUniqueSections] = useState([]);
-
   const [selectedDate, setSelectedDate] = useState("all");
   const [selectedSubject, setSelectedSubject] = useState("all");
   const [selectedSection, setSelectedSection] = useState("all");
 
-  // --- Main Fetch Data ---
   useEffect(() => {
     const fetchData = async () => {
       if (!teacher_id) return;
@@ -249,12 +244,10 @@ const ResultsPage = () => {
               setSelectedDate(filterDate);
               shouldNavigate = true;
             }
-            // เพิ่มการรับค่า filterSection ถ้าส่งมาจากหน้า Summarize
             if (filterSection && sections.includes(String(filterSection))) {
               setSelectedSection(String(filterSection));
               shouldNavigate = true;
             }
-
             if (shouldNavigate) {
               window.history.replaceState({}, document.title);
             }
@@ -267,7 +260,6 @@ const ResultsPage = () => {
     fetchData();
   }, [teacher_id]);
 
-  // --- Helper Functions ---
   const processDataTo3MinIntervals = (logs) => {
     const buckets = {};
     logs.forEach((log) => {
@@ -291,7 +283,6 @@ const ResultsPage = () => {
   };
 
   const processSummaryData = (summaryList) => {
-    // 🟢 2. เปลี่ยน Logic การรวมข้อมูลจาก class_json_summary (จำนวนครั้ง) เป็น class_duration_summary (วินาที)
     const totalDuration = {
       Focused: 0,
       Looking_at_the_board: 0,
@@ -302,7 +293,6 @@ const ResultsPage = () => {
     };
 
     summaryList.forEach((item) => {
-      // ใช้ class_duration_summary แทน
       const json = item.class_duration_summary || {};
       totalDuration.Focused += Number(json.Focused || 0);
       totalDuration.Looking_at_the_board += Number(
@@ -314,7 +304,6 @@ const ResultsPage = () => {
       totalDuration.UsingPhone += Number(json.UsingPhone || 0);
     });
 
-    // ส่งค่าเป็นวินาที (value) ไปให้ Pie Chart คำนวณ % เอง
     const pieChartData = [
       { name: "ตั้งใจเรียน", value: totalDuration.Focused },
       { name: "มองกระดาน", value: totalDuration.Looking_at_the_board },
@@ -324,7 +313,6 @@ const ResultsPage = () => {
       { name: "คุยกัน", value: totalDuration.Talking },
     ].filter((item) => item.value > 0);
 
-    // ส่วนคำนวณคะแนนเฉลี่ยยังคงเดิม (ใช้ avg_attention)
     const studentsByCamera = {};
     summaryList.forEach((row) => {
       const camId = row.camera_id;
@@ -347,7 +335,6 @@ const ResultsPage = () => {
     return { pieChartData, avgAtt };
   };
 
-  // --- Main Logic: Grouping & Counting ---
   useEffect(() => {
     if (rawLogs.length === 0 && summaries.length === 0) return;
 
@@ -380,7 +367,6 @@ const ResultsPage = () => {
     }
 
     const grouped = {};
-
     filteredSummaries.forEach((sum) => {
       const key = `${sum.subject_id}|${sum.section}|${new Date(
         sum.summary_date
@@ -402,87 +388,95 @@ const ResultsPage = () => {
       if (matchKey && grouped[matchKey]) grouped[matchKey].logs.push(log);
     });
 
-    const finalData = Object.fromEntries(
-      Object.entries(grouped).map(([key, data]) => {
-        const [subjectId, section] = key.split("|");
+    const finalArray = Object.entries(grouped).map(([key, data]) => {
+      const [subjectId, section] = key.split("|");
 
-        const studentsByCamera = {};
-        data.summaries.forEach((row) => {
-          const camId = row.camera_id;
-          if (!studentsByCamera[camId])
-            studentsByCamera[camId] = { totalAtt: 0, count: 0 };
-          studentsByCamera[camId].totalAtt += Number(row.avg_attention);
-          studentsByCamera[camId].count += 1;
-        });
+      const studentsByCamera = {};
+      data.summaries.forEach((row) => {
+        const camId = row.camera_id;
+        if (!studentsByCamera[camId])
+          studentsByCamera[camId] = { totalAtt: 0, count: 0 };
+        studentsByCamera[camId].totalAtt += Number(row.avg_attention);
+        studentsByCamera[camId].count += 1;
+      });
 
-        let attentiveCount = 0;
-        let inattentiveCount = 0;
-        const totalUniqueStudents = Object.keys(studentsByCamera).length;
+      let attentiveCount = 0;
+      let inattentiveCount = 0;
+      const totalUniqueStudents = Object.keys(studentsByCamera).length;
 
-        Object.values(studentsByCamera).forEach((student) => {
-          const personalAvg = student.totalAtt / student.count;
-          if (personalAvg * 100 >= 50) attentiveCount++;
-          else inattentiveCount++;
-        });
+      Object.values(studentsByCamera).forEach((student) => {
+        const personalAvg = student.totalAtt / student.count;
+        if (personalAvg * 100 > 50) attentiveCount++;
+        else inattentiveCount++;
+      });
 
-        const barChartData = [
-          { name: "ตั้งใจเรียน", count: attentiveCount, fill: "#38A738" },
-          { name: "ไม่ตั้งใจ", count: inattentiveCount, fill: "#FF4D4F" },
-        ];
+      const barChartData = [
+        { name: "ตั้งใจเรียน", count: attentiveCount, fill: "#38A738" },
+        { name: "ไม่ตั้งใจ", count: inattentiveCount, fill: "#FF4D4F" },
+      ];
 
-        const { pieChartData, avgAtt } = processSummaryData(data.summaries);
-        const lineChartData = processDataTo3MinIntervals(data.logs);
+      const { pieChartData, avgAtt } = processSummaryData(data.summaries);
+      const lineChartData = processDataTo3MinIntervals(data.logs);
 
-        const matchedSchedules = schedules.filter((s) => {
-          const isSubjectMatch =
-            String(s.subject_id).trim() === String(subjectId).trim();
-          const sGroup = String(s.group || "").trim();
-          const tGroup = String(section).trim();
-          const isGroupMatch =
-            sGroup === tGroup || parseInt(sGroup) === parseInt(tGroup);
-          return isSubjectMatch && isGroupMatch;
-        });
+      const matchedSchedules = schedules.filter((s) => {
+        const isSubjectMatch =
+          String(s.subject_id).trim() === String(subjectId).trim();
+        const sGroup = String(s.group || "").trim();
+        const tGroup = String(section).trim();
+        const isGroupMatch =
+          sGroup === tGroup || parseInt(sGroup) === parseInt(tGroup);
+        return isSubjectMatch && isGroupMatch;
+      });
 
-        let displayTime = "-";
+      let displayTime = "-";
+      if (matchedSchedules.length > 0) {
+        displayTime = matchedSchedules
+          .map((s) => {
+            const day = s.day;
+            const start = String(s.start_time).slice(0, 5);
+            const end = String(s.end_time).slice(0, 5);
+            return `${day} ${start} - ${end}`;
+          })
+          .join(", ");
+      } else {
+        displayTime = "ไม่พบตารางเรียน";
+      }
 
-        if (matchedSchedules.length > 0) {
-          displayTime = matchedSchedules
-            .map((s) => {
-              const day = s.day;
-              const start = String(s.start_time).slice(0, 5);
-              const end = String(s.end_time).slice(0, 5);
-              return `${day} ${start} - ${end}`;
-            })
-            .join(", ");
-        } else {
-          displayTime = "ไม่พบตารางเรียน";
-        }
+      const rawDate = new Date(data.summaries[0].summary_date);
+      let latestTimeForSort = rawDate.getTime();
 
-        return [
-          key,
-          {
-            subjectId,
-            section,
-            pieChartData,
-            avgAtt,
-            lineChartData,
-            barChartData,
-            totalStudents: totalUniqueStudents,
-            date: new Date(data.summaries[0].summary_date).toLocaleDateString(
-              "th-TH",
-              {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              }
-            ),
-            scheduleTime: displayTime,
-          },
-        ];
-      })
-    );
+      let realDurationSeconds = 0;
 
-    setGroupedData(finalData);
+      if (data.logs && data.logs.length > 0) {
+        const logTimes = data.logs.map((l) => new Date(l.created_at).getTime());
+        latestTimeForSort = Math.max(...logTimes);
+        const minTime = Math.min(...logTimes);
+        const maxTime = Math.max(...logTimes);
+        realDurationSeconds = (maxTime - minTime) / 1000;
+      }
+
+      return {
+        key,
+        subjectId,
+        section,
+        pieChartData,
+        avgAtt,
+        lineChartData,
+        barChartData,
+        totalStudents: totalUniqueStudents,
+        timestamp: latestTimeForSort,
+        date: rawDate.toLocaleDateString("th-TH", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }),
+        scheduleTime: displayTime,
+        recordedDuration: formatDuration(realDurationSeconds),
+      };
+    });
+
+    finalArray.sort((a, b) => b.timestamp - a.timestamp);
+    setGroupedData(finalArray);
   }, [
     rawLogs,
     summaries,
@@ -513,9 +507,7 @@ const ResultsPage = () => {
         fontSize={10}
         textAnchor={x > cx ? "start" : "end"}
         dominantBaseline="central"
-      >
-        {`${((percent ?? 0) * 100).toFixed(0)}%`}
-      </text>
+      >{`${((percent ?? 0) * 100).toFixed(0)}%`}</text>
     );
   };
 
@@ -567,211 +559,267 @@ const ResultsPage = () => {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide pb-20">
-          {Object.values(groupedData).length > 0 ? (
+          {groupedData.length > 0 ? (
             <div className="flex flex-col gap-6">
-              {Object.values(groupedData).map((data, index) => (
-                <div
-                  key={index}
-                  className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6"
-                >
-                  {/* Card Header */}
-                  <div className="flex justify-between items-start mb-6 border-b border-gray-100 pb-4">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-xl font-bold text-gray-800">
-                          วิชา {data.subjectId}
-                        </h3>
-                        {data.section && data.section !== "N/A" && (
-                          <span className="bg-purple-100 text-purple-700 text-xs font-bold px-3 py-1 rounded-full">
-                            กลุ่ม {data.section}
-                          </span>
-                        )}
+              {groupedData.map((data, index) => {
+                // 🟢 คำนวณผลรวมเวลาของ Pie Chart เพื่อใช้หา % ใน Tooltip
+                const totalPieValue = data.pieChartData.reduce(
+                  (acc, item) => acc + item.value,
+                  0
+                );
+
+                return (
+                  <div
+                    key={index}
+                    className="bg-white rounded-[20px] shadow-sm border border-[#e9e9e9] p-6"
+                  >
+                    {/* Card Header */}
+                    <div className="flex justify-between items-start mb-6 border-b border-gray-100 pb-4">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-xl font-bold text-gray-800">
+                            วิชา {data.subjectId}
+                          </h3>
+                          {data.section && data.section !== "N/A" && (
+                            <span className="bg-purple-100 text-purple-700 text-xs font-bold px-3 py-1 rounded-full">
+                              กลุ่ม {data.section}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-gray-500">
+                          <div
+                            className="flex items-center gap-1.5"
+                            title="วันที่บันทึกข้อมูล"
+                          >
+                            <CalendarOutlined className="text-blue-500" />
+                            <span>{data.date}</span>
+                          </div>
+                          <div className="w-[1px] h-4 bg-gray-300"></div>
+
+                          <div
+                            className="flex items-center gap-1.5"
+                            title="เวลาเรียนตามตาราง"
+                          >
+                            <ClockCircleOutlined className="text-orange-500" />
+                            <span>{data.scheduleTime}</span>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                        <div
-                          className="flex items-center gap-1.5"
-                          title="วันที่บันทึกข้อมูล"
+                      <div className="flex flex-col items-end">
+                        <span className="text-gray-400 text-xs mb-1">
+                          คะแนนเฉลี่ยทั้งห้อง
+                        </span>
+                        <span
+                          className={`text-2xl font-bold ${
+                            Number(data.avgAtt) > 50
+                              ? "text-green-600"
+                              : "text-red-500"
+                          }`}
                         >
-                          <CalendarOutlined className="text-blue-500" />
-                          <span>{data.date}</span>
-                        </div>
-                        <div className="w-[1px] h-4 bg-gray-300"></div>
-                        <div
-                          className="flex items-center gap-1.5"
-                          title="วันและเวลาเรียนตามตาราง"
-                        >
-                          <ClockCircleOutlined className="text-orange-500" />
-                          <span>{data.scheduleTime}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      <span className="text-gray-400 text-xs mb-1">
-                        คะแนนเฉลี่ยทั้งห้อง
-                      </span>
-                      <span
-                        className={`text-2xl font-bold ${
-                          Number(data.avgAtt) >= 50
-                            ? "text-green-600"
-                            : "text-red-500"
-                        }`}
-                      >
-                        {data.avgAtt}%
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Graphs Grid */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {/* Line Chart */}
-                    <div className="lg:col-span-2 xl:col-span-1 h-[250px] bg-gray-50 rounded-xl border border-gray-100 p-2">
-                      <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2 px-2">
-                        <BarChartOutlined /> Timeline ความตั้งใจเฉลี่ย
-                      </h4>
-                      <ResponsiveContainer width="100%" height="90%">
-                        <LineChart data={data.lineChartData}>
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            stroke="#e0e0e0"
-                            vertical={false}
-                          />
-                          <XAxis
-                            dataKey="time"
-                            tick={{ fontSize: 10, fill: "#888" }}
-                            axisLine={false}
-                            tickLine={false}
-                            dy={10}
-                            minTickGap={30}
-                          />
-                          <YAxis
-                            domain={[0, 100]}
-                            tick={{ fontSize: 10, fill: "#888" }}
-                            axisLine={false}
-                            tickLine={false}
-                          />
-                          <Tooltip
-                            contentStyle={{
-                              borderRadius: "12px",
-                              border: "none",
-                              boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                            }}
-                            formatter={(value) => [`${value}%`, "ความสนใจ"]}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="score"
-                            stroke="#0068c9"
-                            strokeWidth={3}
-                            dot={false}
-                            activeDot={{ r: 6 }}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-
-                    {/* Bar Chart */}
-                    <div className="h-[250px] bg-white rounded-xl border border-gray-100 p-2 relative">
-                      <div className="flex justify-between items-center mb-2 px-2">
-                        <h4 className="text-sm font-semibold text-gray-600 flex items-center gap-2">
-                          <UserOutlined /> จำนวนนักศึกษา
-                        </h4>
-                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
-                          ทั้งหมด {data.totalStudents} คน
+                          {data.avgAtt}%
                         </span>
                       </div>
-                      <ResponsiveContainer width="100%" height="90%">
-                        <BarChart data={data.barChartData} barGap={20}>
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            vertical={false}
-                            stroke="#f0f0f0"
-                          />
-                          <XAxis
-                            dataKey="name"
-                            tick={{ fontSize: 12 }}
-                            axisLine={false}
-                            tickLine={false}
-                            dy={5}
-                          />
-                          <YAxis
-                            allowDecimals={false}
-                            axisLine={false}
-                            tickLine={false}
-                          />
-                          <Tooltip
-                            cursor={{ fill: "transparent" }}
-                            formatter={(value) => [`${value} คน`]}
-                            contentStyle={{ // <--- เพิ่มตัวนี้เข้าไป
-                              borderRadius: "12px",
-                              border: "none",
-                              boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-                          }}
-                          />
-                          <Bar
-                            dataKey="count"
-                            radius={[5, 5, 0, 0]}
-                            barSize={60}
-                          >
-                            {data.barChartData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.fill} />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
                     </div>
 
-                    {/* Pie Chart */}
-<div className="h-[250px] w-full relative border-l border-gray-100 lg:border-none pl-4 lg:pl-0">
-  <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2">
-    <PieChartOutlined /> สัดส่วนเวลาพฤติกรรม (รวมทั้งคาบ)
-  </h4>
+                    {/* Graphs Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                      {/* Line Chart */}
+                      <div className="lg:col-span-2 xl:col-span-1 h-[250px] bg-gray-50 rounded-xl border border-gray-100 p-2">
+                        <div className="flex justify-between items-center mb-2 px-2">
+                          <h4 className="text-sm font-semibold text-gray-600 flex items-center gap-2">
+                            <BarChartOutlined /> Timeline ความตั้งใจเฉลี่ย
+                          </h4>
+                          <div className="flex items-center gap-1 text-xs text-gray-500 bg-white px-2 py-1 rounded-full border border-gray-200 shadow-sm">
+                            <PlayCircleOutlined className="text-green-500" />
+                            <span>บันทึก {data.recordedDuration}</span>
+                          </div>
+                        </div>
 
-  <ResponsiveContainer width="100%" height="90%">
-    <PieChart>
-      <Pie
-        data={data.pieChartData}
-        cx="50%"
-        cy="50%"
-        innerRadius={60}
-        outerRadius={80}
-        paddingAngle={3}
-        dataKey="value"
-        labelLine={false}
-        label={renderCustomizedLabel}
-      >
-        {data.pieChartData.map((entry, index) => (
-          <Cell
-            key={index}
-            fill={BEHAVIOR_COLORS[entry.name] || BEHAVIOR_COLORS["default"]}
-            stroke="none"
-          />
-        ))}
-      </Pie>
+                        <ResponsiveContainer width="100%" height="90%">
+                          <LineChart data={data.lineChartData}>
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              stroke="#e0e0e0"
+                              vertical={false}
+                            />
+                            <XAxis
+                              dataKey="time"
+                              tick={{ fontSize: 10, fill: "#888" }}
+                              axisLine={false}
+                              tickLine={false}
+                              dy={10}
+                              minTickGap={30}
+                            />
+                            <YAxis
+                              domain={[0, 100]}
+                              tick={{ fontSize: 10, fill: "#888" }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                borderRadius: "12px",
+                                border: "none",
+                                boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                              }}
+                              formatter={(value) => [`${value}%`, "ความสนใจ"]}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="score"
+                              stroke="#0068c9"
+                              strokeWidth={3}
+                              dot={{ r: 3, fill: "#0068c9", strokeWidth: 0 }}
+                              activeDot={{ r: 6, strokeWidth: 0 }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
 
-      {/* 💚 ตรงนี้คือส่วนที่แก้ไข: เพิ่ม contentStyle ให้เหมือน Line Chart */}
-      <Tooltip 
-        formatter={(value) => formatDuration(value)} 
-        wrapperStyle={{ zIndex: 1000 }} 
-        contentStyle={{ 
-            borderRadius: "12px",
-            border: "none",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-        }}
-      />
-      <Legend
-        layout="vertical"
-        verticalAlign="middle"
-        align="right"
-        iconSize={8}
-        wrapperStyle={{ fontSize: "11px", right: 0 }}
-      />
-    </PieChart>
-  </ResponsiveContainer>
-</div>
+                      {/* Bar Chart */}
+                      <div className="h-[250px] bg-white rounded-xl border border-gray-100 p-2 relative">
+                        <div className="flex justify-between items-center mb-2 px-2">
+                          <h4 className="text-sm font-semibold text-gray-600 flex items-center gap-2">
+                            <UserOutlined /> จำนวนนักศึกษา
+                          </h4>
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+                            ทั้งหมด {data.totalStudents} คน
+                          </span>
+                        </div>
+                        <ResponsiveContainer width="100%" height="90%">
+                          <BarChart data={data.barChartData} barGap={20}>
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              vertical={false}
+                              stroke="#f0f0f0"
+                            />
+                            <XAxis
+                              dataKey="name"
+                              tick={{ fontSize: 12 }}
+                              axisLine={false}
+                              tickLine={false}
+                              dy={5}
+                            />
+                            <YAxis
+                              allowDecimals={false}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <Tooltip
+                              cursor={{ fill: "transparent" }}
+                              formatter={(value) => [`${value} คน`]}
+                              contentStyle={{
+                                borderRadius: "12px",
+                                border: "none",
+                                boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                              }}
+                            />
+                            <Bar
+                              dataKey="count"
+                              radius={[5, 5, 0, 0]}
+                              barSize={60}
+                            >
+                              {data.barChartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Pie Chart Area */}
+                      <div className="h-[250px] w-full relative border-l border-gray-100 lg:border-none pl-4 lg:pl-0">
+                        <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2">
+                          <PieChartOutlined /> สัดส่วนเวลาพฤติกรรม
+                        </h4>
+
+                        <div className="flex items-center h-[90%] w-full">
+                          {/* 1. ตัวกราฟวงกลม (ปรับลด width เหลือ 45% เพื่อแบ่งที่ให้ List) */}
+                          <div className="w-[55%] h-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={data.pieChartData}
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={45}
+                                  outerRadius={80}
+                                  paddingAngle={3}
+                                  dataKey="value"
+                                  labelLine={false}
+                                  label={renderCustomizedLabel}
+                                >
+                                  {data.pieChartData.map((entry, index) => (
+                                    <Cell
+                                      key={index}
+                                      fill={
+                                        BEHAVIOR_COLORS[entry.name] ||
+                                        BEHAVIOR_COLORS["default"]
+                                      }
+                                      stroke="none"
+                                    />
+                                  ))}
+                                </Pie>
+                                <Tooltip
+                                  formatter={(value) => {
+                                    const percent =
+                                      totalPieValue > 0
+                                        ? (
+                                            (value / totalPieValue) *
+                                            100
+                                          ).toFixed(0)
+                                        : 0;
+                                    return `${percent}%`;
+                                  }}
+                                  wrapperStyle={{ zIndex: 1000 }}
+                                  contentStyle={{
+                                    borderRadius: "12px",
+                                    border: "none",
+                                    boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                                  }}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+
+                          {/* 2. รายการแสดงเวลา (ขวา) - 🟢 ปรับใหม่: บรรทัดเดียว, ไม่ต้องเลื่อน */}
+                          <div className="w-[35%] flex flex-col justify-center h-full pr-2">
+                            {data.pieChartData.map((entry, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0"
+                              >
+                                {/* ชื่อพฤติกรรม (ซ้าย) */}
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div
+                                    className="w-2 h-2 rounded-full shrink-0"
+                                    style={{
+                                      backgroundColor:
+                                        BEHAVIOR_COLORS[entry.name] || "#ccc",
+                                    }}
+                                  />
+                                  <span
+                                    className="text-xs text-gray-700 font-medium truncate"
+                                    title={entry.name}
+                                  >
+                                    {entry.name}
+                                  </span>
+                                </div>
+                                {/* เวลา (ขวา) */}
+                                <span className="text-[10px] text-gray-500 whitespace-nowrap ml-2">
+                                  {formatDuration(entry.value)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-[500px] text-gray-400 bg-white rounded-[20px] border border-gray-200">

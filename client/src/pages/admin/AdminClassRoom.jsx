@@ -4,7 +4,6 @@ import AdminNavbar from "../../components/AdminNavbar";
 import Classroom from "../../components/Classroom";
 import Breadcrumbs from "../../components/AdminBreadcrumbs";
 import { supabase } from "../../config/supabase";
-import Schedule from "../../components/schedule";
 
 const AdminClassRoom = () => {
   const location = useLocation();

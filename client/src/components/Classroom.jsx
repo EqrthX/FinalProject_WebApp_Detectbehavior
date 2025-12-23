@@ -1,206 +1,216 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { supabase } from "../config/supabase"; // ตรวจสอบว่า path นี้ถูกต้อง
+import { supabase } from "../config/supabase";
 import toast from "react-hot-toast";
 
 const Classroom = () => {
- const { id } = useParams(); // 'id' นี้คือ UUID ของอาจารย์
- const [schedule, setSchedule] = useState([]);
- const [teacherInfo, setTeacherInfo] = useState(null);
- const [loading, setLoading] = useState(true);
+  const { id } = useParams();
+  const [schedule, setSchedule] = useState([]);
+  const [teacherInfo, setTeacherInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
 
- // กำหนดวันและช่องเวลา (ใช้สำหรับ "สร้าง" แถวตาราง)
- const days = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์"];
- const timeSlots = [8, 9, 10, 11, 12, 13, 14, 15, 16];
+  // [ส่วนที่ 1] เพิ่ม State สำหรับเลือกเทอม
+  const [selectedTerm, setSelectedTerm] = useState("1");
 
- useEffect(() => {
-  const fetchSchedule = async () => {
-   if (!id) return;
-   setLoading(true);
+  const days = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์"];
+  const timeSlots = [8, 9, 10, 11, 12, 13, 14, 15, 16];
+  const START_MINUTES = 8 * 60;
+  const TOTAL_MINUTES = 9 * 60;
 
-   try {
-    // --- 1. ดึงข้อมูลอาจารย์ (รวมถึง 'teacher_id' ที่เป็นรหัส) ---
-    const { data: teacherData, error: teacherError } = await supabase
-     .from("teacher")
-     .select("teacher_id, first_name, last_name")
-     .eq("id", id) // 'id' คือ UUID
-     .single();
-
-    if (teacherError) throw new Error("ไม่พบข้อมูลอาจารย์: " + teacherError.message);
-    if (!teacherData) throw new Error("ไม่พบข้อมูลอาจารย์");
-
-    const teacherCode = teacherData.teacher_id; // รหัสอาจารย์ (เช่น '6200')
-    const teacherName = `${teacherData.first_name} ${teacherData.last_name}`;
-
-    // --- 2. ดึงตารางสอนโดยใช้ 'teacherCode' ---
-        // 💡 1. แก้ไขคำสั่ง Select:
-        //    (เนื่องจาก subject_name อยู่ในตารางนี้แล้ว)
-    const { data: scheduleData, error: scheduleError } = await supabase
-     .from("class_schedule")
-     .select("*") // <-- ดึงทุกคอลัมน์
-     .eq("teacher_id", teacherCode);
-
-    if (scheduleError) throw new Error("ไม่สามารถดึงตารางสอนได้: " + scheduleError.message);
-
-    if (scheduleData && scheduleData.length > 0) {
-     setSchedule(scheduleData);
-     setTeacherInfo({
-      name: scheduleData[0].teacher_name,
-      year: scheduleData[0].year,
-      semester: scheduleData[0].semester,
-     });
-    } else {
-     setSchedule([]);
-     setTeacherInfo({
-      name: teacherName,
-      year: "2568", // ค่า default
-      semester: "1", // ค่า default
-     });
-    }
-   } catch (err) {
-    console.error("Error fetching schedule:", err);
-    toast.error(err.message || "เกิดข้อผิดพลาดในการดึงข้อมูล");
-   } finally {
-    setLoading(false);
-   }
+  const timeToMinutes = (timeStr) => {
+    if (!timeStr) return 0;
+    const [h, m] = timeStr.split(":").map(Number);
+    return h * 60 + m;
   };
 
-  fetchSchedule();
- }, [id]);
+  // [ส่วนที่ 2] เพิ่ม selectedTerm ใน dependency array
+  useEffect(() => {
+    const fetchSchedule = async () => {
+      if (!id) return;
+      setLoading(true);
 
- const handleCourseClick = (subjectId) => {
-  console.log("คลิกวิชา:", subjectId);
- };
+      try {
+        const { data: teacherData, error: teacherError } = await supabase
+          .from("teacher")
+          .select("teacher_id, first_name, last_name")
+          .eq("id", id)
+          .single();
 
- // Function หลักในการสร้างตาราง
- const renderTableBody = () => {
-  if (loading) {
-   return (
-    <tr>
-     <td colSpan="10" className="text-center p-8 text-gray-500">
-      กำลังโหลดข้อมูลตารางสอน...
-     </td>
-    </tr>
-   );
-  }
-  if (schedule.length === 0 && teacherInfo) {
-   return (
-    <tr>
-     <td colSpan="10" className="text-center p-8 text-gray-500">
-      ไม่พบข้อมูลตารางสอนสำหรับ อ. {teacherInfo.name}
-     </td>
-    </tr>
-   );
-  }
+        if (teacherError) throw new Error("ไม่พบข้อมูลอาจารย์: " + teacherError.message);
+        if (!teacherData) throw new Error("ไม่พบข้อมูลอาจารย์");
 
-  return days.map((day) => {
+        const teacherCode = teacherData.teacher_id;
+        const teacherName = `${teacherData.first_name} ${teacherData.last_name}`;
 
-   const classesForDay = schedule
-    .filter((item) => {
-     if (!item.day) return false;
-     // กรองด้วย String "อังคาร" === "อังคาร"
-     return String(item.day).trim() === day;
-    })
-    .sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
+        // [ส่วนที่ 3] เพิ่มเงื่อนไข .eq("semester", selectedTerm)
+        const { data: scheduleData, error: scheduleError } = await supabase
+          .from("class_schedule")
+          .select("*")
+          .eq("teacher_id", teacherCode)
+          .eq("semester", selectedTerm); // กรองตามเทอมที่เลือก
 
-   const cells = [];
-   let slotIndex = 0;
+        if (scheduleError) throw new Error("ไม่สามารถดึงตารางสอนได้: " + scheduleError.message);
 
-   while (slotIndex < timeSlots.length) {
-    const currentSlotHour = timeSlots[slotIndex];
+        // อัปเดตข้อมูล (ใช้ปีจากข้อมูลที่ดึงมา หรือ default แต่ใช้เทอมจาก state)
+        if (scheduleData && scheduleData.length > 0) {
+          setSchedule(scheduleData);
+          setTeacherInfo({
+            name: teacherName, // ใช้ชื่อที่ดึงมาเองชัวร์กว่า
+            year: scheduleData[0].year,
+            semester: selectedTerm,
+          });
+        } else {
+          setSchedule([]);
+          setTeacherInfo({
+            name: teacherName,
+            year: "2568",
+            semester: selectedTerm,
+          });
+        }
+      } catch (err) {
+        console.error("Error fetching schedule:", err);
+        toast.error(err.message || "เกิดข้อผิดพลาดในการดึงข้อมูล");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    const classItem = classesForDay.find(
-     (c) => c.start_time && parseInt(c.start_time.split(":")[0]) === currentSlotHour
-    );
+    fetchSchedule();
+  }, [id, selectedTerm]); // เมื่อ id หรือ selectedTerm เปลี่ยน ให้โหลดใหม่
 
-    if (classItem) {
-     const startHour = parseInt(classItem.start_time.split(":")[0]);
-     const endHour = classItem.end_time ? parseInt(classItem.end_time.split(":")[0]) : startHour + 1;
+  const handleCourseClick = (subjectId) => {
+    console.log("คลิกวิชา:", subjectId);
+  };
 
-     const colSpan = endHour - startHour;
-     const finalColSpan = colSpan > 0 ? colSpan : 1;
+  const renderTableBody = () => {
+    if (loading) return <tr><td colSpan="10" className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr>;
+    if (schedule.length === 0) return <tr><td colSpan="10" className="p-8 text-center text-gray-500">ไม่พบข้อมูลในเทอม {selectedTerm}</td></tr>;
 
-     cells.push(
-      <td
-       key={classItem.subject_id + classItem.group}
-       colSpan={finalColSpan}
-       className="bg-yellow-400 text-sm cursor-pointer hover:bg-orange-500 transition-colors p-2 border border-gray-300 align-top text-center "
-       onClick={() => handleCourseClick(classItem.subject_id)}
-      >
-                {/* 💡 2. แสดงผลชื่อวิชา (แบบเข้าถึงตรงๆ) */}
-       <u>{classItem.subject_id}</u> <br />
-                <span >
-                  {classItem.subject_name || "(ไม่พบชื่อวิชา)"}
-                </span> <br />
-       กลุ่ม {classItem.group} | ห้อง {classItem.room} <br />
-       [{classItem.start_time} - {classItem.end_time}]
-      </td>
-     );
+    return days.map((day) => {
+        const classes = schedule
+            .filter((item) => String(item.day).trim() === day)
+            .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
-     slotIndex += finalColSpan;
-    } else {
-     cells.push(
-      <td
-       key={`${day}-${currentSlotHour}`}
-       className="border border-gray-300"
-      ></td>
-     );
-     slotIndex++;
-    }
-   }
+        return (
+            <tr key={day} className="h-24 border-b border-gray-200">
+                <td className="bg-gray-100 border-r border-gray-300 p-2 font-semibold text-gray-700 w-24 align-middle">
+                    {day}
+                </td>
+                <td colSpan={9} className="p-0 relative align-top h-full">
+                    <div className="absolute inset-0 flex w-full h-full pointer-events-none z-0">
+                        {timeSlots.map((_, i) => (
+                            <div key={i} className={`flex-1 border-r border-gray-200 ${i === timeSlots.length - 1 ? 'border-none' : ''}`}></div>
+                        ))}
+                    </div>
+                    <div className="relative w-full h-full min-h-[96px] z-10"> 
+                        {classes.map((item, idx) => {
+                            const startMin = timeToMinutes(item.start_time);
+                            const endMin = timeToMinutes(item.end_time);
+                            const duration = endMin - startMin;
+                            const widthPercent = (duration / TOTAL_MINUTES) * 100;
+                            const leftPercent = ((startMin - START_MINUTES) / TOTAL_MINUTES) * 100;
+                            const overlappingItems = classes.filter(c => 
+                                c.start_time === item.start_time && c.end_time === item.end_time
+                            );
+                            const totalOverlaps = overlappingItems.length;
+                            const myIndexInOverlap = overlappingItems.indexOf(item);
+                            const heightPercent = 100 / totalOverlaps;
+                            const topPercent = heightPercent * myIndexInOverlap;
 
-   return (
-    <tr key={day}>
-     <td className="bg-gray-100 border border-gray-300 p-1">{day}</td>
-     {cells}
-    </tr>
-   );
-  });
- };
+                            return (
+                                <div
+                                    key={idx}
+                                    onClick={() => handleCourseClick(item.subject_id)}
+                                    className="absolute bg-yellow-400 hover:bg-orange-500 hover:text-white 
+                                               border border-gray-300 shadow-sm cursor-pointer 
+                                               flex flex-col justify-center items-center text-center 
+                                               rounded-sm overflow-hidden p-1 transition-all hover:z-50"
+                                    style={{
+                                        left: `${leftPercent}%`,
+                                        width: `${widthPercent}%`,
+                                        height: `${heightPercent}%`,
+                                        top: `${topPercent}%`,
+                                        zIndex: 10 + myIndexInOverlap 
+                                    }}
+                                    title={`${item.subject_name} (${item.start_time} - ${item.end_time})`}
+                                >
+                                    <div className="flex flex-col justify-center h-full w-full">
+                                        <u className="font-bold text-m">{item.subject_id}</u>
+                                        <span className="font-medium text-[13px] truncate w-full px-1 block">
+                                            {item.subject_name || "(ไม่มีชื่อ)"}
+                                        </span>
+                                        {totalOverlaps <= 2 && (
+                                            <div className="text-[11px] leading-tight mt-0.5 opacity-90 hidden sm:block ">
+                                                <div>กลุ่ม {item.group} | {item.room}</div>
+                                                <div>[{item.start_time} - {item.end_time}]</div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </td>
+            </tr>
+        );
+    });
+  };
 
- return (
-  <div className="">
-   <div className="col-span-2 bg-white rounded-2xl p-6 ">
-    <h2 className="flex items-center space-x-2 text-lg font-semibold text-black mb-4">
-     <span>📅</span>
-     <span>
-      ตารางสอน {teacherInfo && `(อ. ${teacherInfo.name})`}
-     </span>
-    </h2>
-    <h2 className="flex justify-center items-center gap-20">
-     <span>ปีการศึกษา </span>
-     <b>
-      <u>{teacherInfo ? teacherInfo.year : "..."}</u>
-     </b>
-     <span>ภาคการศึกษา</span>
-     <b>
-      <u>{teacherInfo ? teacherInfo.semester : "..."}</u>
-     </b>
-    </h2>
+  return (
+    <div className="">
+      <div className="col-span-2 bg-white rounded-2xl p-6 ">
+        <h2 className="flex items-center space-x-2 text-lg font-semibold text-black mb-4">
+          <span>📅</span>
+          <span>
+            ตารางสอน {teacherInfo && `(อ. ${teacherInfo.name})`}
+          </span>
+        </h2>
+        
+        <h2 className="flex justify-center items-center gap-20">
+          <div className="flex gap-2">
+             <span>ปีการศึกษา </span>
+             <b className="text-[#38A738]"><u>{teacherInfo ? teacherInfo.year : "..."}</u></b>
+          </div>
+          
+          {/* [ส่วนที่ 4] แก้ไข UI ส่วนเลือกภาคการศึกษา */}
+          <div className="flex gap-2 items-center">
+             <span>ภาคการศึกษา</span>
+             <div className="flex space-x-2 bg-gray-100 px-2 py-1 rounded-lg">
+                {["1", "2", "3"].map((term) => (
+                    <button
+                        key={term}
+                        onClick={() => setSelectedTerm(term)}
+                        className={`font-bold px-2 rounded-md transition-all ${
+                            selectedTerm === term
+                                ? "text-[#38A738] underline cursor-default bg-white shadow-sm"
+                                : "text-gray-400 hover:text-gray-600 hover:bg-gray-200"
+                        }`}
+                    >
+                        {term}
+                    </button>
+                ))}
+             </div>
+          </div>
+        </h2>
 
-    <table className="w-full text-center border-collapse border border-gray-300 mt-10">
-     <thead>
-      <tr className="bg-gray-200">
-       <th className="border border-gray-300 p-0.5">Day/Time</th>
-       <th className="border border-gray-300 p-0.5">8:00-9:00</th>
-       <th className="border border-gray-300 p-0.5">9:00-10:00</th>
-       <th className="border border-gray-300 p-0.5">10:00-11:00</th>
-       <th className="border border-gray-300 p-0.5">11:00-12:00</th>
-       <th className="border border-gray-300 p-0.5">12:00-13:00</th>
-       <th className="border border-gray-300 p-0.5">13:00-14:00</th>
-       <th className="border border-gray-300 p-0.5">14:00-15:00</th>
-       <th className="border border-gray-300 p-0.5">15:00-16:00</th>
-       <th className="border border-gray-300 p-0.5">16:00-17:00</th>
-      </tr>
-     </thead>
-     <tbody>
-      {/* Render ตารางแบบไดนามิก */}
-      {renderTableBody()}
-     </tbody>
-    </table>
-   </div>
-  </div>
- );
+        <table className="w-full text-center border-collapse border border-gray-300 mt-10 table-fixed">
+          <thead>
+            <tr className="bg-gray-200">
+              <th className="border border-gray-300 p-0.5 w-24">Day/Time</th>
+              {timeSlots.map((t) => (
+                  <th key={t} className="border border-gray-300 p-0.5">
+                      {t}:00-{t+1}:00
+                  </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {renderTableBody()}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 };
 
 export default Classroom;

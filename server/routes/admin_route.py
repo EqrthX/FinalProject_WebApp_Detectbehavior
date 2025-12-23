@@ -1,90 +1,66 @@
 # นำเข้าเครื่องมือจาก FastAPI
-from fastapi import APIRouter, HTTPException, Form
+from fastapi import APIRouter, HTTPException, Body 
+from pydantic import BaseModel # 1. เพิ่ม import BaseModel
 
 # นำเข้า Supabase client (ใช้เชื่อมกับฐานข้อมูลและระบบ Auth)
-from config.bn_supabase import supabase_client
+from config.bn_supabase import supabase_client, supabase_admin 
 
 # สร้าง Router สำหรับกลุ่ม API ที่เกี่ยวกับ Admin 
 # prefix = จะทำให้ endpoint นี้ขึ้นต้นด้วย /api/admin
 admin_route = APIRouter(prefix="/api/admin", tags=["Admin"])
 
+# 2. สร้าง Schema สำหรับรับข้อมูล JSON
+class TeacherCreateSchema(BaseModel):
+    email: str
+    password: str
+    teacher_id: str
+    fullname: str
+    major_id: str  # ตั้งชื่อให้ตรงกับ Frontend และ Database (snake_case)
 
-# ----------------------------- #
-# 📌 API: เพิ่มอาจารย์ใหม่ลงระบบ
-# URL: POST /api/admin/create-teacher
-# ----------------------------- #
 @admin_route.post("/create-teacher")
-async def create_teacher(
-    # ในการส่งข้อมูลแบบ Form (เช่น ผ่านหน้าเว็บ)
-    # ต้องใช้ Form() เพื่อให้ FastAPI รู้ว่ารับค่าจากฟอร์ม
-    email: str = Form(),
-    password: str = Form(),
-    teacher_id: str = Form(),
-    fullname: str = Form(),
-    major: str = Form()
-):
+async def create_teacher(teacher: TeacherCreateSchema): # 3. รับค่าผ่าน Schema
     try:
-        # พิมพ์ให้ดูใน Terminal ว่าได้รับค่าอะไรมา (ช่วย debug)
-        print("email", email)
-        print("password", password)
-        print("teacher_id", teacher_id)
-        print("fullname", fullname)
-        print("major", major)
+        if not supabase_admin:
+            raise Exception("Service Role Key missing on Server")
 
-        # ----------------------------------------------------
-        # 1) ⭐ สร้างบัญชีผู้ใช้ใน Supabase Auth (ส่วน Login)
-        # ----------------------------------------------------
-        # ใช้สิทธิ์ admin.create_user เพื่อสร้างบัญชีใหม่
-        auth_response = supabase_client.auth.admin.create_user(
+        # 4. เวลาเรียกใช้ตัวแปร ต้องเรียกผ่าน teacher.xxx
+        auth_response = supabase_admin.auth.admin.create_user(
             attributes={
-                "email": email,            # อีเมลที่จะใช้ Login
-                "password": password,      # รหัสผ่าน
-                "email_confirm": True      # ยืนยันอีเมลอัตโนมัติ (ไม่ต้องเช็ค email)
+                "email": teacher.email,
+                "password": teacher.password,
+                "email_confirm": True,
+                "user_metadata": { "fullname": teacher.fullname }
             }
         )
 
         # ได้ผลลัพธ์เป็น object ของ user ที่เพิ่งถูกสร้าง
         new_user = auth_response.user
-
-        # ถ้า new_user = None แปลว่าการสร้าง user ล้มเหลว
-        if not new_user:
-            raise HTTPException(status_code=400, detail="❌ ฟังก์ชั่น create teacher ผิดพลาด")
-
-        # ----------------------------------------------------
-        # 2) ⭐ แยกชื่อเต็มของอาจารย์เป็นชื่อจริง + นามสกุล
-        # ----------------------------------------------------
-        # fullname เช่น "สมชาย ใจดี"
-        name_part = fullname.split(" ")   # แยกเป็น ["สมชาย", "ใจดี"]
-
-        first_name = name_part[0]         # ชื่อจริง = "สมชาย"
         
-        # ถ้ามีมากกว่า 1 คำ ให้ต่อที่เหลือเป็นนามสกุล
-        # ถ้าไม่มี ให้เป็น string ว่าง
-        last_name = " ".join(name_part[1:]) if len(name_part) > 1 else ""
+        if not new_user:
+            raise Exception("ไม่สามารถสร้าง User Auth ได้")
 
-        # ----------------------------------------------------
-        # 3) ⭐ เตรียมข้อมูลเพื่อเก็บลง Table "teacher"
-        # ----------------------------------------------------
+        # แยกชื่อ-นามสกุล
+        name_parts = teacher.fullname.strip().split(" ") 
+        first_name = name_parts[0] 
+        last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+
+        # เตรียมข้อมูลลง DB
         profile_data = {
-            "id": new_user.id,      # ใช้ UUID เดียวกับระบบ Auth
-            "teacher_id": teacher_id,   # รหัสอาจารย์ที่ Admin ป้อน
-            "first_name": first_name,   # ชื่อจริง
-            "last_name": last_name,     # นามสกุล
-            "major_id": major           # สาขาวิชา
+            "id": new_user.id,
+            "teacher_id": teacher.teacher_id,
+            "first_name": first_name,
+            "last_name": last_name,
+            "major_id": teacher.major_id # ตรงนี้ชื่อตรงกันแล้ว ไม่สับสน
         }
-
-        # ----------------------------------------------------
-        # 4) ⭐ บันทึกข้อมูลลง Supabase Table "teacher"
-        # ----------------------------------------------------
-        result = supabase_client.table("teacher").insert(profile_data).execute()
+        
+        result = supabase_admin.table("teacher").insert(profile_data).execute()
 
         # ถ้า insert สำเร็จ result.data จะมีข้อมูลกลับมา
         if result.data:
             return {"status": "success", "detail": "เพิ่มอาจารย์เสร็จสิ้น"}
         else:
-            # ถ้า insert ไม่สำเร็จ แสดง error ที่มาจาก result.error
-            raise HTTPException(status_code=400, detail=f"Insert failed: {result.error}")
+            return {"status": "success", "detail": "เพิ่มอาจารย์เสร็จสิ้น (No data returned)"}
 
     except Exception as e:
-        # ดักจับ error ทั้งหมด แล้วส่งกลับเป็นข้อความ
+        print(f"Error Create Teacher: {e}") 
         raise HTTPException(status_code=400, detail=str(e))

@@ -1,24 +1,14 @@
-import React, { useState, useEffect } from "react"; 
+import React, { useState, useEffect } from "react";
 import AdminNavbar from "../../components/AdminNavbar";
 import Adminsubject from "../../components/Adminsubject";
 import AdminChart from "../../components/AdminChart";
-import { Select } from "antd";
-// 🔑 นำเข้า Supabase
-import { supabase } from "../../config/supabase.js"; 
+import { supabase } from "../../config/supabase.js";
 
 const AdminHomePage = () => {
-  // 🔑 State สำหรับเก็บหมวดหมู่ที่ถูกเลือกในการกรอง (คงไว้เผื่อใช้ใน Chart/Subject)
-  const [selectedCategory, setSelectedCategory] = useState("all"); 
-  
-  // 🎯 รายชื่อหมวดหมู่สำหรับการกรอง (คงไว้ แต่ไม่ได้ใช้ใน UI)
-  const categoryOptions = [
-    { value: "all", label: "ทั้งหมด" },
-    { value: "faculty", label: "คณะ" },
-    { value: "subject", label: "วิชา" },
-    { value: "teacher", label: "อาจารย์" },
-  ];
-  
-  // 🔑 State ใหม่สำหรับเก็บจำนวนรวมจาก DB
+  // 🔑 State สำหรับเก็บหมวดหมู่ที่ถูกเลือก
+  const [selectedCategory, setSelectedCategory] = useState("all");
+
+  // 🔑 State สำหรับเก็บจำนวนรวม
   const [summaryCounts, setSummaryCounts] = useState({
     totalFaculties: 0,
     totalSubjects: 0,
@@ -26,32 +16,21 @@ const AdminHomePage = () => {
     isLoading: true,
   });
 
-  // ------------------------------------
-  // 🔥 ฟังก์ชันดึงจำนวนรวม (Summary Counts)
-  // ------------------------------------
+  // --- Fetch Data Function (เหมือนเดิม) ---
   const fetchSummaryCounts = async () => {
-    setSummaryCounts(prev => ({ ...prev, isLoading: true }));
-    
+    setSummaryCounts((prev) => ({ ...prev, isLoading: true }));
     try {
-      // 1. นับจำนวนคณะ (Faculty)
-      const { count: facultyCount, error: facultyError } = await supabase
-        .from('faculty') 
-        .select('*', { count: 'exact', head: true });
+      const { count: facultyCount, error: fErr } = await supabase
+        .from("faculty")
+        .select("*", { count: "exact", head: true });
+      const { count: subjectCount, error: sErr } = await supabase
+        .from("subjects")
+        .select("*", { count: "exact", head: true });
+      const { count: teacherCount, error: tErr } = await supabase
+        .from("teacher")
+        .select("*", { count: "exact", head: true });
 
-      // 2. นับจำนวนวิชา (Subjects)
-      const { count: subjectCount, error: subjectError } = await supabase
-        .from('subjects') 
-        .select('*', { count: 'exact', head: true });
-
-      // 3. นับจำนวนอาจารย์ (Teacher)
-      const { count: teacherCount, error: teacherError } = await supabase
-        .from('teacher') 
-        .select('*', { count: 'exact', head: true });
-        
-      if (facultyError || subjectError || teacherError) {
-        console.error("Error fetching summary counts:", facultyError || subjectError || teacherError);
-        // แสดง error ใน console เพื่อการ debug RLS
-      }
+      if (fErr || sErr || tErr) console.error("Error fetching counts");
 
       setSummaryCounts({
         totalFaculties: facultyCount || 0,
@@ -59,21 +38,16 @@ const AdminHomePage = () => {
         totalTeachers: teacherCount || 0,
         isLoading: false,
       });
-
     } catch (e) {
-      console.error("General error during count fetch:", e);
-      setSummaryCounts(prev => ({ ...prev, isLoading: false }));
+      console.error("General error:", e);
+      setSummaryCounts((prev) => ({ ...prev, isLoading: false }));
     }
   };
 
-  // 🔑 เรียกใช้เมื่อ Component โหลดครั้งแรก
   useEffect(() => {
     fetchSummaryCounts();
   }, []);
 
-  // ------------------------------------
-  // 🎯 รายการที่จะถูก Map เพื่อแสดงในกล่องสรุป
-  // ------------------------------------
   const summaryItems = [
     { title: "คณะทั้งหมด", value: summaryCounts.totalFaculties },
     { title: "วิชาทั้งหมด", value: summaryCounts.totalSubjects },
@@ -81,73 +55,62 @@ const AdminHomePage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-4 p-4">
-      {/* Sidebar */}
-      <aside className="w-full md:w-64">
+    // 🟢 1. Main Container: ใช้ h-screen + overflow-hidden (เหมือนหน้าตารางสอน)
+    // เพื่อให้ Navbar อยู่กับที่ และไม่เกิด Scrollbar ซ้อน
+    <div className="h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-1 p-4 overflow-hidden">
+      {/* Sidebar: Fix ขนาดให้เท่าหน้าอื่น */}
+      <aside className="w-full md:w-64 shrink-0">
         <AdminNavbar />
       </aside>
 
-      {/* Main */}
-      <main
-        className="flex-1 transition-all lg:pl-[0rem] md:pl-0 sm:pl-0 h-full overflow-y-auto"
-      >
-        <div className="max-w-screen-2xl mx-auto px-6 md:px-4">
-          {/* Top bar (Header เหมือนหน้า รายวิชา) */}
+      {/* 🟢 2. Main Content: ให้ Scrollbar อยู่ที่นี่แทน (overflow-y-auto) */}
+      <main className="flex-1 transition-all h-full overflow-y-auto">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-4 pb-10 mt-5">
+          {/* Top bar (Dashboard Header) */}
           <div
             className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm 
                     h-20 md:h-16 px-6 flex items-center justify-start 
-                    sticky top-[20px] z-30" 
+                    sticky top-[0px] z-30 mb-4"
+            // 🟢 เปลี่ยน top-[20px] เป็น top-[0px] เพราะเรา scroll ใน main container แล้ว
           >
             <h1 className="text-[22px] md:text-[18px] font-semibold text-black ">
               Dashboard
             </h1>
           </div>
 
-          {/* เนื้อหา */}
-          <div
-            className="
-                grid gap-10 
-                grid-cols-1 md:grid-cols-2
-                items-start
-                max-w-screen-2xl mx-auto mt-9
-              "
-          >
-            <div>
+          {/* เนื้อหา Grid */}
+          <div className="grid gap-6 lg:gap-10 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 items-start mt-4">
+            {/* กล่องกราฟ */}
+            <div className="lg:col-span-2 w-full">
               <AdminChart selectedCategory={selectedCategory} />
             </div>
 
-            <div>
+            {/* กล่องรายวิชา */}
+            <div className="w-full">
               <Adminsubject selectedCategory={selectedCategory} />
             </div>
 
             {/* กล่องสรุปจำนวน */}
-            <div
-            className="flex flex-wrap justify-start gap-10 w-full col-span-full md:col-span-2"
-          >
-            {summaryCounts.isLoading ? (
+            <div className="flex flex-wrap justify-start gap-6 w-full col-span-full md:col-span-2 mt-4">
+              {summaryCounts.isLoading ? (
                 <div className="flex w-full justify-center p-8 text-gray-500">
-                    กำลังโหลดข้อมูล...
+                  กำลังโหลดข้อมูล...
                 </div>
-            ) : (
+              ) : (
                 summaryItems.map((item, i) => (
-                    <div
-                        key={i}
-                        className="
-                          min-w-[200px] flex-1 
-                          bg-white rounded-[20px] border border-[#e9e9e9]
-                          p-6 shadow-sm flex flex-col items-start 
-                          transition-all
-                        "
-                        >
-                        <h2 className="text-sm font-medium text-gray-700 mb-1">
-                            {item.title}
-                        </h2>
-                        <p className="text-3xl font-bold text-[#3D42D3]">
-                            {item.value}
-                        </p>
-                    </div>
+                  <div
+                    key={i}
+                    className="min-w-[200px] flex-1 bg-white rounded-[20px] border border-[#e9e9e9] p-6 shadow-sm flex flex-col items-center justify-center text-center transition-all"
+                  >
+                    <p className="text-3xl font-bold text-[#3D42D3]">
+                      {item.value}
+                    </p>
+                    <h2 className="text-sm font-medium text-gray-700 mb-1">
+                      {item.title}
+                    </h2>
+                  </div>
                 ))
-            )}
+              )}
             </div>
           </div>
         </div>

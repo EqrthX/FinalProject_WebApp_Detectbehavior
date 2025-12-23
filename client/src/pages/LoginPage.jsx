@@ -3,7 +3,6 @@ import BG from "../assets/backgroud.png";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "../util/axios.js";
 import toast from "react-hot-toast";
-import HomePage from "./user/HomePage.jsx";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 
 const LoginPage = () => {
@@ -14,7 +13,7 @@ const LoginPage = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [showPassword, setShowPassword] = useState(false); // <-- 2. เพิ่ม State สำหรับสลับ
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -42,7 +41,7 @@ const LoginPage = () => {
       });
       const data = res.data;
 
-      toast.success(`เข้าสู่ระบบสำเร็จ ✅`);
+      toast.success(`เข้าสู่ระบบสำเร็จ`);
 
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("role", data.role);
@@ -55,7 +54,7 @@ const LoginPage = () => {
       else setErrorMessage("ไม่พบสิทธิ์ของผู้ใช้บัญชีนี้");
     } catch (error) {
       console.error(error);
-      toast.error(error.response?.data?.detail || "เข้าสู่ระบบไม่สำเร็จ ❌");
+      toast.error(error.response?.data?.detail || "เข้าสู่ระบบไม่สำเร็จ");
     } finally {
       setIsLoading(false);
     }
@@ -114,11 +113,7 @@ const LoginPage = () => {
                 onClick={() => setShowPassword(!showPassword)} // <-- สลับค่า State
                 className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700"
               >
-                {showPassword ? (
-                  <FaEyeSlash size={20} />
-                ) : (
-                  <FaEye size={20} />
-                )}
+                {showPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
               </button>
             </div>
           </div>

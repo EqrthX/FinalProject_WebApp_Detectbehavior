@@ -9,23 +9,23 @@ from supabase import create_client, Client
 # นำเข้าโมดูล os เพื่ออ่านค่าตัวแปรสภาพแวดล้อม (environment variables)
 import os
 
-# เรียกฟังก์ชัน load_dotenv() เพื่อโหลดข้อมูลจากไฟล์ .env
-# เช่น SUPABASE_URL=..., SUPABASE_KEY=...
-# หลังจากนี้เราจะสามารถอ่านค่านี้ด้วย os.getenv()
+# 1. โหลดค่าจาก .env ทันที
 load_dotenv()
 
-# อ่านค่าตัวแปร SUPABASE_URL จากไฟล์ .env
-# เป็น URL สำหรับเชื่อมต่อ Supabase project ของเรา
+# 2. ดึงค่าตัวแปร
 SUPABASE_URL: str | None = os.getenv("SUPABASE_URL")
 
-# อ่านค่าตัวแปร SUPABASE_KEY จากไฟล์ .env
-# KEY นี้คือ service role key หรือ anon key (ขึ้นอยู่กับว่าใช้ตัวไหน)
-# ใช้เป็นรหัสลับให้โปรแกรมสามารถเชื่อมต่อ Supabase ได้
-SUPABASE_KEY: str | None = os.getenv("SUPABASE_KEY")
+# 🟢 เพิ่มบรรทัดนี้: ดึง Key ลับ (Service Role)
+SUPABASE_SERVICE_ROLE_KEY: str | None = os.getenv("SUPABASE_SERVICE_KEY")
 
-# สร้างตัวเชื่อมต่อ supabase client
-# create_client( URL, KEY ) จะคืน object ที่เราสามารถใช้:
-#   - เข้าถึง Auth (สมัครสมาชิก / login)
-#   - เข้าถึง Database (insert, select, update, delete)
-#   - ทำงานกับ Storage (อัปโหลดรูป)
-supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# 3. สร้าง Client
+# ตัวที่ 1: Client ทั่วไป (ใช้ Key ปกติ)
+supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+# 🟢 ตัวที่ 2: Client แอดมิน (ใช้ Service Key) - ต้องมีตัวนี้ถึงจะสร้าง User ได้!
+# เราจะเช็คก่อนว่ามี Key ไหม เพื่อกัน Error
+if SUPABASE_SERVICE_ROLE_KEY:
+    supabase_admin: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+else:
+    print("⚠️ Warning: ไม่พบ SUPABASE_SERVICE_ROLE_KEY ในไฟล์ .env")
+    supabase_admin = None

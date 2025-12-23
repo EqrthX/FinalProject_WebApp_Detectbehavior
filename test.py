@@ -1,9 +1,9 @@
+from PIL import Image   # ✅ ใช้ PIL แทน tkinter
 import pillow_heif
-from PIL import Image
 import os
 
-# ตรวจว่าไฟล์ .ftyp เป็น HEIC จริงไหม
 def is_heic_file(path):
+    """เช็คว่าไฟล์ .ftyp เป็น HEIC/HEIF จริงไหม (กันไฟล์อื่นที่บังเอิญลงท้าย .ftyp)"""
     try:
         with open(path, "rb") as f:
             header = f.read(32)
@@ -15,14 +15,14 @@ def is_heic_file(path):
 def load_any_image(path):
     """
     โหลดรูปภาพรองรับ:
-    - HEIC (ผ่าน pillow_heif)
-    - JFIF (ผ่าน PIL)
+    - HEIC/HEIF/FTYP (ผ่าน pillow_heif)
+    - JFIF
     - PNG, JPG, JPEG
     """
     ext = os.path.splitext(path)[1].lower()
 
-    # HEIC/FTYP check
-    if ext == ".ftyp" or ext == ".heic" or ext == ".heif":
+    # HEIC / HEIF / FTYP
+    if ext in [".heic", ".heif", ".ftyp"]:
         heif_file = pillow_heif.read_heif(path)
         primary_image = heif_file[0]
         return Image.frombytes(
@@ -32,7 +32,7 @@ def load_any_image(path):
             "raw",
         )
 
-    # JFIF, JPG, PNG
+    # JFIF, JPG, PNG, JPEG
     return Image.open(path)
 
 
@@ -47,12 +47,11 @@ def convert_to_jpg(input_file, output_file):
         return False
 
 
-# ------------------------
-#     MAIN LOOP
-# ------------------------
+input_directory = "Earth"
+output_directory = "convert"
 
-input_directory = "big"
-output_directory = "big"
+# สร้างโฟลเดอร์ปลายทางถ้ายังไม่มี
+os.makedirs(output_directory, exist_ok=True)
 
 contents = os.listdir(input_directory)
 files_to_convert = []
@@ -60,7 +59,8 @@ files_to_convert = []
 for item in contents:
     ext = item.lower()
 
-    if ext.endswith((".jfif", ".ftyp")):
+    # ✅ ตอนนี้รองรับทั้ง .jfif, .heic, .heif, .ftyp
+    if ext.endswith((".jfif", ".heic", ".heif", ".ftyp")):
         full_path = os.path.join(input_directory, item)
 
         # กรณี .ftyp ต้องเช็คว่าเป็น HEIC จริงไหม
@@ -78,7 +78,10 @@ deleted = 0
 
 for file_name in files_to_convert:
     input_path = os.path.join(input_directory, file_name)
-    output_path = os.path.join(input_directory, os.path.splitext(file_name)[0] + ".jpg")
+    output_path = os.path.join(
+        output_directory,  # ✅ เซฟไปโฟลเดอร์ convert
+        os.path.splitext(file_name)[0] + ".jpg"
+    )
 
     print(f"Converting: {file_name}")
 

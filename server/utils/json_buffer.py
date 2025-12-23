@@ -1,16 +1,16 @@
-import json, os
+import json, os, glob
 from datetime import datetime
 
+# หา path โฟลเดอร์ jsonlogs
+def get_json_dir():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    server_dir = os.path.dirname(base_dir)
+    buffer_dir = os.path.join(server_dir, "jsonlogs")
+    os.makedirs(buffer_dir, exist_ok=True)
+    return buffer_dir
 
-# ------------------------------------------------------------
-# 📌 ฟังก์ชัน: get_buffer_file(camera_id)
-# ใช้สำหรับหา "ตำแหน่งไฟล์ .json" ที่เก็บข้อมูลของกล้องแต่ละตัว
-# เช่น camera_1.json, camera_2.json, ...
-# ------------------------------------------------------------
-def get_buffer_file(camera_id: str):
-    # __file__ คือ path ของไฟล์นี้เอง (json_buffer.py)
-    # os.path.abspath(__file__) → path เต็มของไฟล์นี้
-    # os.path.dirname → โฟลเดอร์ที่ไฟล์นี้อยู่
+# สร้างไฟล์สำหรับเก็บข้อมูลลง json แยกเป็นของแต่ละกล้อง
+def get_buffer_file(camera_id: str, teacher_id: str, subject_id: str, group):
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
     # server_dir = โฟลเดอร์แม่ของ base_dir
@@ -19,68 +19,49 @@ def get_buffer_file(camera_id: str):
 
     # สร้างโฟลเดอร์ jsonlogs ในโฟลเดอร์ server
     buffer_dir = os.path.join(server_dir, "jsonlogs")
-    os.makedirs(buffer_dir, exist_ok=True)  # สร้างถ้าไม่มี
+    os.makedirs(buffer_dir, exist_ok=True)
+    return os.path.join(buffer_dir, f"camera_{int(camera_id) + 1}_{teacher_id}_{subject_id}_{group}.json")
 
-    # คืนค่า path ของไฟล์ json ตามหมายเลขกล้อง
-    # +1 เพื่อให้กล้องนับเริ่มที่ 1 เช่น camera_1.json
-    return os.path.join(buffer_dir, f"camera_{int(camera_id) + 1}.json")
-
-
-# ------------------------------------------------------------
-# 📌 ฟังก์ชัน: save_buffer()
-# ทำหน้าที่: “เก็บผลสรุป 1 นาที” ลงไฟล์ JSON ชั่วคราว
-# เช่น ATT = 0.65, NON = 0.30, class_json = {...}
-# ------------------------------------------------------------
-def save_buffer(camera_id: str, cam_state, ATT, NON, class_json, subject_id: str):
-    path = get_buffer_file(camera_id)  # หาไฟล์ json ของกล้องนี้ก่อน
+# -----------------------------------------------------------
+# 2. ฟังก์ชัน Save (ใช้โค้ดที่คุณเขียนมาได้เลย + ปรับนิดหน่อย)
+# -----------------------------------------------------------
+def save_buffer(camera_id: str, teacher_id, ATT, NON, class_json, subject_id: str, group, class_duration):
+    # เรียกใช้ get_buffer_file เพื่อได้ path ที่ถูกต้อง
+    path = get_buffer_file(camera_id, teacher_id=teacher_id, subject_id=subject_id, group=group)
 
     # ถ้าไฟล์มีอยู่แล้ว → โหลดข้อมูลเดิมขึ้นมา (append เพิ่ม)
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     else:
-        # ถ้าเป็นไฟล์ใหม่ → สร้างโครง JSON เริ่มต้น
         data = {
             "camera_id": int(camera_id) + 1,
-            "teacher_id": cam_state["teacher_id"],  # ใครเป็นคนสอน
-            "subject_id": subject_id,              # วิชาอะไร
-            "records": []                           # เก็บข้อมูลรายนาที
+            "teacher_id": teacher_id,
+            "subject_id": subject_id,
+            "group": group,
+            "records": []   
         }
     
     # บันทึกข้อมูลเพิ่มเข้าไปใน records (คล้ายการเพิ่ม 1 รายการ)
     data["records"].append({
-        "created_at": datetime.now().astimezone().isoformat(),  # เวลาปัจจุบันแบบ ISO
-        "Attention": round(ATT, 3),        # ค่า Attention เช่น 0.682
-        "Non_Attention": round(NON, 3),    # ค่า Non_Attention
-        "class_json": class_json,          # รายละเอียด class แบบเต็ม
+        "created_at": datetime.now().astimezone().isoformat(),
+        "Attention": round(ATT, 3),
+        "Non_Attention": round(NON, 3),
+        "class_json": class_json,
+        "class_duration": class_duration
     })
 
     # เขียนข้อมูลกลับลงไฟล์ JSON
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     
-    print(f"💾 Saved summary buffer → {path}")
+    print(f"💾 Saved buffer → {os.path.basename(path)}")
 
-
-# ------------------------------------------------------------
-# 📌 ฟังก์ชัน: load_buffer()
-# โหลดไฟล์ JSON ที่เคยบันทึกไว้ของกล้องแต่ละตัว
-# ------------------------------------------------------------
-def load_buffer(camera_id: str):
-    path = get_buffer_file(camera_id)
-    if not os.path.exists(path):
-        return None  # ไม่มีไฟล์ ก็ return None ไปเลย
-
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)   # data ที่อยู่ในไฟล์
-
-
-# ------------------------------------------------------------
-# 📌 ฟังก์ชัน: clear_buffer()
-# ใช้สำหรับลบไฟล์ JSON หลังจากที่ข้อมูลถูก insert 
-# ลง Supabase สำเร็จแล้ว (กันไฟล์ค้าง)
-# ------------------------------------------------------------
-def clear_buffer(camera_id):
-    path = get_buffer_file(camera_id)
-    if os.path.exists(path):
-        os.remove(path)  # ลบไฟล์ออกจากระบบ
+# -----------------------------------------------------------
+# 4. ✅ ฟังก์ชันใหม่: กวาดหาไฟล์ทั้งหมด (ต้องมี!)
+# -----------------------------------------------------------
+def get_all_pending_files():
+    buffer_dir = get_json_dir()
+    # หาไฟล์ทุกอันที่ลงท้ายด้วย .json ไม่สนว่าชื่อ Teacher อะไร
+    files = glob.glob(os.path.join(buffer_dir, "*.json"))
+    return files

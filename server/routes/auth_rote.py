@@ -44,8 +44,7 @@ async def login_by_teacher_id(
             user_uuid = teacher.data[0]["id"]
             print(f"เจออาจารย์ {teacher.data[0]}")
         else:
-            # ถ้าไม่เจอ → จะลองเข้าสู่ระบบแบบ admin (ใช้ email admin โดยตรง)
-            print("ไม่เจออาจารย์")
+            print("แอดมินเข้าสู่ระบบ")
 
         # Email ที่จะใช้ login
         email = None

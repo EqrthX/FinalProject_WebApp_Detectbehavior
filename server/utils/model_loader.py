@@ -11,7 +11,7 @@ def get_model_path():
     MODEL_PATH = os.path.abspath(os.path.join(
         BASE_DIR,
         "..", "..",
-        "datasetv6.1", "datasetv6.1", "detect", "train", "weights", "best.pt"
+        "dataset_test", "project", "train", "weights", "best.pt"
     ))
 
     return MODEL_PATH

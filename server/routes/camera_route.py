@@ -65,8 +65,8 @@ class CameraThread(threading.Thread):
         super().__init__(daemon=True)
 
         # ----------------- ข้อมูลพื้นฐานของกล้อง -----------------
-        self.camera_id = str(camera_id)          # id ของกล้องในรูปแบบ string
-        self.source_index = int(camera_id)       # index ที่ใช้กับ cv2.VideoCapture
+        self.camera_id = str(camera_id)          
+        self.source_index = int(camera_id)       
 
         # ข้อมูลที่ใช้ผูกกับตารางใน Supabase
         self.teacher_id = teacher_id
@@ -384,8 +384,8 @@ class CameraThread(threading.Thread):
 
         timer["miss"] += 1
 
-        # ถ้า miss ถึง threshold (5 ครั้งติดต่อกัน)
-        if timer["miss"] >= 5:
+        # ถ้า miss ถึง threshold (3 ครั้งติดต่อกัน)
+        if timer["miss"] >= 3:
             # เปลี่ยน current_class เป็น label ใหม่
             timer["current_class"] = label
             timer["duration"] = 0.0
@@ -511,23 +511,12 @@ class CameraThread(threading.Thread):
     def handle_interval(self):
         cls = self.class_timer["current_class"]
         mapped = cls
-        if cls == "LookingAway":
-            self.class_timer["duration"] += self.interval_seconds
-            dur = self.class_timer["duration"]
-            if dur <= 15: 
-                mapped = "LookingAway"
-            elif dur <= 35: 
-                mapped = "Looking_at_the_board"
-            else: 
-                mapped = "Taking_notes"
-        else:
-            self.class_timer["duration"] = 0.0
-
+        
         if mapped:
-            self.interval_results.append(mapped)
-            self.class_durations[mapped] += self.interval_seconds
+            self.interval_results.append(cls)
+            self.class_durations[cls] += self.interval_seconds
             print(
-                f"⏱️ Cam {self.camera_id}: class: {mapped} \n,total times: {self.class_durations[mapped]} ({len(self.interval_results)})"
+                f"⏱️ Cam {self.camera_id}: class: {cls} \n,total times: {self.class_durations[cls]} ({len(self.interval_results)})"
                 )
 
         if len(self.interval_results) > self.max_intervals:

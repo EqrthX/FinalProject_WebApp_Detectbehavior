@@ -340,90 +340,62 @@ const RecordPage = () => {
   }, []); // [] หมายถึงทำ cleanup ตอน component ถูกถอดออกเท่านั้น
 
   // ---------------------- ฟังก์ชันสำหรับปุ่มต่าง ๆ ----------------------
-
-  // ปุ่ม "เชื่อมต่อใหม่" สำหรับกล้องบางตัว
-  const handleReconnect = async (cameraId) => {
-    try {
-      // เรียกหลังบ้านให้เปิดกล้องทั้งหมด (เผื่อกล้องไหนปิด/หลุด)
-      await axios.get("camera/open-all");
-      // เชื่อมต่อ WebSocket ใหม่สำหรับกล้องนี้
-      connectWebSocket(cameraId);
-      // แจ้งผู้ใช้ว่าทำสำเร็จ
-      toast.success(`เชื่อมต่อใหม่ กล้อง ${getCameraName(cameraId)} แล้ว`);
-    } catch {
-      // ถ้ามีปัญหาให้แจ้งเตือนว่าล้มเหลว
-      toast.error(`เชื่อมต่อใหม่กล้อง ${getCameraName(cameraId)} ไม่สำเร็จ`);
-    }
-  };
-
-  // ปุ่ม "ปิดตัวนี้" สำหรับปิดกล้องทีละตัว
-  const handleCloseCamera = async (cameraId) => {
-    try {
-      // เรียก API ปิดกล้องตัวที่ระบุ
-      await axios.get(`camera/close-camera/${cameraId}`);
-      // ปิด WebSocket สตรีมภาพของกล้องนี้
-      safeCloseWS(cameraId);
-      // ปิด WebSocket summary ของกล้องนี้
-      safeCloseSummaryWS(cameraId);
-      // แจ้งเตือนว่าปิดกล้องแล้ว
-      toast.success(`ปิดกล้อง ${getCameraName(cameraId)} แล้ว`);
-    } catch (err) {
-      // แจ้งเตือนว่าปิดกล้องไม่สำเร็จ
-      toast.error("ปิดกล้องไม่สำเร็จ");
-      // log error เพื่อ debug
-      console.error("ปิดกล้องไม่สำเร็จ :", err);
-    }
-  };
+  const clearCanvasAll = () => {
+    Object.values(canvasRef.current).forEach((canvas) => {
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    })
+  }
 
   // ปุ่ม "ปิดกล้องทั้งหมด"
   const handleCloseAll = async () => {
-    // ตั้งสถานะว่าไม่ได้กำลังบันทึก/ตรวจจับแล้ว
     setIsRecording(false);
-    // รีเซ็ตตัวจับเวลาให้กลับไปเริ่มต้นที่ 0
     setTimer(0);
+    setSummaryData([]);
     try {
-      // ปิด WebSocket สตรีมภาพทุกกล้อง
+
       Object.keys(wsRefs.current).forEach((id) => safeCloseWS(id));
-      // ปิด WebSocket summary ทุกกล้อง
       Object.keys(summaryRefs.current).forEach((id) => safeCloseSummaryWS(id));
 
-      // แจ้งหลังบ้านให้ปิดกล้องทั้งหมด
+      clearCanvasAll();
+
+      // 🔥 reset refs ป้องกัน object เก่าค้าง
+      wsRefs.current = {};
+      summaryRefs.current = {};
+      imgRef.current = {};
+
       await axios.get("camera/close-all");
-      // แจ้งเตือนผู้ใช้
       toast.success("ปิดกล้องทั้งหมดแล้ว");
     } catch {
-      // ถ้าปิดไม่สำเร็จ แจ้งเตือน
       toast.error("ปิดกล้องทั้งหมดไม่สำเร็จ");
     }
   };
 
   // ปุ่ม "เริ่มต้นตรวจจับทุกกล้อง"
   const handleStartDetect = async () => {
-    // ถ้าตอนนี้กำลังตรวจจับอยู่แล้ว ไม่ต้องสั่งซ้ำ
     if (isRecording) return;
 
-    // ตั้งค่าว่าตอนนี้เริ่มตรวจจับแล้ว
     setIsRecording(true);
+    setSummaryData([]);
 
     try {
       // เปิด WebSocket summary สำหรับทุกกล้อง
       cameras.forEach((cam) => {
+
+        safeCloseWS(cam.id);
+        connectWebSocket(cam.id);
+
+        safeCloseSummaryWS(cam.id);
         connectSummarySocket(cam.id);
       });
 
-      // เรียก API ให้เริ่มตรวจจับทุกกล้อง
-      const resStartDetect = await axios.get(`camera/start-all`);
-      // รับรายการ id กล้องที่เริ่มตรวจจับสำเร็จจากหลังบ้าน
-      const started_ids = resStartDetect.data.started || [];
-
+      await axios.get(`camera/start-all`);
       // แจ้งเตือนว่าการเริ่มตรวจจับสำเร็จ
       toast.success(`เริ่มตรวจจับทุกกล้อง`);
     } catch (error) {
-      // ถ้ามี error ให้ยกเลิกสถานะกำลังบันทึก
       setIsRecording(false);
-      // log error
       console.error("การตรวจจับเกิดข้อผิดพลาด", error);
-      // แจ้งเตือนผู้ใช้
       toast.error("เริ่มต้นตรวจจับไม่สำเร็จ");
     }
   };

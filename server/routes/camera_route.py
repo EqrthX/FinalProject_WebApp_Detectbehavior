@@ -147,6 +147,26 @@ class CameraThread(threading.Thread):
 
         self.last_target_center = None
         
+    def reset_state(self):
+        with self.lock:
+            self.jpeg_buffer = None
+            self.last_annotated = None
+            self.latest_summary = {}
+        
+        self.main_track_id = None
+        self.main_lost_frames = 0
+        self.last_target_conf = None
+
+        self.interval_results.clear()
+        self.class_durations.clear()
+        self.interval_count = 0
+        self.last_interval_time = time.time()
+        self.class_timer = {
+            "current_class": None,
+            "duration": 0.0,
+            "miss": 0
+        }
+    
     # ----------------------------------------------------------------------
     # ฟังก์ชันเปิดกล้อง (พยายามหลาย backend)
     # ----------------------------------------------------------------------
@@ -750,6 +770,8 @@ async def close_all_cameras():
     - ลบ entry ของแต่ละกล้องออกจาก camera_threads
     """
     for cid, th in list(camera_threads.items()):
+        th.detecting = False
+        th.reset_state()
         th.stop()
         del camera_threads[cid]
 

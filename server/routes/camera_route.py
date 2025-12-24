@@ -23,21 +23,16 @@ from utils.json_buffer import get_all_pending_files, save_buffer
 
 # ----------------- Router หลักของกล้อง -----------------
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
-# prefix หมายถึง path ทุกอันในไฟล์นี้จะขึ้นต้นด้วย /api/camera
-# tags ใช้สำหรับจัด group ใน docs ของ FastAPI
 
 # ----------------- กำหนดกลุ่มคลาสพฤติกรรม -----------------
-ATTENDENCE = ["Focused", "Looking_at_the_board", "Taking_notes"]
-NON_ATTENDENCE = ["LookingAway", "Talking", "UsingPhone"]
+ATTENDENCE = ["Looking_at_the_board", "Taking_notes"]
+NON_ATTENDENCE = ["LookingAway", "UsingPhone"]
 
 # ----------------- state สำหรับกล้องทั้งหมดในเซิร์ฟเวอร์ -----------------
 # dict เก็บ Thread ของแต่ละกล้อง โดย key เป็น str(camera_id)
 camera_threads: dict[str, "CameraThread"] = {}
-# list เก็บข้อมูลกล้องที่ scan เจอ (เช่น id, name, backend)
 available_cameras: list[dict] = []
-# เวลา stamp ล่าสุดที่ scan กล้องเสร็จ
 last_scan_time: float = 0
-# Lock กันไม่ให้มีการ scan กล้องซ้อนกัน
 scan_lock = asyncio.Lock()
 model_path = get_model_path()
 

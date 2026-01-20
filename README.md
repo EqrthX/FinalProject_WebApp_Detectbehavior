@@ -74,7 +74,7 @@ npm install
 # Windows: .\venv\Scripts\activate
 # Mac/Linux: source venv/bin/activate
 
-python app.py
+uvicorn main:app --reload
 # หรือ main.py (ขึ้นอยู่กับชื่อไฟล์หลักของโปรเจกต์คุณ)
 ```
 Backend มักจะรันอยู่ที่ http://localhost:8000

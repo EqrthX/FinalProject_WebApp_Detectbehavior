@@ -10,6 +10,7 @@ const RecordPage = () => {
   const { subjectId, group } = useParams();
   const teacherId = localStorage.getItem("teacher_id");
 
+  const [startTime, setStartTime] = useState(null);
   const [cameras, setCameras] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
   const [timer, setTimer] = useState(0);
@@ -24,7 +25,17 @@ const RecordPage = () => {
   const retryInterval = useRef(null);
 
   // ---------------------- ฟังก์ชัน Utils (ฟังก์ชันช่วยงานทั่วไป) ----------------------
-
+  const convertClass = (cls) => {
+    const clsThai = {
+      "Looking_at_the_board": "มองกระดาน",
+      "LookingAway": "หันหน้า",
+      "UsingPhone": "เล่นโทรศัพท์",
+      "Taking_notes": "จดบันทึก",
+      "Other": "อื่นๆ"
+    }
+    return clsThai[cls] || cls;
+  }
+  
   // ฟังก์ชันสร้างชื่อกล้องจาก id เช่น 0 -> "กล้องตัวที่ 1"
   const getCameraName = (id) => `กล้องตัวที่ ${Number(id) + 1}`;
 
@@ -245,34 +256,26 @@ const RecordPage = () => {
     })
   }
 
-  // ปุ่ม "ปิดกล้องทั้งหมด"
-  const handleCloseAll = async () => {
-    setIsRecording(false);
-    setTimer(0);
-    setSummaryData([]);
-    try {
-      Object.keys(wsRefs.current).forEach((id) => safeCloseWS(id));
-      Object.keys(summaryRefs.current).forEach((id) => safeCloseSummaryWS(id));
-
-      clearCanvasAll();
-
-      wsRefs.current = {};
-      summaryRefs.current = {};
-      imgRef.current = {};
-
-      await axios.get("camera/close-all");
-      toast.success("ปิดกล้องทั้งหมดแล้ว");
-    } catch {
-      toast.error("ปิดกล้องทั้งหมดไม่สำเร็จ");
-    }
-  };
-
   // ปุ่ม "เริ่มต้นตรวจจับทุกกล้อง"
   const handleStartDetect = async () => {
     if (isRecording) return;
 
+    const isNewSession = timer === 0;
+    if (isNewSession) {
+      setSummaryData([]);
+      setStartTime(Date.now());
+    } else {
+      setStartTime(Date.now() - (timer * 1000));
+    }
+
     setIsRecording(true);
-    setSummaryData([]);
+
+    cameras.forEach((cam) => {
+      safeCloseWS(cam.id);
+      safeCloseSummaryWS(cam.id)
+    })
+
+    await new Promise(r => setTimeout(r, 500))
 
     try {
       cameras.forEach((cam) => {
@@ -292,17 +295,29 @@ const RecordPage = () => {
     }
   };
 
-  // ปุ่ม "จบการตรวจจับ"
-  const handleStopDetect = async (e) => {
-    e.preventDefault();
+  // ปุ่ม "ปิดกล้องทั้งหมด"
+  const handleStopAll = async () => {
+    setIsRecording(false);
 
-    if (!isRecording) return;
+    try {
+      await axios.get("camera/stop-all");
+      toast.success("ปิดกล้องทั้งหมดแล้ว");
+    } catch {
+      toast.error("ปิดกล้องทั้งหมดไม่สำเร็จ");
+    }
+  };
+
+  // ปุ่ม "จบการตรวจจับ"
+  const handleCloseAll = async (e) => {
+    e.preventDefault();
+    if (!isRecording && timer === 0) return; // เพิ่ม timer === 0 กันพลาด
 
     setIsRecording(false);
+    setStartTime(null);
     setTimer(0);
 
     try {
-      await axios.get(`camera/stop-all`);
+      await axios.get(`camera/close-all`);
       const summaryRes = await axios.get(`camera/summary-to-supabase`);
       console.log("Summary Done:", summaryRes.data);
 
@@ -322,14 +337,21 @@ const RecordPage = () => {
 
   useEffect(() => {
     let intervalId;
-    if (isRecording) {
-      intervalId = setInterval(
-        () => setTimer((t) => t + 1),
-        1000
-      );
+
+    if (isRecording && startTime) {
+      intervalId = setInterval(() => {
+        // คำนวณเวลา: (ปัจจุบัน - เริ่มต้น) / 1000 เพื่อแปลงเป็นวินาที
+        const now = Date.now();
+        const secondsElapsed = Math.floor((now - startTime) / 1000);
+
+        setTimer(secondsElapsed);
+      }, 1000);
     }
-    return () => intervalId && clearInterval(intervalId);
-  }, [isRecording]);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isRecording, startTime]);
 
   return (
     <>
@@ -389,14 +411,14 @@ const RecordPage = () => {
                 className={`px-4 py-2 rounded-lg text-white font-semibold ${!isRecording ? "bg-gray-400 cursor-not-allowed" : "bg-red-500"
                   }`}
                 disabled={!isRecording}
-                onClick={handleStopDetect}
+                onClick={handleCloseAll}
               >
                 จบการตรวจจับ
               </button>
 
               <button
                 className="px-4 py-2 rounded-lg font-semibold border border-gray-300 text-gray-700 hover:bg-gray-100"
-                onClick={handleCloseAll}
+                onClick={handleStopAll}
               >
                 ปิดกล้องทั้งหมด
               </button>
@@ -458,12 +480,8 @@ const RecordPage = () => {
                     </p>
 
                     <div className="mt-2">
-                      <p className="text-sm font-medium text-green-600">
-                        ✔ ตั้งใจเรียน: {(item.data.Attention * 100).toFixed(1)}%
-                      </p>
-                      <p className="text-sm font-medium text-red-600">
-                        ✘ ไม่ตั้งใจ:{" "}
-                        {(item.data.Non_Attention * 100).toFixed(1)}%
+                      <p className="text-lg font-medium text-amber-700">
+                        พฤติกรรม: {convertClass(item.data.CurrentClass)}
                       </p>
                     </div>
                   </div>

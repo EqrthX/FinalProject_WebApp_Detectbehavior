@@ -82,7 +82,9 @@ class CameraThread(threading.Thread):
         self.main_max_lost_frames = 5
         self.last_detect_time = 0
         self.last_target_center = None
-        
+        self.last_class_update_time = time.time()
+        self.session_id = int(time.time())
+
     # รีเซ็ตค่า State ต่างๆ ของกล้องให้กลับเป็นค่าเริ่มต้น
     def reset_state(self):
         with self.lock:
@@ -103,40 +105,48 @@ class CameraThread(threading.Thread):
             "duration": 0.0,
             "miss": 0
         }
-    
-    # พยายามเปิดกล้องด้วย Backend ต่างๆ ของ OpenCV
+
+   
     def open_camera(self) -> bool:
         backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
+        max_retries = 10  # เพิ่มจำนวนครั้งที่จะลองเปิดใหม่
+        retry_delay = 0.5 # รอ 0.5 วินาทีก่อนลองใหม่
 
-        for backend in backends:
-            cap = None
-            try:
-                cap = cv2.VideoCapture(self.source_index, backend)
+        for attempt in range(max_retries):
+            for backend in backends:
+                cap = None
+                try:
+                    # ลองเปิดกล้อง
+                    cap = cv2.VideoCapture(self.source_index, backend)
 
-                if cap.isOpened():
-                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                    cap.set(cv2.CAP_PROP_FPS, 30)
-                    cap.set(
-                        cv2.CAP_PROP_FOURCC,
-                        cv2.VideoWriter_fourcc(*"MJPG"),
-                    )
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1) 
-                    self.cap = cap
+                    if cap.isOpened():
+                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                        cap.set(cv2.CAP_PROP_FPS, 30)
+                        cap.set(
+                            cv2.CAP_PROP_FOURCC,
+                            cv2.VideoWriter_fourcc(*"MJPG"),
+                        )
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1) 
+                        self.cap = cap
 
-                    print(f"✅ Camera {self.camera_id} opened with backend={backend}")
-                    return True
-
-            except Exception as e:
-                print(f"เกิดข้อผิดพลาดของการเปิดกล้อง {self.camera_id} ของ backend={backend} error -> {e} ")
-            finally:
-                if cap and (self.cap is None):
+                        print(f"✅ Camera {self.camera_id} opened with backend={backend} (Attempt {attempt+1})")
+                        return True
+                    
+                except Exception as e:
+                    print(f"เกิดข้อผิดพลาดของการเปิดกล้อง {self.camera_id} (Attempt {attempt+1}) error -> {e} ")
+                
+                # ถ้าเปิดไม่ได้ ให้ release ทันทีเพื่อกัน memory leak ใน loop
+                if cap:
                     cap.release()
 
-        print(f"❌ กล้อง {self.camera_id} ไม่สามารถเปิดได้เลยตาม backends")
-        return False
+            # ถ้าวนครบทุก backend แล้วยังไม่ได้ ให้รอสักพักแล้วลองใหม่ (เผื่อ thread เก่ายังคืนกล้องไม่เสร็จ)
+            print(f"⏳ Camera {self.camera_id} busy, retrying in {retry_delay}s... ({attempt+1}/{max_retries})")
+            time.sleep(retry_delay)
 
-    # ฟังก์ชันหลักของ Thread ทำหน้าที่โหลดโมเดล เปิดกล้อง และวนลูปประมวลผลภาพ
+        print(f"❌ กล้อง {self.camera_id} ไม่สามารถเปิดได้เลยหลังจากลอง {max_retries} ครั้ง")
+        return False    # ฟังก์ชันหลักของ Thread ทำหน้าที่โหลดโมเดล เปิดกล้อง และวนลูปประมวลผลภาพ
+    
     def run(self):
         if not self.open_camera():
             return
@@ -219,8 +229,13 @@ class CameraThread(threading.Thread):
 
     # อัปเดตสถานะ Class ปัจจุบัน โดยมี Logic ป้องกันการเปลี่ยนสถานะไปมาไวเกินไป (Debounce)
     def update_class_state(self, label: str):
-        timer = self.class_timer
+        now = time.time()
 
+        delta = now - self.last_class_update_time
+
+        self.last_class_update_time = now
+
+        timer = self.class_timer
         if timer["current_class"] is None:
             timer["current_class"] = label
             timer["duration"] = 0.0
@@ -228,21 +243,23 @@ class CameraThread(threading.Thread):
             return
 
         if timer["current_class"] == label:
+            self.class_durations[label] += delta
+            timer["duration"] += delta
             timer["miss"] = 0
-            return
-
-        timer["miss"] += 1
-
-        if timer["miss"] >= 3:
-            timer["current_class"] = label
-            timer["duration"] = 0.0
-            timer["miss"] = 0
+        else:
+            timer["miss"] += 1
+            if timer["miss"] >= 3:
+                timer["current_class"] = label
+                timer["duration"] = 0.0
+                timer["miss"] = 0
 
     # ประมวลผลพฤติกรรมจากผลลัพธ์ YOLO Track และจัดการ Target ID หลัก
     def process_behavior_track(self, result, now: float):
         boxes = result.boxes
 
         if boxes is None or len(boxes) == 0:
+            self.update_class_state("Other")
+
             if self.main_track_id is not None:
                 self.main_lost_frames += 1
                 if self.main_lost_frames >= self.main_max_lost_frames:
@@ -273,6 +290,7 @@ class CameraThread(threading.Thread):
             })
 
         if not detections:
+            self.update_class_state("Other")
             return
 
         found_det = None
@@ -327,9 +345,9 @@ class CameraThread(threading.Thread):
                 self.last_target_center = None
                 self.main_lost_frames = 0
 
-        for d in detections:
-            if d["track_id"] != self.main_track_id:
-                print(f"🚫 [Cam {self.camera_id}] Ignoring Stranger ID={d['track_id']} ({d['label']})")
+        # for d in detections:
+        #     if d["track_id"] != self.main_track_id:
+        #         print(f"🚫 [Cam {self.camera_id}] Ignoring Stranger ID={d['track_id']} ({d['label']})")
 
         if now - self.last_interval_time >= self.interval_seconds:
             self.last_interval_time = now
@@ -342,7 +360,6 @@ class CameraThread(threading.Thread):
         
         if mapped:
             self.interval_results.append(cls)
-            self.class_durations[cls] += self.interval_seconds
             print(
                 f"⏱️ Cam {self.camera_id}: class: {cls} \n,total times: {self.class_durations[cls]} ({len(self.interval_results)})"
                 )
@@ -378,7 +395,7 @@ class CameraThread(threading.Thread):
 
         class_duration_json = {k: round(v, 1) for k, v in self.class_durations.items()}
         img_base64 = None
-
+        lass_class = self.interval_results[-1]
         with self.lock:
             if self.jpeg_buffer:
                 img_base64 = base64.b64encode(self.jpeg_buffer).decode("utf-8")
@@ -386,8 +403,7 @@ class CameraThread(threading.Thread):
             payload = {
                 "CameraId": int(self.camera_id) + 1,
                 "Time": datetime.now().strftime("%H:%M:%S"),
-                "Attention": att,
-                "Non_Attention": non,
+                "CurrentClass": lass_class,
                 "class_duration": class_duration_json,
                 "image": img_base64,
             }
@@ -407,7 +423,8 @@ class CameraThread(threading.Thread):
                     class_json=class_json,
                     subject_id=self.subject_id,
                     group=self.group,
-                    class_duration=class_duration_json
+                    class_duration=class_duration_json,
+                    session_id=self.session_id
                 )
             except Exception as e:
                 print(f"❌ save_buffer error cam {self.camera_id}: {e}")
@@ -499,6 +516,11 @@ async def stop_all_detections():
 async def close_all_cameras():
     for cid, th in list(camera_threads.items()):
         th.detecting = False
+
+        if len(th.interval_results) > 0:
+            print(f"💾 Force saving partial data for Cam {cid} ({len(th.interval_results)} items)")
+            th.save_summary()
+
         th.reset_state()
         th.stop()
         del camera_threads[cid]
@@ -535,6 +557,11 @@ async def ws_camera(websocket: WebSocket, camera_id: str):
 
     try:
         while True:
+            # เพิ่มมา เช็คว่า thread กล้องตายยัง
+            if not th.is_alive():
+                print(f"⚠️ Thread กล้อง {camera_id} ตายแล้ว ปิด WebSocket")
+                break
+
             with th.lock:
                 frame = th.jpeg_buffer
 
@@ -590,136 +617,127 @@ async def ws_summary(websocket: WebSocket, camera_id: str):
 # API สำหรับอ่านไฟล์ JSON Buffer และบันทึกข้อมูลลง Supabase
 @camera_router.get("/summary-to-supabase")
 async def summary_to_supabase_route():
-    all_summary_data = []
-    processed_files = []
-
     files = get_all_pending_files()
-    print(f"📂 Found {len(files)} files pending upload: {files}")
+    print(f"📂 Found {len(files)} files pending upload")
+    
     if not files:
         return {"message": "ไม่มีข้อมูลค้างอยู่", "inserted": 0}
 
+    total_inserted = 0
+    total_summary_inserted = 0
+
+    # ✅ วนลูปทำทีละไฟล์ (ทีละ Session) ไม่เอามารวมกันแล้ว
     for path in files:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                all_summary_data.append(data)
-                processed_files.append(path)
         except Exception as e:
-            print(f"Error reading {path}: {e}")
+            print(f"❌ Error reading {path}: {e}")
+            continue
 
-    if not all_summary_data:
-        return {"message": "อ่านไฟล์ไม่ได้ หรือไม่มีข้อมูลในไฟล์", "inserted": 0}
+        # 1. เตรียมข้อมูล Logs
+        camera_id = data["camera_id"]
+        teacher_id = data["teacher_id"]
+        subject_id = (data.get("subject_id") or "").strip()
+        group = data["group"]
+        records = data["records"]
+        session_id = data.get("session_id")
+        
+        if not records:
+            # ไฟล์เปล่า ลบทิ้งเลย
+            try: os.remove(path) 
+            except: pass
+            continue
 
-    try:
         insert_payload = []
-
-        for summary in all_summary_data:
-            camera_id = summary["camera_id"]
-            teacher_id = summary["teacher_id"]
-            subject_id = (summary.get("subject_id") or "").strip()
-            group = summary["group"]
-
-            for record in summary["records"]:
-                insert_payload.append({
-                    "camera_id": camera_id,
-                    "teacher_id": teacher_id,
-                    "subject_id": subject_id,
-                    "group": group,
-                    "Attention": record["Attention"],
-                    "Non_Attention": record["Non_Attention"],
-                    "class_json": record["class_json"],
-                    "class_duration": record["class_duration"],
-                    "created_at": record["created_at"],
-                })
-
-        if insert_payload:
-            supabase_client.table("camera_logs").insert(insert_payload).execute()
-
-        grops = defaultdict(list)
-        for row in insert_payload:
-            t_id = row["teacher_id"]
-            s_id = row["subject_id"]
-            c_id = row["camera_id"]
-            g = row["group"]
-
-            dt = (
-                row["created_at"]
-                if isinstance(row["created_at"], datetime)
-                else datetime.fromisoformat(str(row["created_at"]).replace("Z", "+00:00"))
-            )
-            date_key = dt.date().isoformat()
-            
-            key = (t_id, s_id, c_id, date_key, g)
-            grops[key].append(row)
-
-        daily_rows = []
-        for (t_id, s_id, c_id, s_date, g), rows in grops.items():
-            total_att = 0.0
-            total_non = 0.0
-            count = len(rows)
-            class_totals = defaultdict(float)
-            class_duration_totals = defaultdict(float)
-            for r in rows:
-                total_att += float(r.get("Attention") or 0.0)
-                total_non += float(r.get("Non_Attention") or 0.0)
-                
-                cj = r.get("class_json") or {}
-                if isinstance(cj, str):
-                    try:
-                        cj = json.loads(cj)
-                    except:
-                        cj = {}
-                
-                for k, v in cj.items():
-                    class_totals[k] += float(v or 0.0)
-
-                cd = r.get("class_duration") or {}
-                if isinstance(cd, str):
-                    try:
-                        cd = json.loads(cd)
-                    except:
-                        cd = {}
-                for k, v in cd.items():
-                    class_duration_totals[k] += float(v or 0.0)
-
-            avg_att = total_att / count if count > 0 else 0.0
-            avg_non = total_non / count if count > 0 else 0.0
-            
-            class_summary = {}
-            if count > 0:
-                for k, v in class_totals.items():
-                    class_summary[k] = round(v / count, 3)
-
-            daily_rows.append({
-                "teacher_id": t_id,
-                "subject_id": s_id,
-                "camera_id": c_id,
-                "summary_date": s_date,
-                "avg_attention": round(avg_att, 3),
-                "avg_non_attention": round(avg_non, 3),
-                "class_json_summary": class_summary,
-                "class_duration_summary": {
-                    k: round(v, 1) for k, v in class_duration_totals.items()
-                },
-                "group": g
+        for record in records:
+            insert_payload.append({
+                "camera_id": camera_id,
+                "teacher_id": teacher_id,
+                "subject_id": subject_id,
+                "group": group,
+                "session_id": session_id,
+                "Attention": record["Attention"],
+                "Non_Attention": record["Non_Attention"],
+                "class_json": record["class_json"],
+                "class_duration": record["class_duration"],
+                "created_at": record["created_at"],
             })
 
-        if daily_rows:
-            supabase_client.table("camera_daily_summary").insert(daily_rows).execute()
-
-        deleted_count = 0
-        for path in processed_files:
+        # 2. Insert Logs (บันทึกข้อมูลดิบรายนาที)
+        if insert_payload:
             try:
-                os.remove(path)
-                deleted_count += 1
+                supabase_client.table("camera_logs").insert(insert_payload).execute()
+                total_inserted += len(insert_payload)
             except Exception as e:
-                print(f"⚠️ Failed to delete {path}: {e}")
+                print(f"❌ Error inserting logs for {path}: {e}")
+                continue # ถ้า log เข้าไม่ได้ อย่าเพิ่งทำ summary และอย่าเพิ่งลบไฟล์
 
-        return {
-            "message": "บันทึกข้อมูลเสร็จสิ้น",
-            "inserted": len(insert_payload),
+        # 3. คำนวณ Summary **เฉพาะของไฟล์นี้ (Session นี้)**
+        total_att = 0.0
+        total_non = 0.0
+        count = len(records)
+        class_totals = defaultdict(float)
+        class_duration_totals = defaultdict(float)
+
+        # หาวันที่ของไฟล์นี้ (เอาจาก record แรก)
+        first_dt = records[0]["created_at"]
+        if isinstance(first_dt, str):
+            dt_obj = datetime.fromisoformat(first_dt.replace("Z", "+00:00"))
+            summary_date = dt_obj.date().isoformat()
+        else:
+            summary_date = datetime.now().date().isoformat()
+
+        for r in records:
+            total_att += float(r.get("Attention") or 0.0)
+            total_non += float(r.get("Non_Attention") or 0.0)
+            
+            # รวม class count (%)
+            cj = r.get("class_json") or {}
+            if isinstance(cj, str): cj = json.loads(cj)
+            for k, v in cj.items():
+                class_totals[k] += float(v or 0.0)
+
+            # รวม duration (sec)
+            cd = r.get("class_duration") or {}
+            if isinstance(cd, str): cd = json.loads(cd)
+            for k, v in cd.items():
+                class_duration_totals[k] += float(v or 0.0)
+
+        # ค่าเฉลี่ยของ Session นี้
+        avg_att = total_att / count if count > 0 else 0.0
+        avg_non = total_non / count if count > 0 else 0.0
+        
+        class_summary = {}
+        if count > 0:
+            for k, v in class_totals.items():
+                class_summary[k] = round(v / count, 3)
+
+        daily_row = {
+            "teacher_id": teacher_id,
+            "subject_id": subject_id,
+            "camera_id": camera_id,
+            "summary_date": summary_date,
+            "avg_attention": round(avg_att, 3),
+            "avg_non_attention": round(avg_non, 3),
+            "class_json_summary": class_summary,
+            "class_duration_summary": {k: round(v, 1) for k, v in class_duration_totals.items()},
+            "group": group
         }
 
-    except Exception as e:
-        print("Error summary_to_supabase:", e)
-        return {"error": str(e)}
+        # 4. Insert Summary (1 ไฟล์ = 1 แถวสรุป)
+        try:
+            supabase_client.table("camera_daily_summary").insert(daily_row).execute()
+            total_summary_inserted += 1
+            
+            # ✅ ทำเสร็จแล้วลบไฟล์ทิ้ง
+            os.remove(path)
+            print(f"✅ Processed and deleted: {path}")
+
+        except Exception as e:
+            print(f"❌ Error inserting summary for {path}: {e}")
+
+    return {
+        "message": f"บันทึกข้อมูลเสร็จสิ้น แยก {total_summary_inserted} sessions",
+        "inserted": total_inserted,
+    }

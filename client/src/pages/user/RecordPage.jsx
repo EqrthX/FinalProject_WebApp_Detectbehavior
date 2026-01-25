@@ -30,8 +30,7 @@ const RecordPage = () => {
       "Looking_at_the_board": "มองกระดาน",
       "LookingAway": "หันหน้า",
       "UsingPhone": "เล่นโทรศัพท์",
-      "Taking_notes": "จดบันทึก",
-      "Other": "อื่นๆ"
+      "Looking_Down": "ก้มหน้า",
     }
     return clsThai[cls] || cls;
   }

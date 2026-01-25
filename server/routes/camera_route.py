@@ -23,7 +23,14 @@ from utils.json_buffer import get_all_pending_files, save_buffer
 
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
-ATTENDENCE = ["Looking_at_the_board", "Taking_notes"]
+CLASS_MAPPING = {
+    "Looking_at_the_board": {"label": "Looking_at_the_board", "color": (255, 0, 0)},   # น้ำเงิน
+    "Taking_notes": {"label": "Looking_Down", "color": (0, 255, 0)},   # เขียว 
+    "LookingAway": {"label": "LookingAway", "color": (0, 165, 255)}, # ส้ม
+    "UsingPhone": {"label": "UsingPhone", "color": (0, 0, 255)},   # แดง
+}
+
+ATTENDENCE = ["Looking_at_the_board", "Looking_Down"]
 NON_ATTENDENCE = ["LookingAway", "UsingPhone"]
 
 camera_threads: dict[str, "CameraThread"] = {}
@@ -184,7 +191,29 @@ class CameraThread(threading.Thread):
                         )
 
                         result = results[0]
-                        annotated = result.plot()
+                        annotated = frame.copy()
+                        if result.boxes:
+                            for box in result.boxes:
+                                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                                cls_idx = int(box.cls)
+                                raw_label = self.model.names[cls_idx]
+                                conf = float(box.conf)
+
+                                # ดึงค่า Config (สีและชื่อใหม่)
+                                mapping = CLASS_MAPPING.get(raw_label)
+                                label_text = mapping["label"] # ได้คำว่า "Looking Down"
+                                color = mapping["color"]
+
+                                # 1. วาดกล่อง
+                                cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+
+                                # 2. วาดป้ายชื่อ (พื้นหลัง + ตัวหนังสือ)
+                                text_show = f"{label_text} {conf:.2f}"
+                                (w, h), _ = cv2.getTextSize(text_show, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                                cv2.rectangle(annotated, (x1, y1 - 25), (x1 + w, y1), color, -1)
+                                cv2.putText(annotated, text_show, (x1, y1 - 8),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                                
                         self.last_annotated = annotated
                         self.process_behavior_track(result, now=time.time())
 
@@ -256,98 +285,110 @@ class CameraThread(threading.Thread):
     # ประมวลผลพฤติกรรมจากผลลัพธ์ YOLO Track และจัดการ Target ID หลัก
     def process_behavior_track(self, result, now: float):
         boxes = result.boxes
+        found_class = None # ตัวแปรสำหรับเก็บ Class ที่เจอในรอบนี้
 
-        if boxes is None or len(boxes) == 0:
-            self.update_class_state("Other")
+        # -----------------------------------------------------
+        # ส่วนที่ 1: พยายามหา Class จาก Detection (ถ้ามี)
+        # -----------------------------------------------------
+        if boxes is not None and len(boxes) > 0:
+            detections = []
+            for box in boxes:
+                cls_idx = int(box.cls)
+                raw_label = self.model.names[cls_idx]
+                mapping = CLASS_MAPPING.get(raw_label)
 
-            if self.main_track_id is not None:
+                if mapping:
+                    label = mapping["label"]
+                else:
+                    continue
+                
+                if label not in ATTENDENCE + NON_ATTENDENCE:
+                    continue
+
+                conf = float(box.conf.item())
+                track_id = int(box.id.item()) if box.id is not None else None
+                
+                if track_id is None: continue
+
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cx = (x1 + x2) / 2
+                cy = (y1 + y2) / 2
+
+                detections.append({
+                    "box": box, "label": label, "conf": conf, "track_id": track_id,
+                    "center": (cx, cy)
+                })
+
+            if detections:
+                found_det = None
+
+                # Logic หา Main Target (เหมือนเดิม)
+                if self.main_track_id is None:
+                    best = max(detections, key=lambda d: d["conf"])
+                    self.main_track_id = best["track_id"]
+                    self.last_target_center = best["center"]
+                    self.main_lost_frames = 0
+                    self.last_target_conf = best["conf"]
+                    
+                    if best["conf"] > 0.60:
+                        found_class = best["label"] # เจอแล้ว! จำไว้ก่อน
+                    found_det = best
+
+                else:
+                    for d in detections:
+                        if d["track_id"] == self.main_track_id:
+                            found_det = d
+                            break
+                    
+                    if found_det is None and self.last_target_center is not None:
+                        last_cx, last_cy = self.last_target_center
+                        min_dist = 150
+                        closest = None
+                        for d in detections:
+                            dcx, dcy = d["center"]
+                            dist = ((dcx - last_cx)**2 + (dcy - last_cy)**2)**0.5 
+                            if dist < 150 and dist < min_dist: 
+                                min_dist = dist
+                                closest = d
+                        
+                        if closest is not None:
+                            self.main_track_id = closest["track_id"]
+                            found_det = closest
+
+                if found_det:
+                    self.main_lost_frames = 0
+                    self.last_target_conf = found_det["conf"]
+                    self.last_target_center = found_det["center"] 
+                    if found_det["conf"] >= 0.50:
+                        found_class = found_det["label"] 
+                else:
+                    self.main_lost_frames += 1
+                    if self.main_lost_frames >= self.main_max_lost_frames:
+                        self.main_track_id = None
+                        self.last_target_center = None
+                        self.main_lost_frames = 0
+            else:
+                 pass
+        else:
+             # กรณีไม่มี Box เลย (ห้องว่าง / หาไม่เจอ)
+             if self.main_track_id is not None:
                 self.main_lost_frames += 1
                 if self.main_lost_frames >= self.main_max_lost_frames:
                     self.main_track_id = None
-                    self.last_target_center = None 
-                    self.main_lost_frames  = 0
-            return
+                    self.last_target_center = None
+                    self.main_lost_frames = 0
 
-        detections = []
-        for box in boxes:
-            cls_idx = int(box.cls)
-            label = self.model.names[cls_idx]
-            if label not in ATTENDENCE + NON_ATTENDENCE:
-                continue
-
-            conf = float(box.conf.item())
-            track_id = int(box.id.item()) if box.id is not None else None
-            
-            if track_id is None: continue
-
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            cx = (x1 + x2) / 2
-            cy = (y1 + y2) / 2
-
-            detections.append({
-                "box": box, "label": label, "conf": conf, "track_id": track_id,
-                "center": (cx, cy)
-            })
-
-        if not detections:
-            self.update_class_state("Other")
-            return
-
-        found_det = None
-
-        if self.main_track_id is None:
-            best = max(detections, key=lambda d: d["conf"])
-            self.main_track_id = best["track_id"]
-            self.last_target_center = best["center"]
-            self.main_lost_frames = 0
-            self.last_target_conf = best["conf"]
-            
-            print(f"🎯 [Cam {self.camera_id}] New Target ID={self.main_track_id} ({best['label']})")
-            if best["conf"] > 0.60:
-                self.update_class_state(best["label"])
-            found_det = best
-
+        if found_class:
+            # กรณีเจอ: อัปเดตด้วย Class ที่เจอ
+            self.update_class_state(found_class)
         else:
-            for d in detections:
-                if d["track_id"] == self.main_track_id:
-                    found_det = d
-                    break
+            # กรณีไม่เจอ: เอา Class ล่าสุดมาใช้ต่อ (Fake ว่าทำท่าเดิมอยู่)
+            current = self.class_timer.get("current_class")
             
-            if found_det is None and self.last_target_center is not None:
-                last_cx, last_cy = self.last_target_center
-                min_dist = 150
-                closest = None
-                
-                for d in detections:
-                    dcx, dcy = d["center"]
-                    dist = ((dcx - last_cx)**2 + (dcy - last_cy)**2)**0.5 
-                    if dist < 150 and dist < min_dist: 
-                        min_dist = dist
-                        closest = d
-                
-                if closest is not None:
-                    print(f"🔄 [Cam {self.camera_id}] ID Switched {self.main_track_id}->{closest['track_id']} (Dist:{min_dist:.1f})")
-                    self.main_track_id = closest["track_id"]
-                    found_det = closest
-
-        if found_det:
-            self.main_lost_frames = 0
-            self.last_target_conf = found_det["conf"]
-            self.last_target_center = found_det["center"] 
-
-            if found_det["conf"] >= 0.50:
-                self.update_class_state(found_det["label"])
-        else:
-            self.main_lost_frames += 1
-            if self.main_lost_frames >= self.main_max_lost_frames:
-                print(f"❌ [Cam {self.camera_id}] Target Lost completely. Resetting.")
-                self.main_track_id = None
-                self.last_target_center = None
-                self.main_lost_frames = 0
-
-        # for d in detections:
-        #     if d["track_id"] != self.main_track_id:
-        #         print(f"🚫 [Cam {self.camera_id}] Ignoring Stranger ID={d['track_id']} ({d['label']})")
+            if current:
+                self.update_class_state(current)
+            else:
+                pass
 
         if now - self.last_interval_time >= self.interval_seconds:
             self.last_interval_time = now
@@ -722,7 +763,8 @@ async def summary_to_supabase_route():
             "avg_non_attention": round(avg_non, 3),
             "class_json_summary": class_summary,
             "class_duration_summary": {k: round(v, 1) for k, v in class_duration_totals.items()},
-            "group": group
+            "group": group,
+            "session_id": session_id
         }
 
         # 4. Insert Summary (1 ไฟล์ = 1 แถวสรุป)

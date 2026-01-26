@@ -76,7 +76,7 @@ class CameraThread(threading.Thread):
         }
 
         self.interval_results: list[str] = []
-        self.interval_seconds = 3
+        self.interval_seconds = 1
         self.last_interval_time = time.time()
         self.interval_count = 0
         self.max_intervals = int(60 / self.interval_seconds)
@@ -91,6 +91,7 @@ class CameraThread(threading.Thread):
         self.last_target_center = None
         self.last_class_update_time = time.time()
         self.session_id = int(time.time())
+        self.start_time = time.time()
 
     # รีเซ็ตค่า State ต่างๆ ของกล้องให้กลับเป็นค่าเริ่มต้น
     def reset_state(self):
@@ -396,19 +397,39 @@ class CameraThread(threading.Thread):
 
     # จัดการสรุปผลราย Interval และบันทึกข้อมูลเมื่อครบกำหนดเวลา
     def handle_interval(self):
+        self.interval_count += 1
+
         cls = self.class_timer["current_class"]
         mapped = cls
         
-        if mapped:
-            self.interval_results.append(cls)
-            print(
-                f"⏱️ Cam {self.camera_id}: class: {cls} \n,total times: {self.class_durations[cls]} ({len(self.interval_results)})"
-                )
-
+        
         if len(self.interval_results) > self.max_intervals:
             self.interval_results.pop(0)
 
-        self.interval_count += 1
+        current_duration = 0
+        if self.start_time:
+            current_duration = int(time.time() - self.start_time)
+        
+        realtime_payload = {
+            "type": "realtime",
+            "CameraId": int(self.camera_id) + 1,
+            "total_duration_sec": current_duration,
+            "CurrentClass": cls
+        }
+
+        with self.lock:
+            self.latest_summary = realtime_payload
+        
+        if self.loop and self.summary_ready_event:
+            self.loop.call_soon_threadsafe(self.summary_ready_event.set)
+
+        if self.interval_count % 3 == 0:
+            if mapped:
+                self.interval_results.append(cls)
+                print(
+                    f"⏱️ Cam {self.camera_id}: class: {cls} \n,total times: {self.class_durations[cls]} ({len(self.interval_results)})"
+                    )
+                
         if self.interval_count >= self.max_intervals:
             self.save_summary()
             self.interval_count = 0
@@ -442,6 +463,7 @@ class CameraThread(threading.Thread):
                 img_base64 = base64.b64encode(self.jpeg_buffer).decode("utf-8")
 
             payload = {
+                "type": "summary",
                 "CameraId": int(self.camera_id) + 1,
                 "Time": datetime.now().strftime("%H:%M:%S"),
                 "CurrentClass": lass_class,

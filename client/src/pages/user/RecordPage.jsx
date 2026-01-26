@@ -158,6 +158,14 @@ const RecordPage = () => {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+
+        if(data.type === "realtime") {
+          if(data.total_duration_sec !== undefined){
+            setTimer(data.total_duration_sec);
+          }
+          return;
+        }
+        
         setSummaryData((prev) => [
           ...prev,
           { cameraId, data },
@@ -247,13 +255,6 @@ const RecordPage = () => {
 
   // ---------------------- ฟังก์ชันสำหรับปุ่มต่าง ๆ ----------------------
 
-  const clearCanvasAll = () => {
-    Object.values(canvasRef.current).forEach((canvas) => {
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    })
-  }
 
   // ปุ่ม "เริ่มต้นตรวจจับทุกกล้อง"
   const handleStartDetect = async () => {
@@ -261,6 +262,7 @@ const RecordPage = () => {
 
     const isNewSession = timer === 0;
     if (isNewSession) {
+      setTimer(0);
       setSummaryData([]);
       setStartTime(Date.now());
     } else {
@@ -334,23 +336,23 @@ const RecordPage = () => {
 
   // ---------------------- ระบบ Timer นับเวลาบันทึก ----------------------
 
-  useEffect(() => {
-    let intervalId;
+  // useEffect(() => {
+  //   let intervalId;
 
-    if (isRecording && startTime) {
-      intervalId = setInterval(() => {
-        // คำนวณเวลา: (ปัจจุบัน - เริ่มต้น) / 1000 เพื่อแปลงเป็นวินาที
-        const now = Date.now();
-        const secondsElapsed = Math.floor((now - startTime) / 1000);
+  //   if (isRecording && startTime) {
+  //     intervalId = setInterval(() => {
+  //       // คำนวณเวลา: (ปัจจุบัน - เริ่มต้น) / 1000 เพื่อแปลงเป็นวินาที
+  //       const now = Date.now();
+  //       const secondsElapsed = Math.floor((now - startTime) / 1000);
 
-        setTimer(secondsElapsed);
-      }, 1000);
-    }
+  //       setTimer(secondsElapsed);
+  //     }, 1000);
+  //   }
 
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [isRecording, startTime]);
+  //   return () => {
+  //     if (intervalId) clearInterval(intervalId);
+  //   };
+  // }, [isRecording, startTime]);
 
   return (
     <>

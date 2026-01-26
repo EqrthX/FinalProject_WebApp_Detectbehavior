@@ -658,7 +658,7 @@ const RecordPage = () => {
                     </p>
 
                     {/* ค่า Attention */}
-                    <div className="mt-2">
+                    {/*<div className="mt-2">
                       <p className="text-sm font-medium text-green-600">
                         ✔ ตั้งใจเรียน: {(item.data.Attention * 100).toFixed(1)}%
                       </p>
@@ -666,7 +666,7 @@ const RecordPage = () => {
                         ✘ ไม่ตั้งใจ:{" "}
                         {(item.data.Non_Attention * 100).toFixed(1)}%
                       </p>
-                    </div>
+                    </div>*/}
                   </div>
 
                   {/* รูป summary */}

@@ -480,11 +480,11 @@ const RecordPage = () => {
                       เวลา: {item.data.Time}
                     </p>
 
-                    <div className="mt-2">
+                    {/* <div className="mt-2">
                       <p className="text-lg font-medium text-amber-700">
                         พฤติกรรม: {convertClass(item.data.CurrentClass)}
                       </p>
-                    </div>*/}
+                    </div> */}
                   </div>
 
                   {item.data.image && (

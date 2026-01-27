@@ -174,6 +174,7 @@ export const AddSubjectAction = ({ isOpen, onClose, onSuccess }) => {
               <option value="" disabled></option>
               <option value="วิชาทั่วไป">วิชาทั่วไป</option>
               <option value="วิชาเฉพาะ">วิชาเฉพาะ</option>
+              <option value="วิชาบังคับ">วิชาบังคับ</option>
               <option value="วิชาเสรี">วิชาเสรี</option>
             </select>
             <label

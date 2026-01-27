@@ -484,7 +484,7 @@ const RecordPage = () => {
                       <p className="text-lg font-medium text-amber-700">
                         พฤติกรรม: {convertClass(item.data.CurrentClass)}
                       </p>
-                    </div>
+                    </div>*/}
                   </div>
 
                   {item.data.image && (

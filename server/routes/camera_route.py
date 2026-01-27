@@ -28,6 +28,7 @@ CLASS_MAPPING = {
     "Taking_notes": {"label": "Looking_Down", "color": (0, 255, 0)},   # เขียว 
     "LookingAway": {"label": "LookingAway", "color": (0, 165, 255)}, # ส้ม
     "UsingPhone": {"label": "UsingPhone", "color": (0, 0, 255)},   # แดง
+    "Other": {"label": "Other", "color": (128, 128, 128)},  # สีเทา
 }
 
 ATTENDENCE = ["Looking_at_the_board", "Looking_Down"]
@@ -380,11 +381,10 @@ class CameraThread(threading.Thread):
                     self.main_lost_frames = 0
 
         if found_class:
-            # กรณีเจอ: อัปเดตด้วย Class ที่เจอ
             self.update_class_state(found_class)
         else:
             # กรณีไม่เจอ: เอา Class ล่าสุดมาใช้ต่อ (Fake ว่าทำท่าเดิมอยู่)
-            current = self.class_timer.get("current_class")
+            current = self.class_timer.get("Other")
             
             if current:
                 self.update_class_state(current)

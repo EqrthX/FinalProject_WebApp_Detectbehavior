@@ -31,6 +31,7 @@ const RecordPage = () => {
       "LookingAway": "หันหน้า",
       "UsingPhone": "เล่นโทรศัพท์",
       "Looking_Down": "ก้มหน้า",
+      "Other": "อื่นๆ"
     }
     return clsThai[cls] || cls;
   }

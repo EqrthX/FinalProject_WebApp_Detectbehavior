@@ -25,13 +25,13 @@ camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 CLASS_MAPPING = {
     "Looking_at_the_board": {"label": "Looking_at_the_board", "color": (255, 0, 0)},   # น้ำเงิน
-    "Taking_notes": {"label": "Looking_Down", "color": (0, 255, 0)},   # เขียว 
+    "Taking_notes": {"label": "Taking_notes", "color": (0, 255, 0)},   # เขียว 
     "LookingAway": {"label": "LookingAway", "color": (0, 165, 255)}, # ส้ม
     "UsingPhone": {"label": "UsingPhone", "color": (0, 0, 255)},   # แดง
     "Other": {"label": "Other", "color": (128, 128, 128)},  # สีเทา
 }
 
-ATTENDENCE = ["Looking_at_the_board", "Looking_Down"]
+ATTENDENCE = ["Looking_at_the_board", "Taking_notes"]
 NON_ATTENDENCE = ["LookingAway", "UsingPhone"]
 
 camera_threads: dict[str, "CameraThread"] = {}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import AdminNavbar from "../../components/AdminNavbar";
-import { Pagination, Select } from "antd"; // 🟢 เพิ่ม Select ของ Antd
+import { Pagination, Select } from "antd";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "../../config/supabase.js";
 
@@ -10,12 +10,72 @@ import {
 } from "../../components/ScheduleAction.jsx";
 import { AddSubjectAction } from "../../components/AddSubjectAction.jsx";
 
+// =========================================================
+// 🟢 1. สร้าง Component Modal สำหรับยืนยันการลบ (ใส่ไว้ในไฟล์เดียวกันหรือแยกไฟล์ก็ได้)
+// =========================================================
+const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, title = "ลบข้อมูล" }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-[70] bg-black/40 backdrop-blur-[2px]">
+      <div className="bg-white p-6 rounded-xl shadow-2xl w-[90%] max-w-sm border border-gray-200 animate-in fade-in zoom-in duration-200">
+        <div className="flex justify-center mb-4 text-red-500">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="w-12 h-12"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+            />
+          </svg>
+        </div>
+        <h3 className="text-xl font-bold text-center text-gray-800 mb-2">
+          ยืนยันการ{title}
+        </h3>
+        <p className="text-center text-gray-600 mb-6">
+          คุณต้องการลบข้อมูลนี้ใช่หรือไม่? <br />
+          <span className="text-xs text-red-400">
+            (การกระทำนี้ไม่สามารถเรียกคืนได้)
+          </span>
+        </p>
+        <div className="flex gap-3 justify-center">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 w-full font-medium"
+          >
+            ยกเลิก
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 text-white bg-red-500 rounded-lg hover:bg-red-600 w-full font-medium shadow-md"
+          >
+            ลบข้อมูล
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// =========================================================
+// Main Component
+// =========================================================
 const AdminTeachingSchedule = () => {
   // --- State Management ---
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState(null);
+
+  // 🟢 2. เพิ่ม State สำหรับ Modal ลบ
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteId, setDeleteId] = useState(null);
 
   const [schedules, setSchedules] = useState([]);
   const [subjectList, setSubjectList] = useState([]);
@@ -27,9 +87,8 @@ const AdminTeachingSchedule = () => {
   const [pageSize, setPageSize] = useState(10);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // 🟢 Filter State
-  const [filterTeacher, setFilterTeacher] = useState(null); // เปลี่ยนเป็น null เพื่อรองรับการ clear
-  const [isFilterFocused, setIsFilterFocused] = useState(false); // 🟢 State สำหรับ Animation Label
+  const [filterTeacher, setFilterTeacher] = useState(null);
+  const [isFilterFocused, setIsFilterFocused] = useState(false);
 
   // --- FETCHING DATA FUNCTIONS ---
   const fetchTeachers = async () => {
@@ -40,7 +99,7 @@ const AdminTeachingSchedule = () => {
     else {
       const formattedTeachers = data.map((t) => ({
         value: t.teacher_id,
-        label: `${t.first_name} ${t.last_name} (${t.teacher_id})`, // search จากชื่อหรือรหัสได้
+        label: `${t.first_name} ${t.last_name} (${t.teacher_id})`,
         fullName: `${t.first_name} ${t.last_name}`,
         teacherId: t.teacher_id,
       }));
@@ -119,17 +178,34 @@ const AdminTeachingSchedule = () => {
     setShowEditModal(true);
   };
 
-  const handleDeleteClick = async (id) => {
-    if (window.confirm("คุณต้องการลบตารางสอนนี้ใช่หรือไม่?")) {
+  // 🟢 3. ปรับ handleDeleteClick ให้เปิด Modal
+  const handleDeleteClick = (id) => {
+    setDeleteId(id); // เก็บ ID ที่จะลบ
+    setShowDeleteModal(true); // เปิด Modal
+  };
+
+  // 🟢 4. ฟังก์ชันยืนยันการลบ (ทำงานเมื่อกดปุ่มใน Modal)
+  const handleConfirmDelete = async () => {
+    setShowDeleteModal(false); // ปิด Modal
+    if (!deleteId) return;
+
+    try {
       const { error } = await supabase
         .from("class_schedule")
         .delete()
-        .eq("class_schedule_id", id);
-      if (error) toast.error("ลบข้อมูลไม่สำเร็จ");
-      else {
-        toast.success("ลบข้อมูลเรียบร้อย");
-        fetchSchedules();
+        .eq("class_schedule_id", deleteId);
+
+      if (error) {
+        throw error;
       }
+
+      toast.success("ลบข้อมูลเรียบร้อย");
+      fetchSchedules(); // รีเฟรชข้อมูล
+    } catch (error) {
+      console.error("Delete Error:", error);
+      toast.error("ลบข้อมูลไม่สำเร็จ");
+    } finally {
+      setDeleteId(null); // เคลียร์ ID
     }
   };
 
@@ -140,23 +216,21 @@ const AdminTeachingSchedule = () => {
   }, []);
 
   useEffect(() => {
-    const isModalOpen = showAddModal || showUploadModal || showEditModal;
+    const isModalOpen = showAddModal || showUploadModal || showEditModal || showDeleteModal;
     document.body.style.overflow = isModalOpen ? "hidden" : "unset";
     return () => (document.body.style.overflow = "unset");
-  }, [showAddModal, showUploadModal, showEditModal]);
+  }, [showAddModal, showUploadModal, showEditModal, showDeleteModal]);
 
   // --- FILTERING LOGIC ---
   const filteredSchedules = schedules.filter((schedule) => {
     const lowerSearchTerm = searchTerm.toLowerCase();
 
-    // 1. กรองคำค้นหา
     const searchMatch =
       !searchTerm ||
       schedule.code.toLowerCase().includes(lowerSearchTerm) ||
       schedule.name.toLowerCase().includes(lowerSearchTerm) ||
       schedule.teacher.toLowerCase().includes(lowerSearchTerm);
 
-    // 2. กรองอาจารย์ (จาก Dropdown ใหม่)
     const teacherMatch =
       !filterTeacher || schedule.teacherIdRaw === filterTeacher;
 
@@ -175,15 +249,11 @@ const AdminTeachingSchedule = () => {
     setPageSize(size);
   };
 
-  // --- RENDERING ---
-
   return (
-    // 🟢 1. Main Container: ใช้ h-screen (เต็มจอ) และ overflow-hidden (ห้าม scroll หน้าหลัก)
     <div className="h-screen bg-[#f6f6f4] flex flex-col md:flex-row gap-1 p-4 overflow-hidden">
       <Toaster />
 
       <style>{`
-            /* CSS สำหรับ Dropdown ของ Ant Design ให้สวยงาม */
             .ant-select-custom .ant-select-selector {
                 background-color: #f9fafb !important;
                 border-color: #d1d5db !important;
@@ -205,19 +275,15 @@ const AdminTeachingSchedule = () => {
         <AdminNavbar />
       </aside>
 
-      {/* 🟢 2. Content Zone: ใช้ flex-col และ h-full เพื่อให้เนื้อหาข้างในขยายได้ */}
       <main className="flex-1 transition-all lg:pl-[0rem] h-full flex flex-col min-w-0">
         <div className="max-w-screen-2xl mx-auto px-6 md:px-4 w-full h-full flex flex-col mt-5">
-          {/* Header Bar */}
           <div className="w-full bg-white rounded-[15px] border border-[#e9e9e9] shadow-sm h-20 md:h-16 px-6 flex items-center justify-between sticky top-[20px] z-30 shrink-0">
             <h1 className="text-[22px] md:text-[18px] font-semibold">
               ตารางสอน
             </h1>
           </div>
 
-          {/* 🟢 3. White Card: ใช้ flex-1 เพื่อให้ยืดเต็มพื้นที่ที่เหลือ (แก้ปัญหาจอเล็ก) */}
           <div className="bg-white mt-4 p-4 rounded-[20px] shadow-sm border border-[#e9e9e9] flex flex-col flex-1 overflow-hidden">
-            {/* Toolbar (Search & Filter) */}
             <div className="flex justify-between items-center mb-4 flex-wrap gap-2 shrink-0 border-b border-gray-100 pb-4">
               <div className="flex items-center gap-3 flex-wrap w-full xl:w-auto">
                 <div className="p-2 font-bold text-gray-800">วิชาสอน</div>
@@ -280,13 +346,11 @@ const AdminTeachingSchedule = () => {
                   onClick={() => setShowUploadModal(true)}
                   className="bg-[#3D42D3] hover:bg-[#2b28a0] text-white px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap"
                 >
-                  อัปโหลดตารางสอน
+                  เพิ่มตารางสอน
                 </button>
               </div>
             </div>
 
-            {/* 🟢 4. Table Wrapper: ใช้ flex-1 และ overflow-auto (ลบ h- fixed ออก) */}
-            {/* min-h-0 สำคัญมาก เพื่อให้ flex item หดตัวได้ใน Firefox/Safari */}
             <div className="flex-1 overflow-y-auto overflow-x-auto relative shadow-inner border border-gray-300 rounded-lg min-h-0">
               <table className="min-w-full border-separate border-spacing-0 text-sm">
                 <thead className="bg-[#f2f2f2] sticky top-0 z-[30] text-gray-700 font-semibold">
@@ -410,6 +474,7 @@ const AdminTeachingSchedule = () => {
                               </svg>
                             </button>
                             <button
+                              // 🟢 เรียกใช้ handleDeleteClick ตัวใหม่
                               onClick={() => handleDeleteClick(t.id)}
                               className="text-red-600 hover:text-red-800 p-1.5 rounded-md hover:bg-red-100 transition-all hover:scale-110"
                             >
@@ -439,7 +504,6 @@ const AdminTeachingSchedule = () => {
               </table>
             </div>
 
-            {/* Pagination: ให้มันลอยอยู่ด้านล่างเสมอ และไม่ดันตารางจนตกขอบ */}
             <div className="flex justify-center mt-4 pb-2 shrink-0">
               <Pagination
                 current={currentPage}
@@ -481,6 +545,14 @@ const AdminTeachingSchedule = () => {
         subjectList={subjectList}
         groupedSubjects={groupedSubjects}
         teacherList={teacherList}
+      />
+
+      {/* 🟢 5. แสดง Modal ยืนยันการลบ */}
+      <DeleteConfirmModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleConfirmDelete}
+        title="ลบตารางสอน"
       />
     </div>
   );

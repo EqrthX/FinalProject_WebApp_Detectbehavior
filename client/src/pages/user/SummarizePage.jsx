@@ -5,10 +5,8 @@ import {
   BarChartOutlined,
   PieChartOutlined,
   CalendarOutlined,
-  SendOutlined,
   TeamOutlined,
   ClockCircleOutlined,
-  PlayCircleOutlined,
   BookOutlined,
   RightOutlined
 } from "@ant-design/icons";
@@ -66,7 +64,7 @@ const SummarizePage = () => {
   const [headerInfo, setHeaderInfo] = useState({
     subject: "",
     date: "",
-    rawDate: "", // เพิ่มตัวนี้เพื่อเก็บค่าวันที่สำหรับส่งไปหน้า Filter
+    rawDate: "",
     group: "",
     scheduleTime: "",
   });
@@ -143,7 +141,7 @@ const SummarizePage = () => {
         setHeaderInfo({
           subject: targetSubject,
           group: targetGroup,
-          rawDate: targetDate, // เก็บวันที่แบบดิบๆ (YYYY-MM-DD) ไว้ใช้ส่งค่า
+          rawDate: targetDate, 
           date: new Date(targetDate).toLocaleDateString("th-TH", {
             year: "numeric",
             month: "long",
@@ -208,12 +206,26 @@ const SummarizePage = () => {
                 groupedByCamera[camId].totalAtt += Number(log.Attention || 0);
                 groupedByCamera[camId].countRow += 1;
 
+                // --- 🟢 ส่วนที่แก้ไข Logic การรวม Data ---
+                // ใช้การวนลูป Object.keys เพื่อดักจับทุกพฤติกรรม
                 const duration = log.class_duration || {};
-                groupedByCamera[camId].durationSum["มองกระดาน"] += Number(duration.Looking_at_the_board || 0) + Number(duration.Focused || 0);
-                groupedByCamera[camId].durationSum["จดเลคเชอร์"] += Number(duration.Taking_notes || 0);
-                groupedByCamera[camId].durationSum["มองทางอื่น"] += Number(duration.LookingAway || 0);
-                groupedByCamera[camId].durationSum["เล่นมือถือ"] += Number(duration.UsingPhone || 0);
-                groupedByCamera[camId].durationSum["อื่นๆ"] += Number(duration.Talking || 0) + Number(duration.Other || 0);
+                Object.keys(duration).forEach((key) => {
+                    const val = Number(duration[key] || 0);
+
+                    if (key === "Looking_at_the_board" || key === "Focused") {
+                        groupedByCamera[camId].durationSum["มองกระดาน"] += val;
+                    } else if (key === "Taking_notes") {
+                        groupedByCamera[camId].durationSum["จดเลคเชอร์"] += val;
+                    } else if (key === "UsingPhone") {
+                        groupedByCamera[camId].durationSum["เล่นมือถือ"] += val;
+                    } else if (key === "LookingAway") {
+                        groupedByCamera[camId].durationSum["มองทางอื่น"] += val;
+                    } else {
+                        // ถ้าไม่ใช่ 4 อันบน ให้โยนเข้า "อื่นๆ" ทั้งหมด
+                        groupedByCamera[camId].durationSum["อื่นๆ"] += val;
+                    }
+                });
+                // ----------------------------------------
             });
 
             const camerasData = Object.keys(groupedByCamera).map((camId) => {
@@ -291,12 +303,11 @@ const SummarizePage = () => {
     );
   };
 
-  // 🟢 ฟังก์ชันนำทาง: ใช้ข้อมูลจาก headerInfo โดยตรง
   const handleGoToResults = () => {
     navigate("/user/ResultsPage", {
       state: {
         filterSubject: headerInfo.subject,
-        filterDate: new Date(headerInfo.rawDate).toLocaleDateString("th-TH"), // ใช้วันที่จริงในการ Filter
+        filterDate: new Date(headerInfo.rawDate).toLocaleDateString("th-TH"), 
         filterSection: headerInfo.group,
       },
     });
@@ -309,7 +320,6 @@ const SummarizePage = () => {
         <MyBreadcrumb />
         <div className="flex-1 pt-6 overflow-y-auto scrollbar-hide pb-20">
           
-          {/* Header บนสุด (เหลือแค่หัวข้อ) */}
           <div className="bg-white rounded-[20px] p-4 shadow-sm border border-[#e9e9e9] flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-2">
               <BarChartOutlined className="text-2xl text-blue-500" />
@@ -324,10 +334,7 @@ const SummarizePage = () => {
               sessionsList.map((session) => (
                 <div key={session.sessionId} className="flex flex-col gap-4">
                   
-                  {/* 🟢 ส่วนหัวข้อ Session: มีปุ่มอยู่ด้านขวาแล้ว */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-2 border-b border-gray-200 pb-2">
-                    
-                    {/* ฝั่งซ้าย: ข้อมูล Session + รายละเอียดวิชา */}
                     <div className="flex flex-col md:flex-row md:items-center gap-3">
                         <div className="flex items-center gap-2">
                             <div className="bg-blue-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-md shrink-0">
@@ -340,7 +347,6 @@ const SummarizePage = () => {
                         
                         <div className="hidden md:block h-6 w-[1px] bg-gray-300 mx-2"></div>
 
-                        {/* รายละเอียดวิชา */}
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-600">
                             <span className="flex items-center gap-1 font-medium text-gray-800">
                                 <BookOutlined className="text-blue-500"/> วิชา {headerInfo.subject}
@@ -359,7 +365,6 @@ const SummarizePage = () => {
                         </div>
                     </div>
 
-                    {/* 🟢 ฝั่งขวา: ปุ่มกด (ย้ายมาตรงนี้) */}
                     <button 
                         onClick={handleGoToResults} 
                         className="flex items-center gap-2 px-4 py-2 bg-white text-blue-500 border border-blue-100 rounded-full text-sm font-medium hover:bg-blue-50 transition duration-200 shadow-sm shrink-0 self-start md:self-auto"
@@ -369,7 +374,6 @@ const SummarizePage = () => {
                     </button>
                   </div>
 
-                  {/* กราฟของกล้องแต่ละตัวใน Session นี้ */}
                   {session.cameras.map((data, index) => {
                     const isDataEmpty = data.totalDurationForPie === 0;
                     const pieRenderData = isDataEmpty ? [{ name: "No Data", value: 1 }] : data.pieChartData.filter(d => d.value > 0);
@@ -382,12 +386,8 @@ const SummarizePage = () => {
                               <h3 className="text-xl font-bold text-gray-800">กล้อง {data.cameraId}</h3>
                               <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">CAM {data.cameraId}</span>
                             </div>
-                            {/*<span className="text-sm text-gray-500">
-                              Timeline การสอน (ครั้งที่ {session.sessionOrder})
-                            </span>*/}
                           </div>
                           <div className="flex flex-col items-center">
-                            {/*<span className="text-gray-400 text-xs mb-1">คะแนนเฉลี่ยรวม</span>*/}
                             <span className={`text-2xl font-bold  ${Number(data.avgAtt) > 50 ? "text-green-600" : "text-red-500"}`}>{data.avgAtt}%</span>
                           </div>
                         </div>
@@ -399,14 +399,6 @@ const SummarizePage = () => {
                               <h4 className="text-sm font-semibold text-gray-600 flex items-center gap-2">
                                 <BarChartOutlined /> Timeline
                               </h4>
-                              {/*<div className="flex items-center gap-1 text-xs text-gray-500 bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">
-                                <PlayCircleOutlined className="text-green-500" />
-                                <span>
-                                  <span className="font-semibold text-gray-700">{data.startTimeStr} - {data.endTimeStr}</span> 
-                                  <span className="mx-1 text-gray-300">|</span> 
-                                  บันทึก {data.recordedDurationStr}
-                                </span>
-                              </div>*/}
                             </div>
                             <div className="h-[250px] bg-gray-50 rounded-xl border border-gray-100 p-2">
                               <ResponsiveContainer width="100%" height="100%">
@@ -451,6 +443,7 @@ const SummarizePage = () => {
                                     </Pie>
                                     {!isDataEmpty && (
                                       <Tooltip formatter={(value) => {
+                                          // ใช้ toFixed(0) เพื่อให้เป็นจำนวนเต็มเหมือนกันหมด
                                           const percent = data.totalDurationForPie > 0 ? ((value / data.totalDurationForPie) * 100).toFixed(0) : 0;
                                           return [`${percent}%`, "สัดส่วน"];
                                         }}
@@ -471,6 +464,7 @@ const SummarizePage = () => {
                                         <div className="w-2.5 h-2.5 rounded text-xs flex items-center justify-center shrink-0" style={{ backgroundColor: BEHAVIOR_COLORS[catName] }} />
                                         <span className="text-xs text-gray-600 truncate" title={catName}>{catName}</span>
                                       </div>
+                                      {/* ส่วนนี้แสดงเป็นเวลา (Duration) ซึ่งเหมาะสมกับหน้ารายละเอียดครับ */}
                                       <span className="text-[10px] font-medium text-gray-500 whitespace-nowrap">{formatDuration(item.value)}</span>
                                     </div>
                                   );

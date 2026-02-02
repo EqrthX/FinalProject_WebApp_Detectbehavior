@@ -10,11 +10,9 @@ import {
   TeamOutlined,
   UserOutlined,
   ClockCircleOutlined,
-  PlayCircleOutlined,
 } from "@ant-design/icons";
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -30,7 +28,7 @@ import {
 import { supabase } from "../../config/supabase";
 import { useLocation } from "react-router-dom";
 
-// --- 1. Custom Select Component (คงเดิม) ---
+// --- 1. Custom Select Component ---
 const CustomSelect = ({ options, value, onChange, prefixIcon, placeholder }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -96,13 +94,13 @@ const CustomSelect = ({ options, value, onChange, prefixIcon, placeholder }) => 
   );
 };
 
-// --- 2. กำหนดสีและหมวดหมู่ (ให้เหมือน SummarizePage) ---
+// --- 2. กำหนดสีและหมวดหมู่ ---
 const BEHAVIOR_COLORS = {
-  มองกระดาน: "#3b82f6",   // รวม Focused
+  มองกระดาน: "#3b82f6",   
   จดเลคเชอร์: "#a855f7",
   มองทางอื่น: "#f59e0b",
   เล่นมือถือ: "#ef4444",
-  อื่นๆ: "#9ca3af",       // รวม Talking
+  อื่นๆ: "#9ca3af",       
   default: "#cbd5e1",
   empty: "#e5e7eb",
 };
@@ -243,9 +241,8 @@ const ResultsPage = () => {
     }));
   };
 
-  // --- 3. แก้ไข Logic การรวมข้อมูลให้เป็น 5 หมวด (เหมือน SummarizePage) ---
+  // --- 3. แก้ไข Logic การรวมข้อมูล (Dynamic Mapping) ---
   const processSummaryData = (summaryList) => {
-    // ใช้ 5 หมวดหลัก
     const durationSum = {
       มองกระดาน: 0,
       จดเลคเชอร์: 0,
@@ -257,13 +254,23 @@ const ResultsPage = () => {
     summaryList.forEach((item) => {
       const json = item.class_duration_summary || {};
       
-      // Mapping Logic
-      durationSum["มองกระดาน"] += (Number(json.Focused || 0) + Number(json.Looking_at_the_board || 0));
-      durationSum["จดเลคเชอร์"] += Number(json.Taking_notes || 0);
-      durationSum["มองทางอื่น"] += Number(json.LookingAway || 0);
-      durationSum["เล่นมือถือ"] += Number(json.UsingPhone || 0);
-      // รวม Talking + Other เข้าหมวด "อื่นๆ"
-      durationSum["อื่นๆ"] += (Number(json.Talking || 0) + Number(json.Other || 0));
+      // 🟢 ใช้ Logic แบบวนลูป เพื่อกวาดทุก Key
+      Object.keys(json).forEach((key) => {
+        const val = Number(json[key] || 0);
+
+        if (key === "Looking_at_the_board" || key === "Focused") {
+            durationSum["มองกระดาน"] += val;
+        } else if (key === "Taking_notes") {
+            durationSum["จดเลคเชอร์"] += val;
+        } else if (key === "UsingPhone") {
+            durationSum["เล่นมือถือ"] += val;
+        } else if (key === "LookingAway") {
+            durationSum["มองทางอื่น"] += val;
+        } else {
+            // อะไรที่ไม่ใช่ 4 ตัวบน ให้โยนเข้า "อื่นๆ" ทั้งหมด
+            durationSum["อื่นๆ"] += val;
+        }
+      });
     });
 
     const pieChartData = Object.keys(durationSum).map(key => ({
@@ -400,7 +407,7 @@ const ResultsPage = () => {
         subjectId,
         section,
         pieChartData,
-        totalDuration, // เพิ่มตัวนี้สำหรับคำนวณ %
+        totalDuration,
         avgAtt,
         lineChartData,
         barChartData,
@@ -461,7 +468,6 @@ const ResultsPage = () => {
           {groupedData.length > 0 ? (
             <div className="flex flex-col gap-6">
               {groupedData.map((data, index) => {
-                // สำหรับกราฟ: ถ้าไม่มีข้อมูล หรือยอดรวมเป็น 0 ให้แสดง dummy
                 const isDataEmpty = data.totalDuration === 0;
                 const pieRenderData = isDataEmpty ? [{ name: "No Data", value: 1 }] : data.pieChartData.filter(d => d.value > 0);
 
@@ -540,14 +546,14 @@ const ResultsPage = () => {
                         </ResponsiveContainer>
                       </div>
 
-                      {/* --- 🟢 ส่วน Pie Chart ที่แก้ไข (ให้เหมือน SummarizePage) --- */}
+                      {/* --- 🟢 ส่วน Pie Chart และ List --- */}
                       <div className="lg:col-span-1 border-l border-gray-100 pl-0 lg:pl-8">
                         <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2">
                           <PieChartOutlined /> สัดส่วนเวลาพฤติกรรม
                         </h4>
 
                         <div className="flex items-center h-[90%] w-full">
-                          {/* 1. กราฟวงกลม (ซ้าย 55%) */}
+                          {/* 1. กราฟวงกลม */}
                           <div className="w-[55%] h-full relative">
                             <ResponsiveContainer width="100%" height="100%">
                               <PieChart>
@@ -569,6 +575,7 @@ const ResultsPage = () => {
                                 {!isDataEmpty && (
                                   <Tooltip 
                                     formatter={(value) => {
+                                      // ใช้ toFixed(0) เพื่อให้เป็นจำนวนเต็มเสมอ
                                       const percent = data.totalDuration > 0 ? ((value / data.totalDuration) * 100).toFixed(0) : 0;
                                       return [`${percent}%`, "สัดส่วน"];
                                     }}
@@ -581,10 +588,9 @@ const ResultsPage = () => {
                             {isDataEmpty && <div className="absolute top-1/2 left-[50%] transform -translate-x-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium pointer-events-none">ไม่มีข้อมูล</div>}
                           </div>
 
-                          {/* 2. รายการ List (ขวา 45%) */}
+                          {/* 2. รายการ List (แสดงเป็นเวลา) */}
                           <div className="w-[45%] flex flex-col justify-center h-full pr-2">
                             {FIXED_CATEGORIES.map((catName, i) => {
-                              // หาค่าของหมวดหมู่นี้
                               const item = data.pieChartData.find(d => d.name === catName) || { value: 0 };
                               return (
                                 <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
@@ -592,7 +598,6 @@ const ResultsPage = () => {
                                     <div className="w-2.5 h-2.5 rounded text-xs flex items-center justify-center shrink-0" style={{ backgroundColor: BEHAVIOR_COLORS[catName] }} />
                                     <span className="text-xs text-gray-600 truncate" title={catName}>{catName}</span>
                                   </div>
-                                  {/* แสดงเวลา */}
                                   <span className="text-[10px] font-medium text-gray-500 whitespace-nowrap">{formatDuration(item.value)}</span>
                                 </div>
                               );

@@ -92,7 +92,7 @@ class CameraThread(threading.Thread):
         self.last_target_center = None
         self.last_class_update_time = time.time()
         self.session_id = int(time.time())
-        self.start_time = time.time()
+        self.start_time = None
 
     # รีเซ็ตค่า State ต่างๆ ของกล้องให้กลับเป็นค่าเริ่มต้น
     def reset_state(self):
@@ -384,12 +384,12 @@ class CameraThread(threading.Thread):
             self.update_class_state(found_class)
         else:
             # กรณีไม่เจอ: เอา Class ล่าสุดมาใช้ต่อ (Fake ว่าทำท่าเดิมอยู่)
-            current = self.class_timer.get("Other")
+            # current = self.class_timer.get("current_class")
             
-            if current:
-                self.update_class_state(current)
-            else:
-                pass
+            # if current:
+                self.update_class_state("Other")
+            # else:
+            #     pass
 
         if now - self.last_interval_time >= self.interval_seconds:
             self.last_interval_time = now
@@ -407,7 +407,7 @@ class CameraThread(threading.Thread):
             self.interval_results.pop(0)
 
         current_duration = 0
-        if self.start_time:
+        if self.start_time is not None:
             current_duration = int(time.time() - self.start_time)
         
         realtime_payload = {
@@ -547,12 +547,17 @@ async def start_all_detections(
             th.loop = loop
             th.summary_ready_event = asyncio.Event()
             th.detecting = True
+
+            th.start_time = time.time()
+
             th.start()
             camera_threads[cid] = th
             print(camera_threads)
         else:
             th = camera_threads[cid]
             th.detecting = True
+            if th.start_time is None:
+                th.start_time = time.time()
             th.loop = loop
 
             if th.summary_ready_event is None:

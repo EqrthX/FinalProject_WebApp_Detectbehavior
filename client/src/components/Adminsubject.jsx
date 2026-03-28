@@ -10,6 +10,7 @@ import { SubjectDetailModal } from "../components/SubjectDetailModal"; // 🟢 �
 const BASE_CATEGORIES = [
   "หมวดวิชาศึกษาทั่วไป",
   "หมวดวิชาเฉพาะ",
+  "หมวดวิชาบังคับ",
   "หมวดวิชาเสรี",
 ];
 
@@ -20,6 +21,7 @@ const normalizeCategory = (dbCategory) => {
 
   if (lower.includes("ทั่วไป")) return "หมวดวิชาศึกษาทั่วไป";
   if (lower.includes("เฉพาะ") || lower.includes("เอก")) return "หมวดวิชาเฉพาะ";
+  if (lower.includes("บังคับ")) return "หมวดวิชาบังคับ";
   if (lower.includes("เสรี")) return "หมวดวิชาเสรี";
 
   return "หมวดวิชาศึกษาทั่วไป"; // Default Fallback
@@ -31,6 +33,8 @@ const getCategoryDescription = (title) => {
       return "วิชาพื้นฐานที่นักศึกษาทุกคณะต้องเรียน (GE)";
     case "หมวดวิชาเฉพาะ":
       return "วิชาบังคับและวิชาเลือกในสาขาวิชา";
+      case "หมวดวิชาบังคับ":
+        return "วิชาบังคับและวิชาเลือกในสาขาวิชา";
     case "หมวดวิชาเสรี":
       return "วิชาที่นักศึกษาสามารถเลือกเรียนได้ตามความสนใจ";
     default:

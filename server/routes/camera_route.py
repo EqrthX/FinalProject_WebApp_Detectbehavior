@@ -24,15 +24,15 @@ from utils.json_buffer import get_all_pending_files, save_buffer
 camera_router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 CLASS_MAPPING = {
-    "Looking_at_the_board": {"label": "Looking_at_the_board", "color": (255, 0, 0)},   # น้ำเงิน
-    "Taking_notes": {"label": "Taking_notes", "color": (0, 255, 0)},   # เขียว 
-    "LookingAway": {"label": "LookingAway", "color": (0, 165, 255)}, # ส้ม
-    "UsingPhone": {"label": "UsingPhone", "color": (0, 0, 255)},   # แดง
+    "Looking at the board": {"label": "Looking at the board", "color": (255, 0, 0)},   # น้ำเงิน
+    "Looking down to write": {"label": "Looking down to write", "color": (0, 255, 0)},   # เขียว 
+    "Looking Away": {"label": "Looking Away", "color": (0, 165, 255)}, # ส้ม
+    "Using Phone": {"label": "Using Phone", "color": (0, 0, 255)},   # แดง
     "Other": {"label": "Other", "color": (128, 128, 128)},  # สีเทา
 }
 
-ATTENDENCE = ["Looking_at_the_board", "Taking_notes"]
-NON_ATTENDENCE = ["LookingAway", "UsingPhone"]
+ATTENDENCE = ["Looking at the board", "Looking down to write"]
+NON_ATTENDENCE = ["Looking Away", "Using Phone"]
 
 camera_threads: dict[str, "CameraThread"] = {}
 available_cameras: list[dict] = []

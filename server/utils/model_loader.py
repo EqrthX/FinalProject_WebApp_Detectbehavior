@@ -1,4 +1,3 @@
-# utils/model_loader.py
 
 import os
 from ultralytics import YOLO
@@ -11,7 +10,7 @@ def get_model_path():
     MODEL_PATH = os.path.abspath(os.path.join(
         BASE_DIR,
         "..", "..",
-        "dataset_test", "project", "train", "weights", "best.pt"
+        "datasetnew_boundingbox", "datasetnew_boundingbox", "detect", "train", "weights", "best.pt"
     ))
 
     return MODEL_PATH

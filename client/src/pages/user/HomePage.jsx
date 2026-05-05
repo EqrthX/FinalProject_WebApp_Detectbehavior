@@ -107,13 +107,13 @@ const HomePage = () => {
             const value = Number(behaviors[key] || 0);
 
             // เช็คว่า Key นี้ควรอยู่หมวดไหน
-            if (key === "Looking_at_the_board" || key === "Focused") {
+            if (key === "Looking at the board" || key === "Focused") {
                 dailyTotals["มองกระดาน"] += value;
-            } else if (key === "Taking_notes") {
+            } else if (key === "Looking down to write") {
                 dailyTotals["จดเลคเชอร์"] += value;
-            } else if (key === "UsingPhone") {
+            } else if (key === "Using Phone") {
                 dailyTotals["เล่นมือถือ"] += value;
-            } else if (key === "LookingAway") {
+            } else if (key === "Looking Away") {
                 dailyTotals["มองทางอื่น"] += value;
             } else {
                 // *** อะไรที่ไม่ใช่ 4 ตัวบน ให้เทรวมลง "อื่นๆ" ทั้งหมด ***

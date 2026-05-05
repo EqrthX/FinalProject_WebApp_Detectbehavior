@@ -212,13 +212,13 @@ const SummarizePage = () => {
                 Object.keys(duration).forEach((key) => {
                     const val = Number(duration[key] || 0);
 
-                    if (key === "Looking_at_the_board" || key === "Focused") {
+                    if (key === "Looking at the board" || key === "Focused") {
                         groupedByCamera[camId].durationSum["มองกระดาน"] += val;
-                    } else if (key === "Taking_notes") {
+                    } else if (key === "Looking down to write") {
                         groupedByCamera[camId].durationSum["จดเลคเชอร์"] += val;
-                    } else if (key === "UsingPhone") {
+                    } else if (key === "Using Phone") {
                         groupedByCamera[camId].durationSum["เล่นมือถือ"] += val;
-                    } else if (key === "LookingAway") {
+                    } else if (key === "Looking Away") {
                         groupedByCamera[camId].durationSum["มองทางอื่น"] += val;
                     } else {
                         // ถ้าไม่ใช่ 4 อันบน ให้โยนเข้า "อื่นๆ" ทั้งหมด

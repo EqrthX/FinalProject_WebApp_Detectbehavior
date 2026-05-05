@@ -27,10 +27,10 @@ const RecordPage = () => {
   // ---------------------- ฟังก์ชัน Utils (ฟังก์ชันช่วยงานทั่วไป) ----------------------
   const convertClass = (cls) => {
     const clsThai = {
-      "Looking_at_the_board": "มองกระดาน",
-      "LookingAway": "หันหน้า",
-      "UsingPhone": "เล่นโทรศัพท์",
-      "Taking_notes": "จดเลคเชอร์",
+      "Looking at the board": "มองกระดาน",
+      "Looking Away": "หันหน้า",
+      "Using Phone": "เล่นโทรศัพท์",
+      "Looking down to write": "จดเลคเชอร์",
       "Other": "อื่นๆ"
     }
     return clsThai[cls] || cls;

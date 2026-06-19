@@ -222,3 +222,12 @@ VITE_API_BASE=https://xxxx.trycloudflare.com/api
 - Model weights (`best.pt`) ต้องอยู่ใน `datasetnew_boundingbox/datasetnew_boundingbox/detect/train/weights/best.pt`
 - กล้อง USB ต้องต่ออยู่กับเครื่องที่รัน Backend เท่านั้น
 - ข้อมูลจะถูก Buffer ไว้ใน `server/jsonlogs/` และอัปโหลดไป Supabase เมื่อกด "จบการตรวจจับ"
+
+---
+
+## 👥 สมาชิกผู้พัฒนา (Credits)
+
+- **Nontprawitch**
+- **Chaianun**
+- **Chanidapha**
+

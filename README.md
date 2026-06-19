@@ -1,6 +1,8 @@
 # 🎓 FinalProject — WebApp Detect Behavior
 
 > **เว็บแอปพลิเคชันตรวจจับพฤติกรรมผู้เรียนในห้องเรียน แบบ Real-time ด้วย YOLOv8**
+> 
+> 🌐 **Live Website (Frontend):** [https://final-project-web-app-detectbehavio.vercel.app/](https://final-project-web-app-detectbehavio.vercel.app/)
 
 ![Python](https://img.shields.io/badge/Python-3.11.9-blue?logo=python)
 ![Node.js](https://img.shields.io/badge/Node.js-24.x-green?logo=node.js)

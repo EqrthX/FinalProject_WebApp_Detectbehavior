@@ -26,6 +26,16 @@ CLASS_MAPPING = {
 ATTENDENCE = ["Looking at the board", "Looking down to write"]
 NON_ATTENDENCE = ["Looking Away", "Using Phone"]
 
+# Constants for detection and retry logic
+YOLO_CONF = 0.45
+YOLO_IOU = 0.50
+BEST_CONF_THRESHOLD = 0.60
+MIN_DISTANCE_THRESHOLD = 150
+FOUND_DET_CONF_THRESHOLD = 0.50
+MAX_RETRIES = 10
+RETRY_DELAY = 0.5
+MAIN_MAX_LOST_FRAMES = 5
+
 # เก็บข้อมูลสถานะกล้องที่แชร์ระหว่าง REST APIs และ WebSockets
 camera_threads: dict[str, "CameraThread"] = {}
 available_cameras: list[dict] = []
@@ -80,7 +90,7 @@ class CameraThread(threading.Thread):
 
         self.main_track_id = None
         self.main_lost_frames = 0
-        self.main_max_lost_frames = 5
+        self.main_max_lost_frames = MAIN_MAX_LOST_FRAMES
         self.last_detect_time = 0
         self.last_target_center = None
         self.last_class_update_time = time.time()
@@ -110,8 +120,8 @@ class CameraThread(threading.Thread):
 
     def open_camera(self) -> bool:
         backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
-        max_retries = 10  # เพิ่มจำนวนครั้งที่จะลองเปิดใหม่
-        retry_delay = 0.5 # รอ 0.5 วินาทีก่อนลองใหม่
+        max_retries = MAX_RETRIES  # เพิ่มจำนวนครั้งที่จะลองเปิดใหม่
+        retry_delay = RETRY_DELAY # รอ 0.5 วินาทีก่อนลองใหม่
 
         for attempt in range(max_retries):
             for backend in backends:
@@ -176,8 +186,8 @@ class CameraThread(threading.Thread):
                     try:
                         results = self.model.track(
                             source=frame,
-                            conf=0.45,
-                            iou=0.50,
+                            conf=YOLO_CONF,
+                            iou=YOLO_IOU,
                             device=self.device,
                             verbose=False,
                             persist=True,
@@ -324,7 +334,7 @@ class CameraThread(threading.Thread):
                     self.main_lost_frames = 0
                     self.last_target_conf = best["conf"]
                     
-                    if best["conf"] > 0.60:
+                    if best["conf"] > BEST_CONF_THRESHOLD:
                         found_class = best["label"] # เจอแล้ว! จำไว้ก่อน
                     found_det = best
 
@@ -336,12 +346,12 @@ class CameraThread(threading.Thread):
                     
                     if found_det is None and self.last_target_center is not None:
                         last_cx, last_cy = self.last_target_center
-                        min_dist = 150
+                        min_dist = MIN_DISTANCE_THRESHOLD
                         closest = None
                         for d in detections:
                             dcx, dcy = d["center"]
                             dist = ((dcx - last_cx)**2 + (dcy - last_cy)**2)**0.5 
-                            if dist < 150 and dist < min_dist: 
+                            if dist < MIN_DISTANCE_THRESHOLD and dist < min_dist: 
                                 min_dist = dist
                                 closest = d
                         
@@ -353,7 +363,7 @@ class CameraThread(threading.Thread):
                     self.main_lost_frames = 0
                     self.last_target_conf = found_det["conf"]
                     self.last_target_center = found_det["center"] 
-                    if found_det["conf"] >= 0.50:
+                    if found_det["conf"] >= FOUND_DET_CONF_THRESHOLD:
                         found_class = found_det["label"] 
                 else:
                     self.main_lost_frames += 1

@@ -10,8 +10,10 @@ async def login_by_teacher_id(
 ):
     try:
         # ล้าง session server-side ให้สะอาดก่อนทุก login
-        supabase_client.auth._remove_session()
-        supabase_client.auth.sign_out()
+        try:
+            supabase_client.auth.sign_out()
+        except Exception:
+            pass
 
         print(f"📩 Login attempt teacher_id={teacher_id}")
 
@@ -41,11 +43,7 @@ async def login_by_teacher_id(
         if not email:
             raise HTTPException(status_code=400, detail="ผู้ใช้นี้ไม่มีอีเมลในระบบ Auth")
         
-        # 🔥 reset session/auth cache ของ supabase server-side
-        supabase_client.auth._remove_session()   
-
         # ✅ 3. ทำการ login ด้วย email + password ผ่าน auth
-        supabase_client.auth.sign_out()
         login_response = supabase_client.auth.sign_in_with_password({
             "email": email,
             "password": password

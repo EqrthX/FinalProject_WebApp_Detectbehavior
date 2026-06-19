@@ -4,6 +4,7 @@ import MyBreadcrumb from "../../components/MyBreadcrumb";
 import axios from "../../util/axios";
 import toast from "react-hot-toast";
 import { useNavigate, useParams } from "react-router-dom";
+import { CLASS_LABEL_MAP } from "../../util/constants";
 
 const RecordPage = () => {
   const navigate = useNavigate();
@@ -26,14 +27,7 @@ const RecordPage = () => {
 
   // ---------------------- ฟังก์ชัน Utils (ฟังก์ชันช่วยงานทั่วไป) ----------------------
   const convertClass = (cls) => {
-    const clsThai = {
-      "Looking at the board": "มองกระดาน",
-      "Looking Away": "หันหน้า",
-      "Using Phone": "เล่นโทรศัพท์",
-      "Looking down to write": "จดเลคเชอร์",
-      "Other": "อื่นๆ"
-    }
-    return clsThai[cls] || cls;
+    return CLASS_LABEL_MAP[cls] || cls;
   }
   
   // ฟังก์ชันสร้างชื่อกล้องจาก id เช่น 0 -> "กล้องตัวที่ 1"

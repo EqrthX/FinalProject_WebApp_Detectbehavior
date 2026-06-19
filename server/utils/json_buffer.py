@@ -10,10 +10,7 @@ def get_json_dir():
 
 # ✅ ปรับแก้: รับ session_id มาตั้งชื่อไฟล์ให้ไม่ซ้ำกันในแต่ละรอบ
 def get_buffer_file(camera_id: str, teacher_id: str, subject_id: str, group, session_id):
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    server_dir = os.path.dirname(base_dir)
-    buffer_dir = os.path.join(server_dir, "jsonlogs")
-    os.makedirs(buffer_dir, exist_ok=True)
+    buffer_dir = get_json_dir()
     # ใส่ session_id ลงไปในชื่อไฟล์
     return os.path.join(buffer_dir, f"camera_{int(camera_id) + 1}_{teacher_id}_{subject_id}_{group}_{session_id}.json")
 

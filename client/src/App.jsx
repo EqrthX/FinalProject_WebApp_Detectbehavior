@@ -25,19 +25,15 @@ function App() {
         <Route path="/" element={<LoginPage />} />
         {/* User */}
         <Route path="/user/Homepage" element={<HomePage />} />
-        <Route>
-          <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
-          <Route path="/user/Record/:subjectId/:group" element={<Record />} />
-          <Route path="/user/summarize/:subjectId/:group" element={<SummarizePage />} />
-        </Route>
+        <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />
+        <Route path="/user/Record/:subjectId/:group" element={<Record />} />
+        <Route path="/user/summarize/:subjectId/:group" element={<SummarizePage />} />
         <Route path="/user/ResultsPage" element={<ResultsPage />} />
 
         <Route path="/admin/AdminHomePage" element={<AdminHomePage />} />
         <Route path="/admin/AdminTeachingschedule" element={<AdminTeachingschedule />} />
-        <Route>
-          <Route path="/admin/AdminTeachers" element={<AdminTeachers />} />
-          <Route path="/admin/AdminClassRoom/:id" element={<AdminClassRoom />} />
-        </Route>
+        <Route path="/admin/AdminTeachers" element={<AdminTeachers />} />
+        <Route path="/admin/AdminClassRoom/:id" element={<AdminClassRoom />} />
 
 
 

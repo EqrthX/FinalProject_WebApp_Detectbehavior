@@ -16,3 +16,20 @@ html, body, #root {
 body {
   font-family: 'Kanit', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 }
+
+/* Ant Design Custom Select style override for AdminTeachingschedule */
+.ant-select-custom .ant-select-selector {
+  background-color: #f9fafb !important;
+  border-color: #d1d5db !important;
+  border-radius: 9999px !important;
+  height: 42px !important;
+  display: flex !important;
+  align-items: center !important;
+  padding-left: 1rem !important;
+}
+.ant-select-custom .ant-select-selector input {
+  height: 100% !important;
+}
+.ant-select-custom .ant-select-selection-item {
+  line-height: 40px !important;
+}

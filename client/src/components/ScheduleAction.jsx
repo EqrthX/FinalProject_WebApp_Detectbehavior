@@ -170,7 +170,7 @@ export const UploadScheduleAction = ({
         `}</style>
 
       <div className="bg-[#f8f8f8] p-8 rounded-lg shadow-lg w-[90%] max-w-2xl border border-gray-300">
-        <h2 className="text-2xl font-bold mb-6">อัปโหลดตารางสอน</h2>
+        <h2 className="text-2xl font-bold mb-6">เพิ่มตารางสอน</h2>
 
         <form className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="relative">

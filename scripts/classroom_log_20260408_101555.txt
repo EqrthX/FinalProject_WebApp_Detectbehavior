@@ -1,0 +1,33 @@
+Timestamp | ID | Status | Confidence | Phone_Detected
+------------------------------------------------------------
+10:15:57.792 | ID:1 | Looking at the board | 83% | Phone:False
+10:15:58.312 | ID:1 | Looking at the board | 82% | Phone:False
+10:15:58.824 | ID:1 | Looking at the board | 83% | Phone:False
+10:15:59.327 | ID:1 | Looking at the board | 83% | Phone:False
+10:15:59.995 | ID:1 | Looking at the board | 83% | Phone:False
+10:16:00.545 | ID:1 | Looking at the board | 81% | Phone:False
+10:16:01.133 | ID:1 | Looking at the board | 80% | Phone:False
+10:16:01.678 | ID:1 | Looking at the board | 82% | Phone:False
+10:16:02.204 | ID:1 | Looking at the board | 81% | Phone:False
+10:16:02.731 | ID:1 | Looking at the board | 81% | Phone:False
+10:16:03.275 | ID:1 | Looking at the board | 80% | Phone:False
+10:16:03.795 | ID:1 | Looking at the board | 81% | Phone:False
+10:16:04.309 | ID:1 | Looking at the board | 81% | Phone:False
+10:16:04.882 | ID:1 | Looking at the board | 81% | Phone:False
+10:16:05.413 | ID:1 | Looking at the board | 81% | Phone:False
+10:16:05.940 | ID:1 | Looking at the board | 80% | Phone:False
+10:16:06.481 | ID:1 | Looking at the board | 79% | Phone:False
+10:16:06.983 | ID:1 | Looking at the board | 76% | Phone:False
+10:16:08.540 | ID:1 | Looking at the board | 52% | Phone:False
+10:16:09.070 | ID:1 | Looking Away  | 58% | Phone:False
+10:16:10.125 | ID:1 | Looking at the board | 81% | Phone:False
+10:16:10.654 | ID:1 | Looking at the board | 68% | Phone:False
+10:16:11.184 | ID:1 | Looking Away  | 80% | Phone:False
+10:16:11.714 | ID:1 | Looking at the board | 84% | Phone:False
+10:16:12.230 | ID:1 | Looking at the board | 85% | Phone:False
+10:16:12.776 | ID:1 | Looking at the board | 66% | Phone:False
+10:16:13.306 | ID:1 | Looking at the board | 53% | Phone:False
+10:16:13.819 | ID:1 | Using Phone   | 87% | Phone:True
+10:16:14.345 | ID:1 | Using Phone   | 86% | Phone:False
+10:16:16.977 | ID:1 | Looking at the board | 53% | Phone:False
+10:16:17.506 | ID:1 | Looking at the board | 82% | Phone:False

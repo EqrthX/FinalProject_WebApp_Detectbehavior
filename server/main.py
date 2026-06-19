@@ -1,10 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes.camera_route import camera_router
+from routes.camera import camera_router
 from routes.admin_route import admin_route
-from routes.auth_rote import auth_route
-app = FastAPI()
+from routes.auth_route import auth_route
 
+app = FastAPI(
+    title="Behavior Detection API",
+    version="1.0.0",
+    description="Real-time classroom behavior detection system"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,3 +21,4 @@ app.add_middleware(
 app.include_router(camera_router)
 app.include_router(admin_route)
 app.include_router(auth_route)
+

@@ -64,6 +64,7 @@ FinalProject_WebApp_Detectbehavior/
 │       ├── json_buffer.py         # Local buffer ก่อนบันทึก DB
 │       └── model_loader.py        # โหลด YOLO model path
 │
+├── scripts/                       # โฟลเดอร์รวมสคริปต์ทดสอบ วิเคราะห์ และประเมินผล (เช่น classroom.py, sum_log.py)
 └── datasetnew_boundingbox/        # โฟลเดอร์เก็บ Model weights (best.pt)
 ```
 

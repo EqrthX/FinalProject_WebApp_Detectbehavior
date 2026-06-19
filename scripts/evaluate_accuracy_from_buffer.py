@@ -28,7 +28,7 @@ def generate_proxy_gt(class_json):
 # Path
 # -----------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-JSON_DIR = os.path.join(BASE_DIR, "server", "jsonlogs")
+JSON_DIR = os.path.join(os.path.dirname(BASE_DIR), "server", "jsonlogs")
 OUTPUT_CSV = "behavior_accuracy.csv"
 
 records = []

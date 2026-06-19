@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes.camera_route import camera_router
+from routes.camera import camera_router
 from routes.admin_route import admin_route
-from routes.auth_rote import auth_route
+from routes.auth_route import auth_route
 app = FastAPI()
 
 

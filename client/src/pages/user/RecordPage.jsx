@@ -161,10 +161,13 @@ const RecordPage = () => {
           return;
         }
         
-        setSummaryData((prev) => [
-          ...prev,
-          { cameraId, data },
-        ]);
+        setSummaryData((prev) => {
+          const isDuplicate = prev.some(
+            (item) => item.cameraId === cameraId && item.data.Time === data.Time
+          );
+          if (isDuplicate) return prev;
+          return [...prev, { cameraId, data }];
+        });
         console.log("📊 Summary from camera", Number(cameraId) + 1, data);
       } catch (e) {
         console.error("Summary parse error:", e, event.data);

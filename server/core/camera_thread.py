@@ -413,12 +413,6 @@ class CameraThread(threading.Thread):
             "CurrentClass": cls
         }
 
-        with self.lock:
-            self.latest_summary = realtime_payload
-        
-        if self.loop and self.summary_ready_event:
-            self.loop.call_soon_threadsafe(self.summary_ready_event.set)
-
         if self.interval_count % 3 == 0:
             if mapped:
                 self.interval_results.append(cls)
@@ -433,6 +427,12 @@ class CameraThread(threading.Thread):
             self.class_durations.clear()
             self.class_timer["miss"] = 0
             self.class_timer["duration"] = 0.0
+        else:
+            with self.lock:
+                self.latest_summary = realtime_payload
+            
+            if self.loop and self.summary_ready_event:
+                self.loop.call_soon_threadsafe(self.summary_ready_event.set)
 
     # สร้างข้อมูลสรุปผล (Summary) เพื่อส่งผ่าน WebSocket และบันทึกลง Buffer
     def save_summary(self):

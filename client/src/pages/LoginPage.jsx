@@ -41,20 +41,42 @@ const LoginPage = () => {
       });
       const data = res.data;
 
-      toast.success(`เข้าสู่ระบบสำเร็จ`);
+      if (!["admin", "teacher"].includes(data.role)) {
+        throw new Error("ไม่พบสิทธิ์ของผู้ใช้บัญชีนี้");
+      }
+
+      if (!data.access_token) {
+        throw new Error("ไม่ได้รับ token สำหรับเข้าสู่ระบบ");
+      }
 
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("role", data.role);
-      localStorage.setItem("teacher_id", data.teacher_id);
-      localStorage.setItem("fullname", data.fullname);
-      localStorage.setItem("major", data.major);
+      localStorage.setItem("teacher_id", data.teacher_id ?? "");
+      localStorage.setItem("fullname", data.fullname ?? "");
+      localStorage.setItem("major", data.major ?? "");
 
-      if (data.role === "admin") navigate("/admin/AdminHomepage");
-      else if (data.role === "teacher") navigate("/user/Homepage");
-      else setErrorMessage("ไม่พบสิทธิ์ของผู้ใช้บัญชีนี้");
+      toast.success("เข้าสู่ระบบสำเร็จ");
+
+      navigate(
+        data.role === "admin"
+          ? "/admin/AdminHomepage"
+          : "/user/Homepage"
+      );
+
     } catch (error) {
-      console.error(error);
-      toast.error(error.response?.data?.detail || "เข้าสู่ระบบไม่สำเร็จ");
+      const detail = error.response?.data?.detail;
+
+      const message =
+        typeof detail === "string"
+          ? detail
+          : error.response
+            ? "เข้าสู่ระบบไม่สำเร็จ"
+            : error.isAxiosError
+              ? "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่"
+              : error.message || "เข้าสู่ระบบไม่สำเร็จ";
+
+      setErrorMessage(message);
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -118,6 +140,10 @@ const LoginPage = () => {
             </div>
           </div>
           {/* ▲▲▲ สิ้นสุดส่วนที่แก้ไข ▲▲▲ */}
+
+          <Link to="/forgot-password" className="self-end rounded text-sm text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600">
+            ลืมรหัสผ่าน?
+          </Link>
 
           {errorMessage && (
             <p className="text-red-500 text-center font-medium">

@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import "./index.css";
 import LoginPage from "./pages/LoginPage.jsx";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
+import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
 // ----------------------------------------------------------
 import AdminHomePage from "./pages/admin/AdminHomePage.jsx";
 import AdminTeachingschedule from "./pages/admin/AdminTeachingschedule.jsx";
@@ -23,6 +25,8 @@ function App() {
       <Toaster />
       <Routes>
         <Route path="/" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         {/* User */}
         <Route path="/user/Homepage" element={<HomePage />} />
         <Route path="/user/TeachingSchedule" element={<TeachingSchedule />} />

@@ -7,6 +7,7 @@ load_dotenv()
 
 # 2. ดึงค่าตัวแปร
 SUPABASE_URL: str | None = os.getenv("SUPABASE_URL")
+SUPABASE_KEY: str | None = os.getenv("SUPABASE_KEY")
 
 # 🟢 เพิ่มบรรทัดนี้: ดึง Key ลับ (Service Role)
 SUPABASE_SERVICE_ROLE_KEY: str | None = os.getenv("SUPABASE_SERVICE_KEY")
